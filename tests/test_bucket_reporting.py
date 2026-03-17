@@ -16,6 +16,56 @@ from kvcache_upper_bound.reporting import (
 
 
 class BucketReportingTest(unittest.TestCase):
+    def test_bucket_reporting_can_derive_hbm_kv_budget_from_gpu_memory_and_model_weights(self) -> None:
+        records = [
+            RequestRecord(
+                request_id="r0",
+                source_index=0,
+                timestamp_ms=1000,
+                chat_id="c0",
+                parent_chat_id=None,
+                turn=1,
+                request_type="text",
+                input_length=16,
+                output_length=1,
+                hash_ids=("a",),
+            )
+        ]
+        half_gib_parameters = (1024**3) // 2
+        config_payload = {
+            "model_profile": {
+                "n_layers": 1,
+                "n_kv_heads": 1,
+                "head_dim": 1,
+                "dtype_bytes": 1,
+                "weight_dtype_bytes": 1,
+                "parameter_count": half_gib_parameters,
+                "tp_size": 1,
+                "block_size": 16,
+            },
+            "scope": "global",
+            "block_size": 16,
+            "bucket_deployments": [
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "machine_count": 2,
+                    "machine_spec": "h20",
+                    "gpu_memory_gb_per_machine": 1.25,
+                    "runtime_reserve_gb_per_machine": 0.25,
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+            config = load_bucket_analysis_config(config_path)
+            result = analyze_bucket_deployments(records, config)
+
+        self.assertAlmostEqual(result.rows[0].hbm_kv_total_gb, 1.0, places=6)
+
     def test_bucket_reporting_outputs_requested_columns(self) -> None:
         records = [
             RequestRecord(

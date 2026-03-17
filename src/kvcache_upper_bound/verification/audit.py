@@ -25,6 +25,7 @@ class BucketAuditRow:
     sample_request_count: int
     sample_content_fast_equals_naive: bool | None
     window_tokens: int | None
+    hbm_kv_gb_per_machine: float
     hbm_kv_total_gb: float
     total_blocks: int
     content_hit_blocks: int
@@ -52,6 +53,7 @@ class BucketAuditReport:
     config: str
     model_kv_bytes_per_token: int
     model_kv_bytes_per_block: int
+    model_weight_gb_per_rank: float | None
     exhaustive_reference: ExhaustiveVerificationSummary
     strict_prefix_counterexample: StrictPrefixCounterexample | None
     strict_prefix_replay_gap_counterexample: StrictPrefixReplayGapCounterexample | None
@@ -115,6 +117,7 @@ def build_bucket_audit_report(
                 sample_request_count=len(sample_requests),
                 sample_content_fast_equals_naive=sample_matches if has_requests else None,
                 window_tokens=row.window_tokens,
+                hbm_kv_gb_per_machine=row.hbm_kv_gb_per_machine,
                 hbm_kv_total_gb=row.hbm_kv_total_gb,
                 total_blocks=detail.content_result.summary.total_blocks,
                 content_hit_blocks=content_hit_blocks,
@@ -161,6 +164,9 @@ def build_bucket_audit_report(
         config=config_path,
         model_kv_bytes_per_token=config.model_profile.kv_bytes_per_token(),
         model_kv_bytes_per_block=config.model_profile.kv_bytes_per_block(),
+        model_weight_gb_per_rank=None
+        if config.model_profile.weight_bytes_per_rank() is None
+        else config.model_profile.weight_bytes_per_rank() / (1024**3),
         exhaustive_reference=verify_exhaustive_small_cases(),
         strict_prefix_counterexample=None,
         strict_prefix_replay_gap_counterexample=None,
@@ -203,6 +209,11 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
         f"- {'config' if not is_zh else '配置'}: `{report.config}`",
         f"- {'kv bytes per token' if not is_zh else '每 token KV 字节数'}: `{report.model_kv_bytes_per_token}`",
         f"- {'kv bytes per block' if not is_zh else '每 block KV 字节数'}: `{report.model_kv_bytes_per_block}`",
+        (
+            f"- {'每卡模型权重 (GiB)' if is_zh else 'model weights per rank (GiB)'}: `{report.model_weight_gb_per_rank:.2f}`"
+            if report.model_weight_gb_per_rank is not None
+            else ""
+        ),
         "",
         "## 穷举参考校验" if is_zh else "## Exhaustive Reference",
         "",
@@ -322,6 +333,7 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
                 f"### {row.bucket_label}",
                 "",
                 f"- {'窗口 token 上限' if is_zh else 'window tokens'}: `{row.window_tokens}`",
+                f"- {'单机 HBM KV 预算 (GiB)' if is_zh else 'hbm kv budget per machine (GiB)'}: `{row.hbm_kv_gb_per_machine:.2f}`",
                 f"- {'HBM KV 总容量 (GB)' if is_zh else 'hbm kv total gb'}: `{row.hbm_kv_total_gb:.2f}`",
                 f"- {'常驻 block 容量' if is_zh else 'resident block capacity'}: `floor({row.hbm_kv_total_gb:.2f} * 1024^3 / {report.model_kv_bytes_per_block}) = {row.resident_block_capacity}`",
                 f"- {'总 blocks' if is_zh else 'total blocks'}: `{row.total_blocks}`",

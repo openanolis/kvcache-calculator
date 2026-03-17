@@ -59,6 +59,8 @@ class ModelProfile:
     tp_size: int = 1
     pp_size: int = 1
     block_size: int = 16
+    parameter_count: int | None = None
+    weight_dtype_bytes: int | None = None
 
     def kv_bytes_per_token(self) -> int:
         return (
@@ -82,6 +84,25 @@ class ModelProfile:
         if self.kv_cache_layer_count is None:
             return self.n_layers
         return self.kv_cache_layer_count
+
+    def resolved_weight_dtype_bytes(self) -> int:
+        if self.weight_dtype_bytes is None:
+            return self.dtype_bytes
+        return self.weight_dtype_bytes
+
+    def weight_bytes_total(self) -> int | None:
+        if self.parameter_count is None:
+            return None
+        return self.parameter_count * self.resolved_weight_dtype_bytes()
+
+    def weight_bytes_per_rank(self) -> int | None:
+        total_weight_bytes = self.weight_bytes_total()
+        if total_weight_bytes is None:
+            return None
+        shard_factor = self.tp_size * self.pp_size
+        if shard_factor <= 0:
+            raise ValueError("tp_size * pp_size must be positive")
+        return (total_weight_bytes + shard_factor - 1) // shard_factor
 
 
 @dataclass(frozen=True)

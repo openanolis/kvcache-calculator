@@ -58,7 +58,7 @@ kvcache-upper-bound-oracle/
 - `pyproject.toml`：本地可安装入口；保证 `kvcache-upper-bound` 命令可直接运行。
 - `docs/design_guide.md`：需求、口径、算法、阶段计划的单一事实来源。
 - `docs/correctness_guide.md`：解释哪些结果已被 reference 证明，哪些指标只是解释 exact strict-prefix 的辅助证据。
-- `src/kvcache_upper_bound/core/models.py`：稳定数据模型；这里定义请求、窗口化请求、模型配置等核心对象。
+- `src/kvcache_upper_bound/core/models.py`：稳定数据模型；这里定义请求、窗口化请求、模型配置，以及从模型参数量推导权重占用所需的核心对象。
 - `src/kvcache_upper_bound/ingest/trace_loader.py`：读取 JSONL trace，做字段解析、时间标准化和稳定排序。
 - `src/kvcache_upper_bound/ingest/normalizer.py`：把原始请求转成 window-aware 的 `EffectiveRequest`，并解析 session root。
 - `src/kvcache_upper_bound/oracle/prefix_trie.py`：前缀路径状态机；只负责匹配和插入，不混入聚合逻辑。
@@ -81,6 +81,7 @@ kvcache-upper-bound-oracle/
 - 核心口径固定为：`strict_prefix_window`、`prefill only`、`content -> capacity -> system` 三级上限。
 - `hash_ids` 必须按前缀路径解释，不能退化成裸 block 频次统计。
 - `ModelProfile.kv_bytes_per_token()` 表示整套部署的总 KV 占用，不是单卡 shard 占用；预算字段必须和它保持同一口径。
+- `ModelProfile.parameter_count` 只用于从显存反推理论 KV 预算；不提供时，就必须显式给出 `hbm_kv_gb_per_machine` 或利用率。
 - 混合注意力模型必须显式提供 `kv_cache_layer_count`；不能拿总层数硬套 KV 公式。
 - 纯计算逻辑放 `src/`，文件 IO 和命令行入口后置，避免副作用污染核心算法。
 - `core/` 不依赖 `ingest/`；数据结构必须比解析逻辑更稳定。
@@ -109,3 +110,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-17`：新增 `capacity/reporting/cli`，开始支持按业务分桶输出 HBM 与扩展空间命中率。
 - `2026-03-17`：新增 `verification/`、`correctness_guide.md` 和 `audit-buckets`，开始显式输出 reference 证明、strict-prefix 等价校验与中英双语 correctness report。
 - `2026-03-17`：把 exact `strict-prefix capacity oracle` 接入 `reporting/` 与 `verification/` 主路径；主报表和 correctness report 统一输出 exact hit rate 与 proof source。
+- `2026-03-17`：支持从 `gpu_memory_gb_per_machine - 模型权重分片 - runtime reserve` 推导 HBM KV 预算，公开 `h20` 配置不再写死魔法数字。

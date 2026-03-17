@@ -51,9 +51,21 @@ kvcache-upper-bound audit-buckets \
 
 - `model_profile`：层数、KV heads、head dim、dtype、TP/PP
 - 混合注意力模型要额外提供 `kv_cache_layer_count`，例如 `Qwen/Qwen3.5-27B` 用 `64` 层总层数，但只有 `16` 层 full attention 进入 token-linear KV cache
-- `bucket_deployments[].hbm_kv_gb_per_machine`：每台机器可分给 KV 的 HBM 容量
+- `model_profile.parameter_count` + `weight_dtype_bytes`：可选；如果要从显存反推 KV 预算，就需要它们
+- `bucket_deployments[].hbm_kv_gb_per_machine`：直接给每台机器可分给 KV 的 HBM 容量
+- `bucket_deployments[].gpu_memory_gb_per_machine`：也可直接给单机显存；此时项目会按 `单机显存 - 模型权重分片 - runtime reserve` 推出理论 KV HBM 容量
+- `bucket_deployments[].runtime_reserve_gb_per_machine`：可选；默认 `0`
 - `bucket_deployments[].extra_capacity_tiers`：每台机器可追加的 host/SSD 容量，例如 1T 或 10T
 - `bucket_deployments[].actual_hit_rate`：业务实测命中率，可选
+
+公开配置 `configs/public_trace_qwen3_5_27b.json` 现在走的是推导路径：
+
+- `Qwen/Qwen3.5-27B` 参数量：`27,781,419,504`
+- 权重精度：`BF16 = 2 bytes`
+- 总权重大小：约 `51.75 GiB`
+- `tp_size = 8`，所以每卡权重分片约 `6.47 GiB`
+- `h20 = 96 GiB`，默认 `runtime reserve = 0`
+- 所以理论单机 KV HBM 预算约为 `96 - 6.47 = 89.53 GiB`
 
 ## 正确性口径
 

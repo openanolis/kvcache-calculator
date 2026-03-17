@@ -35,6 +35,7 @@ class BucketDeploymentConfig:
     hbm_kv_gb_per_machine: float | None = None
     gpu_memory_gb_per_machine: float | None = None
     hbm_kv_utilization: float | None = None
+    runtime_reserve_gb_per_machine: float = 0.0
     window_tokens: int | None = None
     actual_hit_rate: float | None = None
     actual_hit_rate_note: str | None = None
@@ -47,14 +48,32 @@ class BucketDeploymentConfig:
             return True
         return input_length < self.upper_tokens
 
-    def resolved_hbm_kv_gb_per_machine(self) -> float:
+    def resolved_hbm_kv_gb_per_machine(self, model_profile: ModelProfile) -> float:
         if self.hbm_kv_gb_per_machine is not None:
             return self.hbm_kv_gb_per_machine
-        if self.gpu_memory_gb_per_machine is None or self.hbm_kv_utilization is None:
+        if self.gpu_memory_gb_per_machine is None:
             raise ValueError(
-                f"{self.label}: either hbm_kv_gb_per_machine or gpu_memory_gb_per_machine + hbm_kv_utilization must be provided"
+                f"{self.label}: either hbm_kv_gb_per_machine or gpu_memory_gb_per_machine must be provided"
             )
-        return self.gpu_memory_gb_per_machine * self.hbm_kv_utilization
+        if self.hbm_kv_utilization is not None:
+            return self.gpu_memory_gb_per_machine * self.hbm_kv_utilization
+
+        model_weight_bytes_per_rank = model_profile.weight_bytes_per_rank()
+        if model_weight_bytes_per_rank is None:
+            raise ValueError(
+                f"{self.label}: gpu_memory_gb_per_machine requires either hbm_kv_utilization or model_profile.parameter_count"
+            )
+        model_weight_gb_per_rank = model_weight_bytes_per_rank / BYTES_PER_GB
+        resolved = (
+            self.gpu_memory_gb_per_machine
+            - model_weight_gb_per_rank
+            - self.runtime_reserve_gb_per_machine
+        )
+        if resolved < 0:
+            raise ValueError(
+                f"{self.label}: derived hbm kv budget is negative after subtracting model weights and runtime reserve"
+            )
+        return resolved
 
     def resolved_window_tokens(self, records: list[RequestRecord]) -> int:
         if self.window_tokens is not None:
@@ -80,7 +99,9 @@ class BucketReportRow:
     machine_count: int
     machine_spec: str
     total_tps: float | None
+    hbm_kv_gb_per_machine: float
     hbm_kv_total_gb: float
+    model_weight_gb_per_machine: float | None
     extreme_hit_rate: float | None
     actual_hit_rate: float | None
     actual_hit_rate_note: str | None
@@ -155,7 +176,14 @@ def analyze_bucket_deployments(
             block_size=config.block_size,
         )
 
-        hbm_kv_total_gb = deployment.machine_count * deployment.resolved_hbm_kv_gb_per_machine()
+        hbm_kv_gb_per_machine = deployment.resolved_hbm_kv_gb_per_machine(config.model_profile)
+        hbm_kv_total_gb = deployment.machine_count * hbm_kv_gb_per_machine
+        model_weight_bytes_per_rank = config.model_profile.weight_bytes_per_rank()
+        model_weight_gb_per_machine = (
+            None
+            if model_weight_bytes_per_rank is None
+            else model_weight_bytes_per_rank / BYTES_PER_GB
+        )
         hbm_budget_bytes = _gb_to_bytes(hbm_kv_total_gb)
         hbm_capacity_result = analyze_capacity_upper_bound(
             normalized.requests,
@@ -237,7 +265,9 @@ def analyze_bucket_deployments(
             machine_count=deployment.machine_count,
             machine_spec=deployment.machine_spec,
             total_tps=deployment.total_tps,
+            hbm_kv_gb_per_machine=hbm_kv_gb_per_machine,
             hbm_kv_total_gb=hbm_kv_total_gb,
+            model_weight_gb_per_machine=model_weight_gb_per_machine,
             extreme_hit_rate=None if not bucket_records else content_result.summary.block_hit_rate,
             actual_hit_rate=deployment.actual_hit_rate,
             actual_hit_rate_note=deployment.actual_hit_rate_note,
@@ -462,6 +492,12 @@ def _load_model_profile(payload: dict[str, Any]) -> ModelProfile:
         tp_size=int(payload.get("tp_size", 1)),
         pp_size=int(payload.get("pp_size", 1)),
         block_size=int(payload.get("block_size", 16)),
+        parameter_count=None
+        if payload.get("parameter_count") is None
+        else int(payload["parameter_count"]),
+        weight_dtype_bytes=None
+        if payload.get("weight_dtype_bytes") is None
+        else int(payload["weight_dtype_bytes"]),
     )
 
 
@@ -493,6 +529,7 @@ def _load_bucket_deployment(payload: dict[str, Any]) -> BucketDeploymentConfig:
         hbm_kv_utilization=None
         if payload.get("hbm_kv_utilization") is None
         else float(payload["hbm_kv_utilization"]),
+        runtime_reserve_gb_per_machine=float(payload.get("runtime_reserve_gb_per_machine", 0.0)),
         window_tokens=None if payload.get("window_tokens") is None else int(payload["window_tokens"]),
         actual_hit_rate=actual_hit_rate,
         actual_hit_rate_note=actual_hit_rate_note,
