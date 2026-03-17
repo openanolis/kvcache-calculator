@@ -10,6 +10,10 @@ from kvcache_upper_bound.core.models import ModelProfile, RequestRecord, Scope
 from kvcache_upper_bound.ingest.normalizer import build_effective_requests
 from kvcache_upper_bound.oracle.capacity import CapacityAnalysisResult, analyze_capacity_upper_bound
 from kvcache_upper_bound.oracle.content import ContentAnalysisResult, analyze_content_upper_bound
+from kvcache_upper_bound.oracle.strict_prefix import (
+    StrictPrefixAnalysisResult,
+    analyze_strict_prefix_capacity_upper_bound,
+)
 
 BYTES_PER_GB = 1024**3
 
@@ -82,10 +86,12 @@ class BucketReportRow:
     actual_hit_rate_note: str | None
     hbm_relaxed_upper_bound_hit_rate: float | None
     hbm_strict_prefix_replay_hit_rate: float | None
-    hbm_strict_prefix_exact_certified: bool | None
-    extra_tier_hit_rates: dict[str, float | None]
+    hbm_strict_prefix_hit_rate: float | None
+    hbm_strict_prefix_proof_source: str | None
+    extra_tier_relaxed_upper_bound_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None]
-    extra_tier_strict_prefix_exact_certified: dict[str, bool | None]
+    extra_tier_strict_prefix_hit_rates: dict[str, float | None]
+    extra_tier_strict_prefix_proof_sources: dict[str, str | None]
     request_count: int
     window_tokens: int | None
     input_lower_tokens: int
@@ -97,7 +103,9 @@ class BucketDetail:
     config: BucketDeploymentConfig
     content_result: ContentAnalysisResult
     hbm_capacity_result: CapacityAnalysisResult
+    hbm_strict_prefix_result: StrictPrefixAnalysisResult
     extra_capacity_results: dict[str, CapacityAnalysisResult]
+    extra_strict_prefix_results: dict[str, StrictPrefixAnalysisResult]
 
 
 @dataclass(frozen=True)
@@ -155,42 +163,73 @@ def analyze_bucket_deployments(
             budget_bytes=hbm_budget_bytes,
             block_size=config.block_size,
         )
+        hbm_strict_prefix_result = analyze_strict_prefix_capacity_upper_bound(
+            normalized.requests,
+            model_profile=config.model_profile,
+            budget_bytes=hbm_budget_bytes,
+            block_size=config.block_size,
+        )
 
         extra_capacity_results: dict[str, CapacityAnalysisResult] = {}
-        extra_tier_hit_rates: dict[str, float | None] = {}
+        extra_strict_prefix_results: dict[str, StrictPrefixAnalysisResult] = {}
+        extra_tier_relaxed_upper_bound_hit_rates: dict[str, float | None] = {}
         extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None] = {}
-        extra_tier_strict_prefix_exact_certified: dict[str, bool | None] = {}
-        ceiling_result = hbm_capacity_result if (
+        extra_tier_strict_prefix_hit_rates: dict[str, float | None] = {}
+        extra_tier_strict_prefix_proof_sources: dict[str, str | None] = {}
+        ceiling_capacity_result = hbm_capacity_result if (
             hbm_capacity_result.summary.hit_blocks == content_result.summary.hit_blocks
             and hbm_capacity_result.summary.total_blocks == content_result.summary.total_blocks
         ) else None
+        ceiling_strict_prefix_result = hbm_strict_prefix_result if (
+            hbm_strict_prefix_result.summary.hit_blocks == content_result.summary.hit_blocks
+            and hbm_strict_prefix_result.summary.total_blocks == content_result.summary.total_blocks
+        ) else None
         for tier in deployment.extra_capacity_tiers:
-            if ceiling_result is not None:
-                result = ceiling_result
+            if ceiling_capacity_result is not None:
+                capacity_result = ceiling_capacity_result
             else:
                 total_budget_gb = hbm_kv_total_gb + deployment.machine_count * tier.kv_gb_per_machine
-                result = analyze_capacity_upper_bound(
+                capacity_result = analyze_capacity_upper_bound(
                     normalized.requests,
                     model_profile=config.model_profile,
                     budget_bytes=_gb_to_bytes(total_budget_gb),
                     block_size=config.block_size,
                 )
                 if (
-                    result.summary.hit_blocks == content_result.summary.hit_blocks
-                    and result.summary.total_blocks == content_result.summary.total_blocks
+                    capacity_result.summary.hit_blocks == content_result.summary.hit_blocks
+                    and capacity_result.summary.total_blocks == content_result.summary.total_blocks
                 ):
-                    ceiling_result = result
-            extra_capacity_results[tier.label] = result
-            extra_tier_hit_rates[tier.label] = (
-                None if not bucket_records else result.summary.block_hit_rate
+                    ceiling_capacity_result = capacity_result
+
+            if ceiling_strict_prefix_result is not None:
+                strict_prefix_result = ceiling_strict_prefix_result
+            else:
+                total_budget_gb = hbm_kv_total_gb + deployment.machine_count * tier.kv_gb_per_machine
+                strict_prefix_result = analyze_strict_prefix_capacity_upper_bound(
+                    normalized.requests,
+                    model_profile=config.model_profile,
+                    budget_bytes=_gb_to_bytes(total_budget_gb),
+                    block_size=config.block_size,
+                )
+                if (
+                    strict_prefix_result.summary.hit_blocks == content_result.summary.hit_blocks
+                    and strict_prefix_result.summary.total_blocks == content_result.summary.total_blocks
+                ):
+                    ceiling_strict_prefix_result = strict_prefix_result
+
+            extra_capacity_results[tier.label] = capacity_result
+            extra_strict_prefix_results[tier.label] = strict_prefix_result
+            extra_tier_relaxed_upper_bound_hit_rates[tier.label] = (
+                None if not bucket_records else capacity_result.summary.block_hit_rate
             )
             extra_tier_strict_prefix_replay_hit_rates[tier.label] = (
-                None if not bucket_records else result.summary.strict_prefix_block_hit_rate
+                None if not bucket_records else capacity_result.summary.strict_prefix_block_hit_rate
             )
-            extra_tier_strict_prefix_exact_certified[tier.label] = (
-                None
-                if not bucket_records
-                else result.summary.strict_prefix_hit_blocks == content_result.summary.hit_blocks
+            extra_tier_strict_prefix_hit_rates[tier.label] = (
+                None if not bucket_records else strict_prefix_result.summary.block_hit_rate
+            )
+            extra_tier_strict_prefix_proof_sources[tier.label] = (
+                None if not bucket_records else strict_prefix_result.summary.proof_source
             )
 
         row = BucketReportRow(
@@ -208,12 +247,16 @@ def analyze_bucket_deployments(
             hbm_strict_prefix_replay_hit_rate=None
             if not bucket_records
             else hbm_capacity_result.summary.strict_prefix_block_hit_rate,
-            hbm_strict_prefix_exact_certified=None
+            hbm_strict_prefix_hit_rate=None
             if not bucket_records
-            else hbm_capacity_result.summary.strict_prefix_hit_blocks == content_result.summary.hit_blocks,
-            extra_tier_hit_rates=extra_tier_hit_rates,
+            else hbm_strict_prefix_result.summary.block_hit_rate,
+            hbm_strict_prefix_proof_source=None
+            if not bucket_records
+            else hbm_strict_prefix_result.summary.proof_source,
+            extra_tier_relaxed_upper_bound_hit_rates=extra_tier_relaxed_upper_bound_hit_rates,
             extra_tier_strict_prefix_replay_hit_rates=extra_tier_strict_prefix_replay_hit_rates,
-            extra_tier_strict_prefix_exact_certified=extra_tier_strict_prefix_exact_certified,
+            extra_tier_strict_prefix_hit_rates=extra_tier_strict_prefix_hit_rates,
+            extra_tier_strict_prefix_proof_sources=extra_tier_strict_prefix_proof_sources,
             request_count=len(bucket_records),
             window_tokens=None if not bucket_records else window_tokens,
             input_lower_tokens=deployment.lower_tokens,
@@ -224,7 +267,9 @@ def analyze_bucket_deployments(
             config=deployment,
             content_result=content_result,
             hbm_capacity_result=hbm_capacity_result,
+            hbm_strict_prefix_result=hbm_strict_prefix_result,
             extra_capacity_results=extra_capacity_results,
+            extra_strict_prefix_results=extra_strict_prefix_results,
         )
 
     return BucketAnalysisResult(rows=rows, details=details)
@@ -264,17 +309,20 @@ def _write_summary_csv(
         [
             "HBM Relaxed Upper Bound 命中率",
             "HBM Strict-Prefix Replay 命中率",
-            "HBM Strict-Prefix 已证精确",
+            "HBM Strict-Prefix 命中率",
+            "HBM Strict-Prefix 求解路径",
         ]
     )
     for label in tier_labels:
+        relaxed_label = _relaxed_upper_bound_column(label)
         strict_prefix_replay_label = _strict_prefix_replay_column(label)
-        strict_prefix_exact_label = _strict_prefix_exact_column(label)
+        strict_prefix_proof_label = _strict_prefix_proof_column(label)
         fieldnames.extend(
             [
                 label,
+                relaxed_label,
                 strict_prefix_replay_label,
-                strict_prefix_exact_label,
+                strict_prefix_proof_label,
             ]
         )
     fieldnames.extend(["请求数", "窗口上限", "输入下界", "输入上界"])
@@ -293,7 +341,8 @@ def _write_summary_csv(
                     row.hbm_relaxed_upper_bound_hit_rate
                 ),
                 "HBM Strict-Prefix Replay 命中率": _format_rate(row.hbm_strict_prefix_replay_hit_rate),
-                "HBM Strict-Prefix 已证精确": _format_bool(row.hbm_strict_prefix_exact_certified),
+                "HBM Strict-Prefix 命中率": _format_rate(row.hbm_strict_prefix_hit_rate),
+                "HBM Strict-Prefix 求解路径": _format_text(row.hbm_strict_prefix_proof_source),
                 "请求数": row.request_count,
                 "窗口上限": "" if row.window_tokens is None else row.window_tokens,
                 "输入下界": row.input_lower_tokens,
@@ -304,12 +353,15 @@ def _write_summary_csv(
             if include_actual_hit_rate:
                 payload["实际命中率"] = _format_rate(row.actual_hit_rate)
             for label in tier_labels:
-                payload[label] = _format_rate(row.extra_tier_hit_rates.get(label))
+                payload[label] = _format_rate(row.extra_tier_strict_prefix_hit_rates.get(label))
+                payload[_relaxed_upper_bound_column(label)] = _format_rate(
+                    row.extra_tier_relaxed_upper_bound_hit_rates.get(label)
+                )
                 payload[_strict_prefix_replay_column(label)] = _format_rate(
                     row.extra_tier_strict_prefix_replay_hit_rates.get(label)
                 )
-                payload[_strict_prefix_exact_column(label)] = _format_bool(
-                    row.extra_tier_strict_prefix_exact_certified.get(label)
+                payload[_strict_prefix_proof_column(label)] = _format_text(
+                    row.extra_tier_strict_prefix_proof_sources.get(label)
                 )
             writer.writerow(payload)
 
@@ -322,9 +374,14 @@ def _write_details_json(path: Path, result: BucketAnalysisResult) -> None:
                 "config": asdict(detail.config),
                 "content_summary": asdict(detail.content_result.summary),
                 "hbm_capacity_summary": asdict(detail.hbm_capacity_result.summary),
+                "hbm_strict_prefix_summary": asdict(detail.hbm_strict_prefix_result.summary),
                 "extra_capacity_summaries": {
                     tier_label: asdict(tier_result.summary)
                     for tier_label, tier_result in detail.extra_capacity_results.items()
+                },
+                "extra_strict_prefix_summaries": {
+                    tier_label: asdict(tier_result.summary)
+                    for tier_label, tier_result in detail.extra_strict_prefix_results.items()
                 },
             }
             for label, detail in result.details.items()
@@ -340,7 +397,7 @@ def _collect_tier_labels(rows: list[BucketReportRow]) -> list[str]:
     labels: list[str] = []
     seen: set[str] = set()
     for row in rows:
-        for label in row.extra_tier_hit_rates:
+        for label in row.extra_tier_strict_prefix_hit_rates:
             if label in seen:
                 continue
             seen.add(label)
@@ -360,12 +417,22 @@ def _format_bool(value: bool | None) -> str:
     return "yes" if value else "no"
 
 
+def _format_text(value: str | None) -> str:
+    if value is None:
+        return ""
+    return value
+
+
+def _relaxed_upper_bound_column(label: str) -> str:
+    return f"{_strict_prefix_column_base(label)} Relaxed Upper Bound 命中率"
+
+
 def _strict_prefix_replay_column(label: str) -> str:
     return f"{_strict_prefix_column_base(label)} Strict-Prefix Replay 命中率"
 
 
-def _strict_prefix_exact_column(label: str) -> str:
-    return f"{_strict_prefix_column_base(label)} Strict-Prefix 已证精确"
+def _strict_prefix_proof_column(label: str) -> str:
+    return f"{_strict_prefix_column_base(label)} Strict-Prefix 求解路径"
 
 
 def _strict_prefix_column_base(label: str) -> str:

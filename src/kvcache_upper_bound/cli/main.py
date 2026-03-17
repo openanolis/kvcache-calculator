@@ -114,14 +114,20 @@ def _run_audit_buckets(args: argparse.Namespace) -> int:
         "content_case_count": audit_report.exhaustive_reference.content_case_count,
         "relaxed_capacity_case_count": audit_report.exhaustive_reference.relaxed_capacity_case_count,
         "strict_prefix_case_count": audit_report.exhaustive_reference.strict_prefix_case_count,
-        "strict_prefix_counterexample": {
+        "relaxed_equals_strict_on_verified_cases": audit_report.exhaustive_reference.relaxed_equals_strict_on_verified_cases,
+        "replay_equals_strict_on_verified_cases": audit_report.exhaustive_reference.replay_equals_strict_on_verified_cases,
+        "strict_prefix_counterexample": None
+        if audit_report.strict_prefix_counterexample is None
+        else {
             "requests": audit_report.strict_prefix_counterexample.requests,
             "resident_block_capacity": audit_report.strict_prefix_counterexample.resident_block_capacity,
             "content_hit_blocks": audit_report.strict_prefix_counterexample.content_hit_blocks,
             "relaxed_capacity_hit_blocks": audit_report.strict_prefix_counterexample.relaxed_capacity_hit_blocks,
             "strict_prefix_hit_blocks": audit_report.strict_prefix_counterexample.strict_prefix_hit_blocks,
         },
-        "strict_prefix_replay_gap_counterexample": {
+        "strict_prefix_replay_gap_counterexample": None
+        if audit_report.strict_prefix_replay_gap_counterexample is None
+        else {
             "requests": audit_report.strict_prefix_replay_gap_counterexample.requests,
             "resident_block_capacity": audit_report.strict_prefix_replay_gap_counterexample.resident_block_capacity,
             "content_hit_blocks": audit_report.strict_prefix_replay_gap_counterexample.content_hit_blocks,
@@ -159,10 +165,12 @@ def _build_analysis_metadata_payload(
                 "actual_hit_rate": row.actual_hit_rate,
                 "hbm_relaxed_upper_bound_hit_rate": row.hbm_relaxed_upper_bound_hit_rate,
                 "hbm_strict_prefix_replay_hit_rate": row.hbm_strict_prefix_replay_hit_rate,
-                "hbm_strict_prefix_exact_certified": row.hbm_strict_prefix_exact_certified,
-                "extra_tier_hit_rates": row.extra_tier_hit_rates,
+                "hbm_strict_prefix_hit_rate": row.hbm_strict_prefix_hit_rate,
+                "hbm_strict_prefix_proof_source": row.hbm_strict_prefix_proof_source,
+                "extra_tier_relaxed_upper_bound_hit_rates": row.extra_tier_relaxed_upper_bound_hit_rates,
                 "extra_tier_strict_prefix_replay_hit_rates": row.extra_tier_strict_prefix_replay_hit_rates,
-                "extra_tier_strict_prefix_exact_certified": row.extra_tier_strict_prefix_exact_certified,
+                "extra_tier_strict_prefix_hit_rates": row.extra_tier_strict_prefix_hit_rates,
+                "extra_tier_strict_prefix_proof_sources": row.extra_tier_strict_prefix_proof_sources,
                 "request_count": row.request_count,
             }
             for row in analysis_result.rows

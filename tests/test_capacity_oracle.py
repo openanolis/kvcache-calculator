@@ -183,7 +183,7 @@ class CapacityOracleTest(unittest.TestCase):
 
         self.assertLessEqual(low.summary.block_hit_rate, high.summary.block_hit_rate)
 
-    def test_strict_prefix_replay_is_lower_than_relaxed_hits_on_counterexample(self) -> None:
+    def test_relaxed_oracle_can_skip_admission_on_cold_miss(self) -> None:
         requests = [
             EffectiveRequest(
                 request_id="r0",
@@ -194,12 +194,12 @@ class CapacityOracleTest(unittest.TestCase):
                 scope_root_id="__global__",
                 turn=1,
                 request_type="text",
-                input_length=48,
+                input_length=16,
                 output_length=1,
-                total_blocks=3,
-                effective_blocks=3,
-                effective_tokens=48,
-                effective_hash_ids=("a", "a", "a"),
+                total_blocks=1,
+                effective_blocks=1,
+                effective_tokens=16,
+                effective_hash_ids=("a",),
             ),
             EffectiveRequest(
                 request_id="r1",
@@ -210,12 +210,28 @@ class CapacityOracleTest(unittest.TestCase):
                 scope_root_id="__global__",
                 turn=2,
                 request_type="text",
-                input_length=48,
+                input_length=16,
                 output_length=1,
-                total_blocks=3,
-                effective_blocks=3,
-                effective_tokens=48,
-                effective_hash_ids=("a", "a", "a"),
+                total_blocks=1,
+                effective_blocks=1,
+                effective_tokens=16,
+                effective_hash_ids=("b",),
+            ),
+            EffectiveRequest(
+                request_id="r2",
+                source_index=2,
+                timestamp_ms=3000,
+                chat_id="c2",
+                scope=Scope.GLOBAL,
+                scope_root_id="__global__",
+                turn=3,
+                request_type="text",
+                input_length=16,
+                output_length=1,
+                total_blocks=1,
+                effective_blocks=1,
+                effective_tokens=16,
+                effective_hash_ids=("a",),
             ),
         ]
         model_profile = ModelProfile(
@@ -230,15 +246,14 @@ class CapacityOracleTest(unittest.TestCase):
         result = analyze_capacity_upper_bound(
             requests,
             model_profile=model_profile,
-            budget_bytes=2 * bytes_per_block,
+            budget_bytes=1 * bytes_per_block,
         )
 
-        self.assertEqual(result.summary.hit_blocks, 2)
+        self.assertEqual(result.summary.hit_blocks, 1)
         self.assertEqual(result.summary.strict_prefix_hit_blocks, 1)
-        self.assertAlmostEqual(result.summary.block_hit_rate, 2 / 6)
-        self.assertAlmostEqual(result.summary.strict_prefix_block_hit_rate, 1 / 6)
-        self.assertEqual(result.request_metrics[1].hit_blocks, 2)
-        self.assertEqual(result.request_metrics[1].strict_prefix_hit_blocks, 1)
+        self.assertAlmostEqual(result.summary.block_hit_rate, 1 / 3)
+        self.assertAlmostEqual(result.summary.strict_prefix_block_hit_rate, 1 / 3)
+        self.assertEqual([metric.hit_blocks for metric in result.request_metrics], [0, 0, 1])
 
 
 if __name__ == "__main__":

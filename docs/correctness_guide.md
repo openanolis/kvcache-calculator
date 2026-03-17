@@ -2,8 +2,8 @@
 
 这份文档只回答一件事：这个项目当前到底证明了什么，没有证明什么。
 
-> **“`strict-prefix` 说的是‘前缀必须从第一个 block 连续命中’；`relaxed upper bound` 说的是‘我先不管连续不连续，只看历史访问里最多能命中多少个 block event’。”**
-> 这两个概念非常像，但不是一回事。当前项目已经把两者分开说明，并把差异做成了可复现的最小反例。
+> **“`strict-prefix` 说的是‘前缀必须从第一个 block 连续命中’；`relaxed upper bound` 说的是‘允许离线最优调度、允许 miss 后不准入，只看最多能保住多少 event hit’。”**
+> 这两个概念定义上不同，但在项目当前穷举验证空间里，它们已经被证明收敛到同一个最优值。
 
 ## 先记住一句话
 
@@ -15,7 +15,7 @@
 
 1. `content upper bound` 回答“内容上最多能复用多少”。
 2. `strict-prefix capacity` 应该回答“有空间限制时，真正还能保住多少前缀复用”。
-3. 当前项目里的 `HBM Relaxed Upper Bound 命中率` 还停留在第 2 步的一个**放松上界**上，不是严格语义的最终值。
+3. 当前项目已经实现了真正的 `strict-prefix capacity oracle`；`HBM Relaxed Upper Bound 命中率` 仍然保留，但它更多是解释“event-level 空间最优调度”。
 
 ## 术语速查
 
@@ -26,7 +26,7 @@
 | `content upper bound` | 忽略空间限制，只问历史里有没有相同前缀路径 | 已精确实现 |
 | `strict-prefix hit` | 一个请求从开头开始连续命中的 block 数 | 业务真正关心 |
 | `relaxed event hit` | 不要求连续，只要这个 block event 命中 resident cache 就计数 | 当前 capacity 的优化目标 |
-| `relaxed upper bound` | 对真实 strict-prefix 命中率的乐观上界 | 当前已实现并标注边界 |
+| `relaxed upper bound` | 允许离线最优调度、允许 `no-admit` 时的 event-level 最优值 | 已实现；在当前穷举验证空间与 exact strict-prefix 一致 |
 
 ## strict-prefix 到底是什么意思
 
@@ -94,37 +94,34 @@ flowchart TD
 ## 三层结论
 
 - `content upper bound`：对当前定义是精确值。
-- `HBM Relaxed Upper Bound 命中率`：当前实现是 `relaxed space upper bound`，不是严格前缀语义下的最终最优值。
+- `strict-prefix capacity oracle`：已经实现；优先走 `content` / `relaxed==replay` 证书快路，证书不够时再做请求边界 DP 精确搜索。
 - `system upper bound`：尚未实现。
 
 换句话说，项目现在最硬的结论是：
 
 1. 给定 `strict_prefix_window`、`scope` 和模型配置，trace 里到底有多少前缀内容理论上可复用，这个数是精确的。
-2. 给定 HBM/扩展空间预算，按 block access event 做离线 Belady 可以得到一个合法且可验证的空间放松上界。
-3. 这个空间上界对“真实前缀可复用命中率”是乐观的；它不能直接等同于严格前缀语义下的最优值。
+2. 给定 HBM/扩展空间预算，项目现在已经可以给出 strict-prefix 语义下的真正最优值。
+3. `HBM Relaxed Upper Bound 命中率` 与 `HBM Strict-Prefix Replay 命中率` 仍然保留，用来解释 exact 值是怎样被夹出来的。
 
 ## 三个概念的关系
 
 把它们排成一条链最容易理解：
 
 ```text
-content upper bound >= relaxed capacity upper bound >= strict-prefix achievable hit rate
+content upper bound >= relaxed capacity upper bound >= exact strict-prefix hit rate
 ```
 
 更准确地说：
 
 - `content upper bound` 忽略空间，因此一定最大
-- `relaxed capacity upper bound` 考虑空间，但放松了“连续前缀”语义
-- `strict-prefix achievable hit rate` 才是业务真正想知道的容量约束结果
+- `relaxed capacity upper bound` 考虑空间，但目标仍是 event-level hit
+- `exact strict-prefix hit rate` 才是业务真正想知道的容量约束结果
 
-当前项目已经精确拿到了第一项，也实现并验证了第二项，但第三项还没有独立 oracle。
+当前项目已经把三者都落地了：
 
-不过项目现在多做了一步：
-
-- `strict-prefix replay HBM hits` 被明确当成**可实现下界**
-- 一旦它与 `content upper bound` 相等，就可以直接给出该桶的 **strict-prefix exact certificate**
-
-也就是说，虽然通用的 strict-prefix capacity oracle 还没单独实现，但有些桶已经能被直接证成“最终答案就是这个数”。
+- `content upper bound`：前缀内容天花板
+- `capacity upper bound`：允许 `no-admit` 的 event-level 最优值
+- `strict-prefix capacity oracle`：真正的严格前缀容量最优值
 
 ## 为什么 content 是精确的
 
@@ -155,7 +152,7 @@ content upper bound >= relaxed capacity upper bound >= strict-prefix achievable 
 
 这表示在 `max_requests=4`、`max_blocks_per_request=3`、字母表 `{"a","b"}` 的小规模空间里，快速实现与 reference 完全一致。
 
-## 为什么 HBM 空间结果要叫 relaxed
+## 为什么 HBM 空间结果还要保留 relaxed
 
 当前 `capacity.py` 的 resident set 优化目标是：
 
@@ -168,9 +165,9 @@ content upper bound >= relaxed capacity upper bound >= strict-prefix achievable 
 
 这表示 Belady 实现与同一目标下的暴力 reference 完全一致。
 
-问题在于，这个目标和业务最终关心的指标不是同一个东西。
+问题在于，这个目标和业务最终关心的指标不是同一个“说法”。
 
-业务关心的是：
+业务最终关心的是：
 
 - 一个请求从第 1 个 block 开始，能连续复用多少前缀 block
 
@@ -178,117 +175,49 @@ content upper bound >= relaxed capacity upper bound >= strict-prefix achievable 
 
 - 整个访问序列里，总共有多少个 block event 命中
 
-后者允许一个请求出现类似 `[hit, miss, hit]` 的模式；但在严格前缀复用语义下，最后那个 hit 对 prefill 复用没有意义。
+项目现在的关键发现是：
 
-换句话说：
+- 在允许 `no-admit` 的语义下，当前穷举验证空间里 `relaxed hits == strict-prefix replay == exact strict-prefix`
+- 所以 relaxed 指标仍然保留，但它不再只是“可能松的上界”；它在已验证空间已经与 exact strict-prefix 收敛
 
-- `relaxed upper bound` 更像“resident cache 从纯命中次数角度最多能多强”
-- `strict-prefix` 更像“prefill 真正能少算多少前缀计算”
+## exact proof path：什么时候不用搜索也能拿到 strict-prefix 精确值
 
-## 最小反例
-
-项目 audit 会自动给出一个严格前缀语义与 relaxed space 上界之间的最小反例。
-
-一个典型反例是：
-
-- requests: `("a","a","a")`, `("a","a","a")`
-- resident block capacity: `2`
-
-在这个例子里：
-
-- `content hit blocks = 3`
-- `relaxed capacity hit blocks = 2`
-- `strict prefix hit blocks = 1`
-
-说明：
-
-- relaxed 空间上界依然是合法上界
-- 但它高估了严格前缀可复用命中率
-
-所以当前报表的正确理解应该是：
-
-- `极限命中率`：精确 content ceiling
-- `HBM Relaxed Upper Bound 命中率`：离线 Belady relaxed ceiling
-
-## 最小 replay-gap 反例
-
-光知道 `relaxed upper bound` 会高估 strict-prefix 还不够。
-
-还要再区分一件事：
-
-- `strict-prefix replay HBM hits`
-  - 是“沿用 relaxed-optimal 调度，然后按 strict-prefix 语义重新计数”的结果
-- `strict-prefix optimal`
-  - 是“专门为了 strict-prefix 目标去优化 resident 调度”的真正最优值
-
-这两个也不是一回事。
-
-项目现在内置了一个最小 replay-gap 反例，说明：
-
-- `strict-prefix replay` 是有意义的可实现诊断值
-- 但它仍然**不是** strict-prefix oracle
-
-一个典型反例是：
-
-- requests: `("a","a","a")`, `("a","a","a")`, `("a",)`
-- resident block capacity: `2`
-
-在这个例子里：
-
-- `content hit blocks = 4`
-- `relaxed capacity hit blocks = 2`
-- `strict-prefix replay hit blocks = 1`
-- `strict prefix hit blocks = 2`
-
-这说明：
-
-1. relaxed-optimal 调度未必也是 strict-prefix-optimal 调度
-2. replay 结果是可实现的，但可能仍然偏低
-3. 所以 replay 最适合被理解成**下界诊断器**，不是最终 oracle
-
-## exact certificate：什么时候已经拿到 strict-prefix 精确值
-
-虽然通用 strict-prefix oracle 还没单独实现，但有一种情况已经可以直接下结论：
+项目当前有两条 exact certificate：
 
 ```text
 strict-prefix replay == content upper bound
 ```
 
-原因很直接：
+以及：
+
+```text
+relaxed upper bound == strict-prefix replay
+```
+
+第一条证书表示：
 
 1. `content upper bound` 是 strict-prefix 语义下的精确上界
 2. `strict-prefix replay` 是一个实际可实现调度得到的命中结果，因此它是可实现下界
-3. 如果某个桶里二者相等，就说明“可实现值已经撞到理论上界”
+3. 两端相等时，strict-prefix 最优值被直接夹出来
+
+第二条证书表示：
+
+1. `relaxed upper bound` 是 exact strict-prefix 的合法上界
+2. `strict-prefix replay` 是 exact strict-prefix 的合法下界
+3. 如果二者相等，就不必再搜索，exact strict-prefix 就是这个值
 
 于是可以立即推出：
 
 ```text
-strict-prefix replay <= strict-prefix optimal <= content upper bound
+strict-prefix replay <= strict-prefix optimal <= relaxed upper bound <= content upper bound
 ```
 
-当左右两端相等时：
+现在报表里会同时给出：
 
-```text
-strict-prefix optimal = strict-prefix replay = content upper bound
-```
+- `HBM Strict-Prefix 命中率`：exact strict-prefix oracle 的精确值
+- `HBM Strict-Prefix 求解路径`：`certificate` 或 `search`
 
-这就是 audit 报告里 `strict-prefix 已证精确` 的含义。
-
-它不是猜测，也不是经验判断，而是一个严格的夹逼证书。
-
-## 为什么这两个概念不能混着说
-
-如果把 relaxed upper bound 直接当 strict-prefix 结果，就会犯两个错误：
-
-1. **高估真实可复用前缀**
-   - 因为尾部零散命中也会被算进去。
-2. **误判空间是否真的是瓶颈**
-   - 有些桶看上去 relaxed 结果已经很高，但严格前缀语义下可能还差一截。
-
-所以现在文档和报告都明确区分：
-
-- 哪些是“精确证明过的”
-- 哪些只是“合法但乐观的上界”
+也就是说，用户不再需要从一个布尔字段猜“是不是精确”，而是直接看到精确值和它是怎么得到的。
 
 ## 真实 trace 怎么做侧证
 
@@ -299,11 +228,13 @@ strict-prefix optimal = strict-prefix replay = content upper bound
 2. `unique_prefix_nodes / resident_block_capacity / max_request_blocks`
    - 展示输入工作集大小与空间预算的相对尺度。
 3. `content_hit_blocks / relaxed_hbm_hit_blocks`
-   - 展示 relaxed 空间模型是否进一步压低了 content ceiling。
+   - 展示空间约束有没有压低内容天花板。
 4. `relaxed_hbm_hit_blocks / strict_prefix_replay_hbm_hit_blocks`
-   - 展示在 relaxed-optimal 调度下，零散命中有多少最终不能组成连续前缀。
-5. `strict_prefix_replay_hbm_hit_blocks / content_hit_blocks`
-   - 如果两者相等，就能直接证明该桶的 strict-prefix 最优值已经精确确定。
+   - 展示 relaxed 证书与 strict-prefix 证书是否已经收敛。
+5. `strict_prefix_hit_blocks / strict_prefix_proof_source`
+   - 直接展示 exact strict-prefix oracle 的结果，以及它是证书快路还是精确搜索。
+6. `strict_prefix_certified_lower_bound_hit_blocks / strict_prefix_certified_upper_bound_hit_blocks`
+   - 展示 oracle 在进入搜索前后，到底把 strict-prefix 最优值夹在了什么区间里。
 
 这些信息会写入：
 
@@ -317,23 +248,21 @@ strict-prefix optimal = strict-prefix replay = content upper bound
 
 需要特别注意：
 
-- `strict-prefix replay HBM hits` 不是最终 strict-prefix oracle
-- 它表示“如果沿用 relaxed-optimal 的 resident 调度，然后按 strict-prefix 语义重新计数，最终能得到多少连续前缀命中”
-- 因此它是一个**可实现诊断值**，很适合用来衡量 `relaxed` 和真实 strict-prefix 目标之间到底差了多少
-- 但如果它已经和 `content hits` 相等，那么这个桶的 strict-prefix 最优值就已经被证成了，不必等通用 oracle
+- `strict-prefix replay HBM hits` 仍然是一个可实现诊断值
+- 但项目现在已经有独立的 `strict-prefix capacity oracle`
+- 当 `replay == content` 或 `relaxed == replay` 时，oracle 会直接走证书快路，不必进入搜索
+- 当两类证书都不够时，oracle 会进入请求边界 DP 精确搜索；这时 `proof source = search`
 
 ## 当前最诚实的口径
 
 如果你要对外解释当前项目，请用下面这段话：
 
-> 这个分析器已经精确实现了窗口感知的 content upper bound，并用 reference 校验了结果；同时它还给出一个基于离线 Belady 的空间放松上界。公开 trace 的结果应优先理解为内容复用天花板分析，而不是严格前缀容量 oracle 的最终答案。
+> 这个分析器已经精确实现了窗口感知的 content upper bound，也已经实现了真正的 strict-prefix capacity oracle；同时它会继续保留 relaxed / replay 指标，作为 exact 结果的可解释证书。
 
 ## 下一步
 
-要把空间结果也做成严格 oracle，后面需要单独实现：
+现在真正剩下的工作，不再是“有没有 strict-prefix oracle”，而是：
 
-- strict-prefix-aware capacity objective
-- 请求边界上的最优策略求解
-- 对大 trace 可落地的近似或分层算法
-
-在那之前，项目会继续保留并输出 relaxed 上界，但不会再把它误写成“已被严格证明的最终容量结果”。
+- 怎样把 exact strict-prefix oracle 更快地扩展到更大的 trace
+- 怎样把 exact / certificate / search 三种路径更清楚地展示到业务报表里
+- 怎样把 `system upper bound` 的带宽与 deadline 约束接上来

@@ -49,11 +49,13 @@
    - 先冻结 window、scope、hit rate 和模型公式，避免实现时偷偷换口径。
 2. **reference 对账**
    - 对 `content upper bound` 用朴素 reference 做逐例对账。
-   - 对当前 `capacity upper bound` 用暴力 reference 对账同一个 relaxed 目标。
-3. **反例暴露**
-   - 对严格前缀语义与 relaxed 容量目标之间的差异，不掩盖，直接输出最小反例。
+   - 对当前 `capacity upper bound` 用暴力 reference 对账同一个 relaxed 目标，并允许 `no-admit`。
+   - 对 `strict-prefix capacity oracle` 用暴力 reference 对账 exact 目标。
+3. **证书与等价校验**
+   - 显式输出 `replay == content` / `relaxed == replay` 两类 exact certificate。
+   - 在当前穷举验证空间里，验证 `relaxed == replay == exact strict-prefix` 是否成立。
 
-这套策略的目的不是粉饰结果，而是把“已经被证明的部分”和“仍然是上界近似的部分”切开。
+这套策略的目的不是粉饰结果，而是把“已经被证明的部分”“用证书直接夹出的部分”“仍然需要搜索的部分”切开。
 
 详细说明见 `docs/correctness_guide.md`。
 
@@ -546,8 +548,9 @@ python -m kvcache_upper_bound analyze \
 
 - `M1`：trace 规范化
 - `M2`：content upper bound
-- `M3` 的第一部分：单层/扩展总容量下的 Belady capacity upper bound
-- 面向业务的分桶输出：可直接产出 `分桶 / 机器数 / 规格 / 总 TPS / HBM / 极限命中率 / 实际命中率 / HBM relaxed upper bound / HBM strict-prefix replay / exact certificate`
+- `M3`：单层/扩展总容量下、允许 `no-admit` 的 Belady capacity upper bound
+- `M4`：真正的 strict-prefix capacity oracle，以及 request-level exact search
+- 面向业务的分桶输出：可直接产出 `分桶 / 机器数 / 规格 / 总 TPS / HBM / 极限命中率 / 实际命中率 / HBM relaxed upper bound / HBM strict-prefix replay / HBM strict-prefix / proof source`
 
 尚未实现：
 

@@ -13,6 +13,12 @@ from .content import (
     analyze_content_upper_bound,
 )
 from .prefix_trie import PrefixTrie, PrefixTrieNode
+from .strict_prefix import (
+    StrictPrefixAnalysisResult,
+    StrictPrefixRequestMetric,
+    StrictPrefixSummary,
+    analyze_strict_prefix_capacity_upper_bound,
+)
 
 __all__ = [
     "CapacityAnalysisResult",
@@ -23,6 +29,10 @@ __all__ = [
     "ContentSummary",
     "PrefixTrie",
     "PrefixTrieNode",
+    "StrictPrefixAnalysisResult",
+    "StrictPrefixRequestMetric",
+    "StrictPrefixSummary",
     "analyze_capacity_upper_bound",
     "analyze_content_upper_bound",
+    "analyze_strict_prefix_capacity_upper_bound",
 ]

@@ -95,29 +95,47 @@ class BucketReportingTest(unittest.TestCase):
         self.assertIn("分桶", summary_csv)
         self.assertIn("HBM Relaxed Upper Bound 命中率", summary_csv)
         self.assertIn("HBM Strict-Prefix Replay 命中率", summary_csv)
-        self.assertIn("HBM Strict-Prefix 已证精确", summary_csv)
+        self.assertIn("HBM Strict-Prefix 命中率", summary_csv)
+        self.assertIn("HBM Strict-Prefix 求解路径", summary_csv)
         self.assertIn("HBM+单机 1T 命中率", summary_csv)
+        self.assertIn("HBM+单机 1T Relaxed Upper Bound 命中率", summary_csv)
         self.assertIn("HBM+单机 1T Strict-Prefix Replay 命中率", summary_csv)
-        self.assertIn("HBM+单机 1T Strict-Prefix 已证精确", summary_csv)
+        self.assertIn("HBM+单机 1T Strict-Prefix 求解路径", summary_csv)
         self.assertIn("HBM+单机 10T 命中率", summary_csv)
         self.assertEqual(details_json["rows"][0]["bucket_label"], "0-32K")
         self.assertEqual(details_json["rows"][0]["machine_spec"], "h20")
         self.assertEqual(details_json["rows"][0]["machine_count"], 8)
         self.assertAlmostEqual(details_json["rows"][0]["actual_hit_rate"], 0.69)
         self.assertIn("hbm_strict_prefix_replay_hit_rate", details_json["rows"][0])
-        self.assertIn("hbm_strict_prefix_exact_certified", details_json["rows"][0])
+        self.assertIn("hbm_strict_prefix_hit_rate", details_json["rows"][0])
+        self.assertIn("hbm_strict_prefix_proof_source", details_json["rows"][0])
+        self.assertIn("extra_tier_relaxed_upper_bound_hit_rates", details_json["rows"][0])
         self.assertIn("extra_tier_strict_prefix_replay_hit_rates", details_json["rows"][0])
-        self.assertIn("extra_tier_strict_prefix_exact_certified", details_json["rows"][0])
-        self.assertFalse(details_json["rows"][0]["hbm_strict_prefix_exact_certified"])
+        self.assertIn("extra_tier_strict_prefix_hit_rates", details_json["rows"][0])
+        self.assertIn("extra_tier_strict_prefix_proof_sources", details_json["rows"][0])
+        self.assertEqual(details_json["rows"][0]["hbm_strict_prefix_proof_source"], "certificate")
         self.assertTrue(
-            details_json["rows"][0]["extra_tier_strict_prefix_exact_certified"]["HBM+单机 1T 命中率"]
+            details_json["details"]["0-32K"]["hbm_strict_prefix_summary"]["proof_source"] == "certificate"
         )
-        self.assertTrue(
-            details_json["rows"][0]["extra_tier_strict_prefix_exact_certified"]["HBM+单机 10T 命中率"]
+        self.assertEqual(
+            details_json["rows"][0]["extra_tier_strict_prefix_proof_sources"]["HBM+单机 1T 命中率"],
+            "certificate",
+        )
+        self.assertEqual(
+            details_json["rows"][0]["extra_tier_strict_prefix_proof_sources"]["HBM+单机 10T 命中率"],
+            "certificate",
         )
         self.assertAlmostEqual(
-            details_json["rows"][0]["extra_tier_hit_rates"]["HBM+单机 1T 命中率"],
-            details_json["rows"][0]["extra_tier_hit_rates"]["HBM+单机 10T 命中率"],
+            details_json["rows"][0]["hbm_strict_prefix_hit_rate"],
+            details_json["rows"][0]["extra_tier_strict_prefix_hit_rates"]["HBM+单机 1T 命中率"],
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["extra_tier_relaxed_upper_bound_hit_rates"]["HBM+单机 1T 命中率"],
+            details_json["rows"][0]["extra_tier_relaxed_upper_bound_hit_rates"]["HBM+单机 10T 命中率"],
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["extra_tier_strict_prefix_hit_rates"]["HBM+单机 1T 命中率"],
+            details_json["rows"][0]["extra_tier_strict_prefix_hit_rates"]["HBM+单机 10T 命中率"],
         )
 
     def test_bucket_reporting_omits_actual_hit_rate_column_when_absent(self) -> None:

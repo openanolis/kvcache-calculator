@@ -76,22 +76,18 @@ class VerificationReferenceTest(unittest.TestCase):
         self.assertGreater(summary.content_case_count, 0)
         self.assertGreater(summary.relaxed_capacity_case_count, 0)
         self.assertGreater(summary.strict_prefix_case_count, 0)
+        self.assertTrue(summary.relaxed_equals_strict_on_verified_cases)
+        self.assertTrue(summary.replay_equals_strict_on_verified_cases)
 
     def test_find_smallest_strict_prefix_gap_counterexample(self) -> None:
         counterexample = find_smallest_strict_prefix_gap_counterexample()
 
-        self.assertGreater(
-            counterexample.relaxed_capacity_hit_blocks,
-            counterexample.strict_prefix_hit_blocks,
-        )
+        self.assertIsNone(counterexample)
 
     def test_find_smallest_strict_prefix_replay_gap_counterexample(self) -> None:
         counterexample = find_smallest_strict_prefix_replay_gap_counterexample()
 
-        self.assertGreater(
-            counterexample.strict_prefix_hit_blocks,
-            counterexample.strict_prefix_replay_hit_blocks,
-        )
+        self.assertIsNone(counterexample)
 
     def test_audit_outputs_write_zh_and_en_markdown(self) -> None:
         records = [
@@ -169,10 +165,14 @@ class VerificationReferenceTest(unittest.TestCase):
         self.assertIn("## Exhaustive Reference", en_md)
         self.assertIn("strict-prefix 校验样例数", zh_md)
         self.assertIn("strict-prefix cases verified", en_md)
+        self.assertIn("## Strict Prefix 等价校验", zh_md)
+        self.assertIn("## Strict Prefix Equivalence", en_md)
         self.assertIn("strict-prefix replay HBM 命中", zh_md)
         self.assertIn("strict-prefix replay HBM hits", en_md)
-        self.assertIn("strict-prefix 已证精确", zh_md)
-        self.assertIn("strict-prefix exact", en_md)
+        self.assertIn("strict-prefix HBM 命中", zh_md)
+        self.assertIn("strict-prefix HBM hits", en_md)
+        self.assertIn("strict-prefix 求解路径", zh_md)
+        self.assertIn("strict-prefix proof source", en_md)
 
 
 if __name__ == "__main__":

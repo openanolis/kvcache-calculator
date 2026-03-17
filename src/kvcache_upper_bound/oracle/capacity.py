@@ -238,8 +238,11 @@ def _run_belady(access_events: array, resident_block_capacity: int) -> bytearray
             event_hits[index] = 1
         else:
             if len(resident) >= resident_block_capacity:
-                _evict_farthest_future(resident, current_serial, heap)
-            if len(resident) < resident_block_capacity:
+                farthest_future = _peek_farthest_future(resident, current_serial, heap)
+                if farthest_future is not None and farthest_future > next_position:
+                    _evict_farthest_future(resident, current_serial, heap)
+                    resident.add(node_id)
+            else:
                 resident.add(node_id)
 
         if node_id in resident:
@@ -284,3 +287,20 @@ def _evict_farthest_future(
         resident.remove(node_id)
         current_serial.pop(node_id, None)
         return
+
+
+def _peek_farthest_future(
+    resident: set[int],
+    current_serial: dict[int, int],
+    heap: list[tuple[int, int, int]],
+) -> int | None:
+    while heap:
+        next_position, serial, node_id = heap[0]
+        if node_id not in resident:
+            heapq.heappop(heap)
+            continue
+        if current_serial.get(node_id) != serial:
+            heapq.heappop(heap)
+            continue
+        return -next_position
+    return None

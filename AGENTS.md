@@ -26,7 +26,8 @@ kvcache-upper-bound-oracle/
 │           ├── __init__.py
 │           ├── capacity.py
 │           ├── content.py
-│           └── prefix_trie.py
+│           ├── prefix_trie.py
+│           └── strict_prefix.py
 │       ├── reporting/
 │       │   ├── __init__.py
 │       │   └── buckets.py
@@ -46,6 +47,7 @@ kvcache-upper-bound-oracle/
     ├── test_capacity_oracle.py
     ├── test_content_oracle.py
     ├── test_normalizer.py
+    ├── test_strict_prefix_oracle.py
     ├── test_trace_loader.py
     └── test_verification_reference.py
 ```
@@ -55,17 +57,18 @@ kvcache-upper-bound-oracle/
 - `README.md`：项目入口，只讲目标、范围、启动顺序。
 - `pyproject.toml`：本地可安装入口；保证 `kvcache-upper-bound` 命令可直接运行。
 - `docs/design_guide.md`：需求、口径、算法、阶段计划的单一事实来源。
-- `docs/correctness_guide.md`：解释哪些结果已被 reference 证明，哪些仍然只是 relaxed 上界。
+- `docs/correctness_guide.md`：解释哪些结果已被 reference 证明，哪些指标只是解释 exact strict-prefix 的辅助证据。
 - `src/kvcache_upper_bound/core/models.py`：稳定数据模型；这里定义请求、窗口化请求、模型配置等核心对象。
 - `src/kvcache_upper_bound/ingest/trace_loader.py`：读取 JSONL trace，做字段解析、时间标准化和稳定排序。
 - `src/kvcache_upper_bound/ingest/normalizer.py`：把原始请求转成 window-aware 的 `EffectiveRequest`，并解析 session root。
 - `src/kvcache_upper_bound/oracle/prefix_trie.py`：前缀路径状态机；只负责匹配和插入，不混入聚合逻辑。
 - `src/kvcache_upper_bound/oracle/content.py`：内容上限分析；对每请求输出 hit/miss，并汇总 block/token/byte 指标。
-- `src/kvcache_upper_bound/oracle/capacity.py`：空间上限分析；基于离线 Belady 对 HBM 或扩展空间预算做最优命中上界估计。
-- `src/kvcache_upper_bound/reporting/buckets.py`：按业务长度桶和部署规格生成汇总表，直接对接“机器数/规格/TPS/HBM/命中率”视图。
+- `src/kvcache_upper_bound/oracle/capacity.py`：空间上限分析；基于允许 `no-admit` 的离线 Belady，对 HBM 或扩展空间预算做 event-level 最优命中上界估计。
+- `src/kvcache_upper_bound/oracle/strict_prefix.py`：严格前缀容量 oracle；先走 `content` / `relaxed==replay` 证书快路，证书不够时再做请求边界 DP 精确搜索。
+- `src/kvcache_upper_bound/reporting/buckets.py`：按业务长度桶和部署规格生成汇总表；主表直接输出 relaxed / replay / exact strict-prefix / proof source。
 - `src/kvcache_upper_bound/cli/main.py`：命令行入口；负责把 trace、配置、输出目录串成完整离线分析流程。
-- `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器、strict-prefix 反例搜索器，以及 replay-gap / exact-certificate 证据生成器。
-- `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账、relaxed/strict-prefix replay 诊断、strict-prefix exact certificate 写成 correctness report，并同时输出中英文 Markdown 报告。
+- `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器、strict-prefix 精确 oracle 对账器，以及 `relaxed == replay == exact` 的穷举等价校验器。
+- `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账、relaxed/replay/exact strict-prefix 诊断、proof source 写成 correctness report，并同时输出中英文 Markdown 报告。
 - `src/kvcache_upper_bound/`：分析器实现根目录；后续继续扩展 `oracle/`, `reporting/`, `cli/`。
 - `tests/`：面向口径和边界条件的测试，不写和实现细节强绑定的脆弱测试。
 - `configs/`：样例机器配置、模型配置、实验矩阵。
@@ -84,8 +87,9 @@ kvcache-upper-bound-oracle/
 - `normalizer.py` 只做窗口化和 scope 解析，不提前引入缓存策略。
 - `prefix_trie.py` 必须保持纯前缀语义；不要把计数、报告和缓存层策略塞进去。
 - `content.py` 只回答“历史上是否已有这段前缀”，不回答容量和带宽问题。
-- `capacity.py` 只回答“空间够不够”，不回答搬运带宽和系统调度问题。
-- `verification/` 负责证明与揭示边界：能证明的就输出证据，证明不了的就输出反例。
+- `capacity.py` 只回答“event-level 空间够不够”，不回答搬运带宽和系统调度问题。
+- `strict_prefix.py` 只回答“严格前缀语义下空间最优能到哪”，不要把 trace 读取、报表拼接塞进去。
+- `verification/` 负责证明与揭示边界：能证明的就输出证据，证明不了的就明确上下界，不编造确定性。
 - `verification/` 新增任何“证书”口径时，必须同时给出上下界链路，不能只给结论不给夹逼关系。
 - `reporting/` 负责把算法结果翻译成业务表格；不要反向污染 oracle 的数据结构。
 
@@ -103,4 +107,5 @@ kvcache-upper-bound-oracle/
 - `2026-03-17`：新增 `core/` 与 `ingest/`，开始实现 M1 trace 规范化路径。
 - `2026-03-17`：新增 `oracle/`，开始实现 M2 content upper bound。
 - `2026-03-17`：新增 `capacity/reporting/cli`，开始支持按业务分桶输出 HBM 与扩展空间命中率。
-- `2026-03-17`：新增 `verification/`、`correctness_guide.md` 和 `audit-buckets`，开始显式输出 reference 证明与 strict-prefix 反例。
+- `2026-03-17`：新增 `verification/`、`correctness_guide.md` 和 `audit-buckets`，开始显式输出 reference 证明、strict-prefix 等价校验与中英双语 correctness report。
+- `2026-03-17`：把 exact `strict-prefix capacity oracle` 接入 `reporting/` 与 `verification/` 主路径；主报表和 correctness report 统一输出 exact hit rate 与 proof source。
