@@ -547,7 +547,7 @@ python -m kvcache_upper_bound analyze \
 - `M1`：trace 规范化
 - `M2`：content upper bound
 - `M3` 的第一部分：单层/扩展总容量下的 Belady capacity upper bound
-- 面向业务的分桶输出：可直接产出 `分桶 / 机器数 / 规格 / 总 TPS / HBM / 极限命中率 / 实际命中率 / HBM+扩展空间命中率`
+- 面向业务的分桶输出：可直接产出 `分桶 / 机器数 / 规格 / 总 TPS / HBM / 极限命中率 / 实际命中率 / HBM relaxed upper bound / HBM strict-prefix replay / exact certificate`
 
 尚未实现：
 

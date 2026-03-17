@@ -15,7 +15,7 @@
 
 1. `content upper bound` 回答“内容上最多能复用多少”。
 2. `strict-prefix capacity` 应该回答“有空间限制时，真正还能保住多少前缀复用”。
-3. 当前项目里的 `HBM KVCache 空间命中率` 还停留在第 2 步的一个**放松上界**上，不是严格语义的最终值。
+3. 当前项目里的 `HBM Relaxed Upper Bound 命中率` 还停留在第 2 步的一个**放松上界**上，不是严格语义的最终值。
 
 ## 术语速查
 
@@ -94,7 +94,7 @@ flowchart TD
 ## 三层结论
 
 - `content upper bound`：对当前定义是精确值。
-- `HBM KVCache 空间命中率`：当前实现是 `relaxed space upper bound`，不是严格前缀语义下的最终最优值。
+- `HBM Relaxed Upper Bound 命中率`：当前实现是 `relaxed space upper bound`，不是严格前缀语义下的最终最优值。
 - `system upper bound`：尚未实现。
 
 换句话说，项目现在最硬的结论是：
@@ -208,7 +208,7 @@ content upper bound >= relaxed capacity upper bound >= strict-prefix achievable 
 所以当前报表的正确理解应该是：
 
 - `极限命中率`：精确 content ceiling
-- `HBM KVCache 空间命中率`：离线 Belady relaxed ceiling
+- `HBM Relaxed Upper Bound 命中率`：离线 Belady relaxed ceiling
 
 ## 最小 replay-gap 反例
 

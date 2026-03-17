@@ -157,7 +157,7 @@ def _build_analysis_metadata_payload(
                 "hbm_kv_total_gb": row.hbm_kv_total_gb,
                 "extreme_hit_rate": row.extreme_hit_rate,
                 "actual_hit_rate": row.actual_hit_rate,
-                "hbm_space_hit_rate": row.hbm_space_hit_rate,
+                "hbm_relaxed_upper_bound_hit_rate": row.hbm_relaxed_upper_bound_hit_rate,
                 "hbm_strict_prefix_replay_hit_rate": row.hbm_strict_prefix_replay_hit_rate,
                 "hbm_strict_prefix_exact_certified": row.hbm_strict_prefix_exact_certified,
                 "extra_tier_hit_rates": row.extra_tier_hit_rates,

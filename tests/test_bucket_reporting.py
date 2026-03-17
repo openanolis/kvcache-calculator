@@ -93,7 +93,7 @@ class BucketReportingTest(unittest.TestCase):
             details_json = json.loads((output_dir / "details.json").read_text(encoding="utf-8"))
 
         self.assertIn("分桶", summary_csv)
-        self.assertIn("HBM KVCache 空间命中率", summary_csv)
+        self.assertIn("HBM Relaxed Upper Bound 命中率", summary_csv)
         self.assertIn("HBM Strict-Prefix Replay 命中率", summary_csv)
         self.assertIn("HBM Strict-Prefix 已证精确", summary_csv)
         self.assertIn("HBM+单机 1T 命中率", summary_csv)

@@ -80,7 +80,7 @@ class BucketReportRow:
     extreme_hit_rate: float | None
     actual_hit_rate: float | None
     actual_hit_rate_note: str | None
-    hbm_space_hit_rate: float | None
+    hbm_relaxed_upper_bound_hit_rate: float | None
     hbm_strict_prefix_replay_hit_rate: float | None
     hbm_strict_prefix_exact_certified: bool | None
     extra_tier_hit_rates: dict[str, float | None]
@@ -202,7 +202,7 @@ def analyze_bucket_deployments(
             extreme_hit_rate=None if not bucket_records else content_result.summary.block_hit_rate,
             actual_hit_rate=deployment.actual_hit_rate,
             actual_hit_rate_note=deployment.actual_hit_rate_note,
-            hbm_space_hit_rate=None
+            hbm_relaxed_upper_bound_hit_rate=None
             if not bucket_records
             else hbm_capacity_result.summary.block_hit_rate,
             hbm_strict_prefix_replay_hit_rate=None
@@ -262,7 +262,7 @@ def _write_summary_csv(
         fieldnames.append("实际命中率")
     fieldnames.extend(
         [
-            "HBM KVCache 空间命中率",
+            "HBM Relaxed Upper Bound 命中率",
             "HBM Strict-Prefix Replay 命中率",
             "HBM Strict-Prefix 已证精确",
         ]
@@ -289,7 +289,9 @@ def _write_summary_csv(
                 "规格": row.machine_spec,
                 "HBM KVCache 总大小 (GB)": f"{row.hbm_kv_total_gb:.2f}",
                 "极限命中率": _format_rate(row.extreme_hit_rate),
-                "HBM KVCache 空间命中率": _format_rate(row.hbm_space_hit_rate),
+                "HBM Relaxed Upper Bound 命中率": _format_rate(
+                    row.hbm_relaxed_upper_bound_hit_rate
+                ),
                 "HBM Strict-Prefix Replay 命中率": _format_rate(row.hbm_strict_prefix_replay_hit_rate),
                 "HBM Strict-Prefix 已证精确": _format_bool(row.hbm_strict_prefix_exact_certified),
                 "请求数": row.request_count,
