@@ -2,6 +2,95 @@
 
 这份文档只回答一件事：这个项目当前到底证明了什么，没有证明什么。
 
+> **“`strict-prefix` 说的是‘前缀必须从第一个 block 连续命中’；`relaxed upper bound` 说的是‘我先不管连续不连续，只看历史访问里最多能命中多少个 block event’。”**
+> 这两个概念非常像，但不是一回事。当前项目已经把两者分开说明，并把差异做成了可复现的最小反例。
+
+## 先记住一句话
+
+- `content upper bound`：如果完全不缺空间，只问“内容本身能复用多少”，这是精确值。
+- `strict-prefix`：只有从请求第 1 个 block 开始连续命中的那一段，才算真正可复用前缀。
+- `relaxed upper bound`：先放松上面的“必须连续”条件，只看 block 访问序列里理论最多能命中多少次。
+
+如果你只想先抓住主线，可以把它理解成：
+
+1. `content upper bound` 回答“内容上最多能复用多少”。
+2. `strict-prefix capacity` 应该回答“有空间限制时，真正还能保住多少前缀复用”。
+3. 当前项目里的 `HBM KVCache 空间命中率` 还停留在第 2 步的一个**放松上界**上，不是严格语义的最终值。
+
+## 术语速查
+
+| 术语 | 一句话解释 | 现在项目里的地位 |
+|------|------------|------------------|
+| `block` | 16 tokens 一组的最小缓存分析单位 | 主分析粒度 |
+| `prefix path` | 从请求第 1 个 block 开始的整段前缀路径 | 真正可复用的对象 |
+| `content upper bound` | 忽略空间限制，只问历史里有没有相同前缀路径 | 已精确实现 |
+| `strict-prefix hit` | 一个请求从开头开始连续命中的 block 数 | 业务真正关心 |
+| `relaxed event hit` | 不要求连续，只要这个 block event 命中 resident cache 就计数 | 当前 capacity 的优化目标 |
+| `relaxed upper bound` | 对真实 strict-prefix 命中率的乐观上界 | 当前已实现并标注边界 |
+
+## strict-prefix 到底是什么意思
+
+严格前缀的关键不是“这个 block 以前出现过”，而是：
+
+**这个 block 前面的所有 block 也都必须命中。**
+
+只有这样，这个请求在 prefill 阶段才真的可以复用前缀 KV。
+
+### 直观图
+
+```mermaid
+flowchart LR
+    A["request = [b0, b1, b2, b3]"] --> B["hit pattern = [1, 1, 0, 1]"]
+    B --> C["strict-prefix hit = 2"]
+    B --> D["reason: first miss at b2 cuts the reusable prefix"]
+
+    style C fill:#c8e6c9
+    style D fill:#fff3cd
+```
+
+上面这个例子里：
+
+- 第 4 个 block 虽然“命中”了
+- 但它前面的第 3 个 block 已经 miss
+- 所以真正可复用前缀只能停在第 2 个 block
+
+也就是说：
+
+- `strict-prefix hit = 2`
+- 不是 `3`
+
+## relaxed upper bound 到底放松了什么
+
+`relaxed upper bound` 放松掉的约束是：
+
+- **不再要求命中必须从请求开头连续成立**
+
+它把整个请求序列展开成一个 block access event 序列，然后用离线 Belady 去求：
+
+- 在固定 resident capacity 下，最多能命中多少个 event
+
+### 直观图
+
+```mermaid
+flowchart TD
+    A["request path"] --> B["expand to block access events"]
+    B --> C["Belady on events"]
+    C --> D["maximize total event hits"]
+    D --> E["this is a relaxed upper bound"]
+
+    style D fill:#d1ecf1
+    style E fill:#f8d7da
+```
+
+它是一个好上界，因为：
+
+- 真实系统能做到的，不可能超过这个 relaxed 结果
+
+但它不是 strict-prefix 最优值，因为：
+
+- event hit 可以是离散的
+- strict-prefix hit 必须是连续的
+
 ## 三层结论
 
 - `content upper bound`：对当前定义是精确值。
@@ -13,6 +102,22 @@
 1. 给定 `strict_prefix_window`、`scope` 和模型配置，trace 里到底有多少前缀内容理论上可复用，这个数是精确的。
 2. 给定 HBM/扩展空间预算，按 block access event 做离线 Belady 可以得到一个合法且可验证的空间放松上界。
 3. 这个空间上界对“真实前缀可复用命中率”是乐观的；它不能直接等同于严格前缀语义下的最优值。
+
+## 三个概念的关系
+
+把它们排成一条链最容易理解：
+
+```text
+content upper bound >= relaxed capacity upper bound >= strict-prefix achievable hit rate
+```
+
+更准确地说：
+
+- `content upper bound` 忽略空间，因此一定最大
+- `relaxed capacity upper bound` 考虑空间，但放松了“连续前缀”语义
+- `strict-prefix achievable hit rate` 才是业务真正想知道的容量约束结果
+
+当前项目已经精确拿到了第一项，也实现并验证了第二项，但第三项还没有独立 oracle。
 
 ## 为什么 content 是精确的
 
@@ -68,6 +173,11 @@
 
 后者允许一个请求出现类似 `[hit, miss, hit]` 的模式；但在严格前缀复用语义下，最后那个 hit 对 prefill 复用没有意义。
 
+换句话说：
+
+- `relaxed upper bound` 更像“resident cache 从纯命中次数角度最多能多强”
+- `strict-prefix` 更像“prefill 真正能少算多少前缀计算”
+
 ## 最小反例
 
 项目 audit 会自动给出一个严格前缀语义与 relaxed space 上界之间的最小反例。
@@ -93,6 +203,20 @@
 - `极限命中率`：精确 content ceiling
 - `HBM KVCache 空间命中率`：离线 Belady relaxed ceiling
 
+## 为什么这两个概念不能混着说
+
+如果把 relaxed upper bound 直接当 strict-prefix 结果，就会犯两个错误：
+
+1. **高估真实可复用前缀**
+   - 因为尾部零散命中也会被算进去。
+2. **误判空间是否真的是瓶颈**
+   - 有些桶看上去 relaxed 结果已经很高，但严格前缀语义下可能还差一截。
+
+所以现在文档和报告都明确区分：
+
+- 哪些是“精确证明过的”
+- 哪些只是“合法但乐观的上界”
+
 ## 真实 trace 怎么做侧证
 
 项目当前提供三类侧证：
@@ -108,6 +232,11 @@
 
 - `correctness_report.json`
 - `correctness_report.md`
+
+其中：
+
+- `correctness_report.zh.md` 是中文报告
+- `correctness_report.en.md` 是英文报告
 
 ## 当前最诚实的口径
 

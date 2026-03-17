@@ -58,4 +58,4 @@ kvcache-upper-bound audit-buckets \
 
 - `极限命中率` 对应精确的 `content upper bound`
 - `HBM KVCache 空间命中率` 当前是离线 Belady 的 `relaxed space upper bound`
-- 详细说明见 `docs/correctness_guide.md`
+- 概念解释、直观例子和反例见 `docs/correctness_guide.md`
