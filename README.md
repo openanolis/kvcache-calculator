@@ -8,7 +8,7 @@
 - window 规范化：按 `strict_prefix_window` 生成 `EffectiveRequest`
 - `content upper bound`：前缀复用极限命中率
 - `capacity upper bound`：HBM 或 HBM+扩展空间下的 Belady relaxed 上限
-- 业务分桶报表：输出 `分桶 / 机器数 / 规格 / 总 TPS / HBM KVCache 总大小 / 极限命中率 / HBM 空间命中率 / HBM+1T / HBM+10T`
+- 业务分桶报表：输出 `分桶 / 机器数 / 规格 / 总 TPS / HBM KVCache 总大小 / 极限命中率 / HBM 空间命中率 / HBM strict-prefix replay / exact certificate / HBM+1T / HBM+10T`
 - 正确性审计：输出 exhaustive reference 校验、最小 strict-prefix 反例、最小 replay-gap 反例、真实 trace 采样对账，以及 `strict-prefix replay == content` 时的 exact certificate
 
 设计约束和算法边界见 `docs/design_guide.md`，正确性口径见 `docs/correctness_guide.md`。
@@ -58,6 +58,8 @@ kvcache-upper-bound audit-buckets \
 
 - `极限命中率` 对应精确的 `content upper bound`
 - `HBM KVCache 空间命中率` 当前是离线 Belady 的 `relaxed space upper bound`
+- `HBM Strict-Prefix Replay 命中率` 是可实现的 strict-prefix 下界
+- `HBM Strict-Prefix 已证精确 = yes` 表示该桶已经满足 `strict-prefix replay == content upper bound`
 - audit 报告额外输出 `strict-prefix replay HBM hits`，用来诊断 relaxed 命中里有多少不能组成连续前缀
 - 当 audit 报告出现 `strict-prefix replay HBM hits == content hits` 时，该桶的 strict-prefix 最优值已经被证成精确值
 - 概念解释、直观例子和反例见 `docs/correctness_guide.md`

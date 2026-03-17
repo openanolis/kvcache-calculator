@@ -81,7 +81,11 @@ class BucketReportRow:
     actual_hit_rate: float | None
     actual_hit_rate_note: str | None
     hbm_space_hit_rate: float | None
+    hbm_strict_prefix_replay_hit_rate: float | None
+    hbm_strict_prefix_exact_certified: bool | None
     extra_tier_hit_rates: dict[str, float | None]
+    extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None]
+    extra_tier_strict_prefix_exact_certified: dict[str, bool | None]
     request_count: int
     window_tokens: int | None
     input_lower_tokens: int
@@ -154,13 +158,15 @@ def analyze_bucket_deployments(
 
         extra_capacity_results: dict[str, CapacityAnalysisResult] = {}
         extra_tier_hit_rates: dict[str, float | None] = {}
-        ceiling_reached = (
+        extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None] = {}
+        extra_tier_strict_prefix_exact_certified: dict[str, bool | None] = {}
+        ceiling_result = hbm_capacity_result if (
             hbm_capacity_result.summary.hit_blocks == content_result.summary.hit_blocks
             and hbm_capacity_result.summary.total_blocks == content_result.summary.total_blocks
-        )
+        ) else None
         for tier in deployment.extra_capacity_tiers:
-            if ceiling_reached:
-                result = hbm_capacity_result
+            if ceiling_result is not None:
+                result = ceiling_result
             else:
                 total_budget_gb = hbm_kv_total_gb + deployment.machine_count * tier.kv_gb_per_machine
                 result = analyze_capacity_upper_bound(
@@ -173,10 +179,18 @@ def analyze_bucket_deployments(
                     result.summary.hit_blocks == content_result.summary.hit_blocks
                     and result.summary.total_blocks == content_result.summary.total_blocks
                 ):
-                    ceiling_reached = True
+                    ceiling_result = result
             extra_capacity_results[tier.label] = result
             extra_tier_hit_rates[tier.label] = (
                 None if not bucket_records else result.summary.block_hit_rate
+            )
+            extra_tier_strict_prefix_replay_hit_rates[tier.label] = (
+                None if not bucket_records else result.summary.strict_prefix_block_hit_rate
+            )
+            extra_tier_strict_prefix_exact_certified[tier.label] = (
+                None
+                if not bucket_records
+                else result.summary.strict_prefix_hit_blocks == content_result.summary.hit_blocks
             )
 
         row = BucketReportRow(
@@ -191,7 +205,15 @@ def analyze_bucket_deployments(
             hbm_space_hit_rate=None
             if not bucket_records
             else hbm_capacity_result.summary.block_hit_rate,
+            hbm_strict_prefix_replay_hit_rate=None
+            if not bucket_records
+            else hbm_capacity_result.summary.strict_prefix_block_hit_rate,
+            hbm_strict_prefix_exact_certified=None
+            if not bucket_records
+            else hbm_capacity_result.summary.strict_prefix_hit_blocks == content_result.summary.hit_blocks,
             extra_tier_hit_rates=extra_tier_hit_rates,
+            extra_tier_strict_prefix_replay_hit_rates=extra_tier_strict_prefix_replay_hit_rates,
+            extra_tier_strict_prefix_exact_certified=extra_tier_strict_prefix_exact_certified,
             request_count=len(bucket_records),
             window_tokens=None if not bucket_records else window_tokens,
             input_lower_tokens=deployment.lower_tokens,
@@ -238,8 +260,23 @@ def _write_summary_csv(
     )
     if include_actual_hit_rate:
         fieldnames.append("实际命中率")
-    fieldnames.append("HBM KVCache 空间命中率")
-    fieldnames.extend(tier_labels)
+    fieldnames.extend(
+        [
+            "HBM KVCache 空间命中率",
+            "HBM Strict-Prefix Replay 命中率",
+            "HBM Strict-Prefix 已证精确",
+        ]
+    )
+    for label in tier_labels:
+        strict_prefix_replay_label = _strict_prefix_replay_column(label)
+        strict_prefix_exact_label = _strict_prefix_exact_column(label)
+        fieldnames.extend(
+            [
+                label,
+                strict_prefix_replay_label,
+                strict_prefix_exact_label,
+            ]
+        )
     fieldnames.extend(["请求数", "窗口上限", "输入下界", "输入上界"])
 
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -253,6 +290,8 @@ def _write_summary_csv(
                 "HBM KVCache 总大小 (GB)": f"{row.hbm_kv_total_gb:.2f}",
                 "极限命中率": _format_rate(row.extreme_hit_rate),
                 "HBM KVCache 空间命中率": _format_rate(row.hbm_space_hit_rate),
+                "HBM Strict-Prefix Replay 命中率": _format_rate(row.hbm_strict_prefix_replay_hit_rate),
+                "HBM Strict-Prefix 已证精确": _format_bool(row.hbm_strict_prefix_exact_certified),
                 "请求数": row.request_count,
                 "窗口上限": "" if row.window_tokens is None else row.window_tokens,
                 "输入下界": row.input_lower_tokens,
@@ -264,6 +303,12 @@ def _write_summary_csv(
                 payload["实际命中率"] = _format_rate(row.actual_hit_rate)
             for label in tier_labels:
                 payload[label] = _format_rate(row.extra_tier_hit_rates.get(label))
+                payload[_strict_prefix_replay_column(label)] = _format_rate(
+                    row.extra_tier_strict_prefix_replay_hit_rates.get(label)
+                )
+                payload[_strict_prefix_exact_column(label)] = _format_bool(
+                    row.extra_tier_strict_prefix_exact_certified.get(label)
+                )
             writer.writerow(payload)
 
 
@@ -305,6 +350,27 @@ def _format_rate(value: float | None) -> str:
     if value is None:
         return ""
     return f"{value * 100:.2f}%"
+
+
+def _format_bool(value: bool | None) -> str:
+    if value is None:
+        return ""
+    return "yes" if value else "no"
+
+
+def _strict_prefix_replay_column(label: str) -> str:
+    return f"{_strict_prefix_column_base(label)} Strict-Prefix Replay 命中率"
+
+
+def _strict_prefix_exact_column(label: str) -> str:
+    return f"{_strict_prefix_column_base(label)} Strict-Prefix 已证精确"
+
+
+def _strict_prefix_column_base(label: str) -> str:
+    suffix = " 命中率"
+    if label.endswith(suffix):
+        return label[: -len(suffix)]
+    return label
 
 
 def _gb_to_bytes(value_gb: float) -> int:

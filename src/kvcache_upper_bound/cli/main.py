@@ -68,34 +68,14 @@ def _run_analyze_buckets(args: argparse.Namespace) -> int:
     output_dir = Path(args.output_dir)
     write_bucket_outputs(analysis_result, output_dir)
 
-    summary_payload = {
-        "trace": args.trace,
-        "config": str(Path(args.config).resolve()),
-        "output_dir": str(output_dir.resolve()),
-        "loaded_records": trace_result.stats.loaded_records,
-        "skipped_records": trace_result.stats.skipped_records,
-        "total_lines": trace_result.stats.total_lines,
-        "rows": [
-            {
-                "bucket_label": row.bucket_label,
-                "machine_count": row.machine_count,
-                "machine_spec": row.machine_spec,
-                "total_tps": row.total_tps,
-                "hbm_kv_total_gb": row.hbm_kv_total_gb,
-                "extreme_hit_rate": row.extreme_hit_rate,
-                "actual_hit_rate": row.actual_hit_rate,
-                "hbm_space_hit_rate": row.hbm_space_hit_rate,
-                "extra_tier_hit_rates": row.extra_tier_hit_rates,
-                "request_count": row.request_count,
-            }
-            for row in analysis_result.rows
-        ],
-    }
-    output_dir.mkdir(parents=True, exist_ok=True)
-    (output_dir / "metadata.json").write_text(
-        json.dumps(summary_payload, ensure_ascii=False, indent=2),
-        encoding="utf-8",
+    summary_payload = _build_analysis_metadata_payload(
+        trace=args.trace,
+        config_path=args.config,
+        output_dir=output_dir,
+        trace_result=trace_result,
+        analysis_result=analysis_result,
     )
+    _write_metadata_file(output_dir, summary_payload)
     print(json.dumps(summary_payload, ensure_ascii=False, indent=2))
     return 0
 
@@ -106,6 +86,14 @@ def _run_audit_buckets(args: argparse.Namespace) -> int:
     analysis_result = analyze_bucket_deployments(trace_result.records, config)
     output_dir = Path(args.output_dir)
     write_bucket_outputs(analysis_result, output_dir)
+    metadata_payload = _build_analysis_metadata_payload(
+        trace=args.trace,
+        config_path=args.config,
+        output_dir=output_dir,
+        trace_result=trace_result,
+        analysis_result=analysis_result,
+    )
+    _write_metadata_file(output_dir, metadata_payload)
 
     audit_report = build_bucket_audit_report(
         trace_result.records,
@@ -144,6 +132,50 @@ def _run_audit_buckets(args: argparse.Namespace) -> int:
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
+
+
+def _build_analysis_metadata_payload(
+    trace: str,
+    config_path: str,
+    output_dir: Path,
+    trace_result: object,
+    analysis_result: object,
+) -> dict[str, object]:
+    return {
+        "trace": trace,
+        "config": str(Path(config_path).resolve()),
+        "output_dir": str(output_dir.resolve()),
+        "loaded_records": trace_result.stats.loaded_records,
+        "skipped_records": trace_result.stats.skipped_records,
+        "total_lines": trace_result.stats.total_lines,
+        "rows": [
+            {
+                "bucket_label": row.bucket_label,
+                "machine_count": row.machine_count,
+                "machine_spec": row.machine_spec,
+                "total_tps": row.total_tps,
+                "hbm_kv_total_gb": row.hbm_kv_total_gb,
+                "extreme_hit_rate": row.extreme_hit_rate,
+                "actual_hit_rate": row.actual_hit_rate,
+                "hbm_space_hit_rate": row.hbm_space_hit_rate,
+                "hbm_strict_prefix_replay_hit_rate": row.hbm_strict_prefix_replay_hit_rate,
+                "hbm_strict_prefix_exact_certified": row.hbm_strict_prefix_exact_certified,
+                "extra_tier_hit_rates": row.extra_tier_hit_rates,
+                "extra_tier_strict_prefix_replay_hit_rates": row.extra_tier_strict_prefix_replay_hit_rates,
+                "extra_tier_strict_prefix_exact_certified": row.extra_tier_strict_prefix_exact_certified,
+                "request_count": row.request_count,
+            }
+            for row in analysis_result.rows
+        ],
+    }
+
+
+def _write_metadata_file(output_dir: Path, payload: dict[str, object]) -> None:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "metadata.json").write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 if __name__ == "__main__":
