@@ -157,6 +157,8 @@ class VerificationReferenceTest(unittest.TestCase):
         self.assertTrue(en_md.startswith("# Correctness Report"))
         self.assertIn("## 穷举参考校验", zh_md)
         self.assertIn("## Exhaustive Reference", en_md)
+        self.assertIn("strict-prefix replay HBM 命中", zh_md)
+        self.assertIn("strict-prefix replay HBM hits", en_md)
 
 
 if __name__ == "__main__":

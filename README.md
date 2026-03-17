@@ -58,4 +58,5 @@ kvcache-upper-bound audit-buckets \
 
 - `极限命中率` 对应精确的 `content upper bound`
 - `HBM KVCache 空间命中率` 当前是离线 Belady 的 `relaxed space upper bound`
+- audit 报告额外输出 `strict-prefix replay HBM hits`，用来诊断 relaxed 命中里有多少不能组成连续前缀
 - 概念解释、直观例子和反例见 `docs/correctness_guide.md`

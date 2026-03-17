@@ -227,6 +227,8 @@ content upper bound >= relaxed capacity upper bound >= strict-prefix achievable 
    - 展示输入工作集大小与空间预算的相对尺度。
 3. `content_hit_blocks / relaxed_hbm_hit_blocks`
    - 展示 relaxed 空间模型是否进一步压低了 content ceiling。
+4. `relaxed_hbm_hit_blocks / strict_prefix_replay_hbm_hit_blocks`
+   - 展示在 relaxed-optimal 调度下，零散命中有多少最终不能组成连续前缀。
 
 这些信息会写入：
 
@@ -237,6 +239,12 @@ content upper bound >= relaxed capacity upper bound >= strict-prefix achievable 
 
 - `correctness_report.zh.md` 是中文报告
 - `correctness_report.en.md` 是英文报告
+
+需要特别注意：
+
+- `strict-prefix replay HBM hits` 不是最终 strict-prefix oracle
+- 它表示“如果沿用 relaxed-optimal 的 resident 调度，然后按 strict-prefix 语义重新计数，最终能得到多少连续前缀命中”
+- 因此它是一个**可实现诊断值**，很适合用来衡量 `relaxed` 和真实 strict-prefix 目标之间到底差了多少
 
 ## 当前最诚实的口径
 

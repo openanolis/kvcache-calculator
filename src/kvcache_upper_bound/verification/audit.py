@@ -31,6 +31,8 @@ class BucketAuditRow:
     content_hit_rate: float | None
     relaxed_hbm_hit_blocks: int
     relaxed_hbm_hit_rate: float | None
+    strict_prefix_replay_hbm_hit_blocks: int
+    strict_prefix_replay_hbm_hit_rate: float | None
     unique_prefix_nodes: int
     max_request_blocks: int
     resident_block_capacity: int
@@ -108,6 +110,12 @@ def build_bucket_audit_report(
                 content_hit_rate=detail.content_result.summary.block_hit_rate if has_requests else None,
                 relaxed_hbm_hit_blocks=detail.hbm_capacity_result.summary.hit_blocks,
                 relaxed_hbm_hit_rate=detail.hbm_capacity_result.summary.block_hit_rate if has_requests else None,
+                strict_prefix_replay_hbm_hit_blocks=detail.hbm_capacity_result.summary.strict_prefix_hit_blocks,
+                strict_prefix_replay_hbm_hit_rate=(
+                    detail.hbm_capacity_result.summary.strict_prefix_block_hit_rate
+                    if has_requests
+                    else None
+                ),
                 unique_prefix_nodes=access_trace.unique_node_count,
                 max_request_blocks=max((request.effective_blocks for request in normalized.requests), default=0),
                 resident_block_capacity=detail.hbm_capacity_result.summary.resident_block_capacity,
@@ -183,11 +191,11 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
         "## 分桶审计" if is_zh else "## Bucket Audit",
         "",
         (
-            "| 分桶 | 请求数 | 抽样数 | 快速实现=朴素实现 | 总 blocks | content 命中 | relaxed HBM 命中 | 唯一前缀节点数 | 单请求最大 blocks | 常驻 blocks | hbm=content |"
+            "| 分桶 | 请求数 | 抽样数 | 快速实现=朴素实现 | 总 blocks | content 命中 | relaxed HBM 命中 | strict-prefix replay HBM 命中 | 唯一前缀节点数 | 单请求最大 blocks | 常驻 blocks | hbm=content |"
             if is_zh
-            else "| bucket | requests | sample | sample fast==naive | total blocks | content hits | relaxed HBM hits | unique nodes | max req blocks | resident blocks | hbm==content |"
+            else "| bucket | requests | sample | sample fast==naive | total blocks | content hits | relaxed HBM hits | strict-prefix replay HBM hits | unique nodes | max req blocks | resident blocks | hbm==content |"
         ),
-        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
 
     for row in report.rows:
@@ -200,6 +208,7 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
             f"{row.total_blocks} | "
             f"{row.content_hit_blocks} | "
             f"{row.relaxed_hbm_hit_blocks} | "
+            f"{row.strict_prefix_replay_hbm_hit_blocks} | "
             f"{row.unique_prefix_nodes} | "
             f"{row.max_request_blocks} | "
             f"{row.resident_block_capacity} | "
@@ -222,6 +231,8 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
             if row.max_request_blocks > 0
             else 0.0
         )
+        content_to_relaxed_gap = row.content_hit_blocks - row.relaxed_hbm_hit_blocks
+        relaxed_to_strict_gap = row.relaxed_hbm_hit_blocks - row.strict_prefix_replay_hbm_hit_blocks
         lines.extend(
             [
                 f"### {row.bucket_label}",
@@ -232,6 +243,9 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
                 f"- {'总 blocks' if is_zh else 'total blocks'}: `{row.total_blocks}`",
                 f"- {'content 命中 blocks' if is_zh else 'content hit blocks'}: `{row.content_hit_blocks}` -> `{_rate_text(row.content_hit_rate)}`",
                 f"- {'relaxed HBM 命中 blocks' if is_zh else 'relaxed hbm hit blocks'}: `{row.relaxed_hbm_hit_blocks}` -> `{_rate_text(row.relaxed_hbm_hit_rate)}`",
+                f"- {'strict-prefix replay HBM 命中 blocks' if is_zh else 'strict-prefix replay hbm hit blocks'}: `{row.strict_prefix_replay_hbm_hit_blocks}` -> `{_rate_text(row.strict_prefix_replay_hbm_hit_rate)}`",
+                f"- {'content -> relaxed 差值' if is_zh else 'content -> relaxed gap'}: `{content_to_relaxed_gap}`",
+                f"- {'relaxed -> strict-prefix replay 差值' if is_zh else 'relaxed -> strict-prefix replay gap'}: `{relaxed_to_strict_gap}`",
                 f"- {'唯一前缀节点数' if is_zh else 'unique prefix nodes'}: `{row.unique_prefix_nodes}`",
                 f"- {'单请求最大 blocks' if is_zh else 'max request blocks'}: `{row.max_request_blocks}`",
                 f"- {'常驻容量/单请求最大 blocks 比值' if is_zh else 'resident/max-request ratio'}: `{resident_to_max_request_ratio:.2f}x`",
@@ -252,6 +266,11 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
                 "- `relaxed HBM hits` 是基于 block access event 的离线 Belady 上界，不是 strict-prefix 最优 oracle。"
                 if is_zh
                 else "- `relaxed HBM hits` is an offline Belady upper bound over block access events, not a strict-prefix optimal oracle."
+            ),
+            (
+                "- `strict-prefix replay HBM hits` 是在 relaxed-optimal 调度上回放得到的连续前缀命中结果；它是一个可实现诊断值，但不是 strict-prefix oracle。"
+                if is_zh
+                else "- `strict-prefix replay HBM hits` is the contiguous-prefix hit result obtained by replaying the relaxed-optimal schedule; it is a realizable diagnostic, but not a strict-prefix oracle."
             ),
             (
                 "- `hbm==content` 只表示 relaxed 空间模型没有进一步压低 content ceiling；它本身不能证明 strict-prefix 最优性。"
