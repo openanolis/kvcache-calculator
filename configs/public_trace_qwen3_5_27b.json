@@ -1,0 +1,106 @@
+{
+  "model_profile": {
+    "n_layers": 64,
+    "kv_cache_layer_count": 16,
+    "n_kv_heads": 4,
+    "head_dim": 256,
+    "dtype_bytes": 2,
+    "tp_size": 8,
+    "pp_size": 1,
+    "block_size": 16
+  },
+  "scope": "global",
+  "block_size": 16,
+  "bucket_deployments": [
+    {
+      "label": "0-32K",
+      "lower_tokens": 0,
+      "upper_tokens": 32768,
+      "machine_count": 8,
+      "machine_spec": "h20",
+      "hbm_kv_gb_per_machine": 80,
+      "extra_capacity_tiers": [
+        {
+          "label": "HBM+单机 1T 命中率",
+          "kv_gb_per_machine": 1024
+        },
+        {
+          "label": "HBM+单机 10T 命中率",
+          "kv_gb_per_machine": 10240
+        }
+      ]
+    },
+    {
+      "label": "32-64K",
+      "lower_tokens": 32768,
+      "upper_tokens": 65536,
+      "machine_count": 8,
+      "machine_spec": "h20",
+      "hbm_kv_gb_per_machine": 80,
+      "extra_capacity_tiers": [
+        {
+          "label": "HBM+单机 1T 命中率",
+          "kv_gb_per_machine": 1024
+        },
+        {
+          "label": "HBM+单机 10T 命中率",
+          "kv_gb_per_machine": 10240
+        }
+      ]
+    },
+    {
+      "label": "64-128K",
+      "lower_tokens": 65536,
+      "upper_tokens": 131072,
+      "machine_count": 8,
+      "machine_spec": "h20",
+      "hbm_kv_gb_per_machine": 80,
+      "extra_capacity_tiers": [
+        {
+          "label": "HBM+单机 1T 命中率",
+          "kv_gb_per_machine": 1024
+        },
+        {
+          "label": "HBM+单机 10T 命中率",
+          "kv_gb_per_machine": 10240
+        }
+      ]
+    },
+    {
+      "label": "128K-176K",
+      "lower_tokens": 131072,
+      "upper_tokens": 180224,
+      "machine_count": 8,
+      "machine_spec": "h20",
+      "hbm_kv_gb_per_machine": 80,
+      "extra_capacity_tiers": [
+        {
+          "label": "HBM+单机 1T 命中率",
+          "kv_gb_per_machine": 1024
+        },
+        {
+          "label": "HBM+单机 10T 命中率",
+          "kv_gb_per_machine": 10240
+        }
+      ]
+    },
+    {
+      "label": "176K+",
+      "lower_tokens": 180224,
+      "upper_tokens": null,
+      "machine_count": 8,
+      "machine_spec": "h20",
+      "hbm_kv_gb_per_machine": 80,
+      "extra_capacity_tiers": [
+        {
+          "label": "HBM+单机 1T 命中率",
+          "kv_gb_per_machine": 1024
+        },
+        {
+          "label": "HBM+单机 10T 命中率",
+          "kv_gb_per_machine": 10240
+        }
+      ]
+    }
+  ]
+}

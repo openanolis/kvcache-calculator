@@ -1,0 +1,2 @@
+[console_scripts]
+kvcache-upper-bound = kvcache_upper_bound.cli.main:main
