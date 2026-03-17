@@ -12,8 +12,10 @@ from kvcache_upper_bound.reporting.buckets import BucketAnalysisConfig, BucketAn
 from kvcache_upper_bound.verification.reference import (
     ExhaustiveVerificationSummary,
     StrictPrefixCounterexample,
+    StrictPrefixReplayGapCounterexample,
     analyze_content_upper_bound_naive,
     find_smallest_strict_prefix_gap_counterexample,
+    find_smallest_strict_prefix_replay_gap_counterexample,
     verify_exhaustive_small_cases,
 )
 
@@ -33,6 +35,7 @@ class BucketAuditRow:
     relaxed_hbm_hit_rate: float | None
     strict_prefix_replay_hbm_hit_blocks: int
     strict_prefix_replay_hbm_hit_rate: float | None
+    strict_prefix_exact_certified: bool | None
     unique_prefix_nodes: int
     max_request_blocks: int
     resident_block_capacity: int
@@ -47,6 +50,7 @@ class BucketAuditReport:
     model_kv_bytes_per_block: int
     exhaustive_reference: ExhaustiveVerificationSummary
     strict_prefix_counterexample: StrictPrefixCounterexample
+    strict_prefix_replay_gap_counterexample: StrictPrefixReplayGapCounterexample
     rows: list[BucketAuditRow]
 
 
@@ -97,6 +101,8 @@ def build_bucket_audit_report(
 
         detail = analysis_result.details[row.bucket_label]
         has_requests = row.request_count > 0
+        strict_prefix_replay_hit_blocks = detail.hbm_capacity_result.summary.strict_prefix_hit_blocks
+        content_hit_blocks = detail.content_result.summary.hit_blocks
         rows.append(
             BucketAuditRow(
                 bucket_label=row.bucket_label,
@@ -106,16 +112,21 @@ def build_bucket_audit_report(
                 window_tokens=row.window_tokens,
                 hbm_kv_total_gb=row.hbm_kv_total_gb,
                 total_blocks=detail.content_result.summary.total_blocks,
-                content_hit_blocks=detail.content_result.summary.hit_blocks,
+                content_hit_blocks=content_hit_blocks,
                 content_hit_rate=detail.content_result.summary.block_hit_rate if has_requests else None,
                 relaxed_hbm_hit_blocks=detail.hbm_capacity_result.summary.hit_blocks,
                 relaxed_hbm_hit_rate=detail.hbm_capacity_result.summary.block_hit_rate if has_requests else None,
-                strict_prefix_replay_hbm_hit_blocks=detail.hbm_capacity_result.summary.strict_prefix_hit_blocks,
+                strict_prefix_replay_hbm_hit_blocks=strict_prefix_replay_hit_blocks,
                 strict_prefix_replay_hbm_hit_rate=(
                     detail.hbm_capacity_result.summary.strict_prefix_block_hit_rate
                     if has_requests
                     else None
                 ),
+                strict_prefix_exact_certified=(
+                    strict_prefix_replay_hit_blocks == content_hit_blocks
+                )
+                if has_requests
+                else None,
                 unique_prefix_nodes=access_trace.unique_node_count,
                 max_request_blocks=max((request.effective_blocks for request in normalized.requests), default=0),
                 resident_block_capacity=detail.hbm_capacity_result.summary.resident_block_capacity,
@@ -135,6 +146,7 @@ def build_bucket_audit_report(
         model_kv_bytes_per_block=config.model_profile.kv_bytes_per_block(),
         exhaustive_reference=verify_exhaustive_small_cases(),
         strict_prefix_counterexample=find_smallest_strict_prefix_gap_counterexample(),
+        strict_prefix_replay_gap_counterexample=find_smallest_strict_prefix_replay_gap_counterexample(),
         rows=rows,
     )
 
@@ -179,6 +191,7 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
         "",
         f"- {'content 校验样例数' if is_zh else 'content cases verified'}: `{report.exhaustive_reference.content_case_count}`",
         f"- {'relaxed capacity 校验样例数' if is_zh else 'relaxed capacity cases verified'}: `{report.exhaustive_reference.relaxed_capacity_case_count}`",
+        f"- {'strict-prefix 校验样例数' if is_zh else 'strict-prefix cases verified'}: `{report.exhaustive_reference.strict_prefix_case_count}`",
         "",
         "## Strict Prefix 反例" if is_zh else "## Strict Prefix Gap",
         "",
@@ -188,14 +201,23 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
         f"- {'relaxed capacity 命中 blocks' if is_zh else 'relaxed capacity hit blocks'}: `{report.strict_prefix_counterexample.relaxed_capacity_hit_blocks}`",
         f"- {'strict prefix 命中 blocks' if is_zh else 'strict prefix hit blocks'}: `{report.strict_prefix_counterexample.strict_prefix_hit_blocks}`",
         "",
+        "## Strict Prefix Replay 反例" if is_zh else "## Strict Prefix Replay Gap",
+        "",
+        f"- {'常驻 block 容量' if is_zh else 'resident block capacity'}: `{report.strict_prefix_replay_gap_counterexample.resident_block_capacity}`",
+        f"- {'请求序列' if is_zh else 'requests'}: `{report.strict_prefix_replay_gap_counterexample.requests}`",
+        f"- {'content 命中 blocks' if is_zh else 'content hit blocks'}: `{report.strict_prefix_replay_gap_counterexample.content_hit_blocks}`",
+        f"- {'relaxed capacity 命中 blocks' if is_zh else 'relaxed capacity hit blocks'}: `{report.strict_prefix_replay_gap_counterexample.relaxed_capacity_hit_blocks}`",
+        f"- {'strict-prefix replay 命中 blocks' if is_zh else 'strict-prefix replay hit blocks'}: `{report.strict_prefix_replay_gap_counterexample.strict_prefix_replay_hit_blocks}`",
+        f"- {'strict prefix 命中 blocks' if is_zh else 'strict prefix hit blocks'}: `{report.strict_prefix_replay_gap_counterexample.strict_prefix_hit_blocks}`",
+        "",
         "## 分桶审计" if is_zh else "## Bucket Audit",
         "",
         (
-            "| 分桶 | 请求数 | 抽样数 | 快速实现=朴素实现 | 总 blocks | content 命中 | relaxed HBM 命中 | strict-prefix replay HBM 命中 | 唯一前缀节点数 | 单请求最大 blocks | 常驻 blocks | hbm=content |"
+            "| 分桶 | 请求数 | 抽样数 | 快速实现=朴素实现 | 总 blocks | content 命中 | relaxed HBM 命中 | strict-prefix replay HBM 命中 | strict-prefix 已证精确 | 唯一前缀节点数 | 单请求最大 blocks | 常驻 blocks | hbm=content |"
             if is_zh
-            else "| bucket | requests | sample | sample fast==naive | total blocks | content hits | relaxed HBM hits | strict-prefix replay HBM hits | unique nodes | max req blocks | resident blocks | hbm==content |"
+            else "| bucket | requests | sample | sample fast==naive | total blocks | content hits | relaxed HBM hits | strict-prefix replay HBM hits | strict-prefix exact | unique nodes | max req blocks | resident blocks | hbm==content |"
         ),
-        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- |",
     ]
 
     for row in report.rows:
@@ -209,6 +231,7 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
             f"{row.content_hit_blocks} | "
             f"{row.relaxed_hbm_hit_blocks} | "
             f"{row.strict_prefix_replay_hbm_hit_blocks} | "
+            f"{_bool_text(row.strict_prefix_exact_certified)} | "
             f"{row.unique_prefix_nodes} | "
             f"{row.max_request_blocks} | "
             f"{row.resident_block_capacity} | "
@@ -233,6 +256,20 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
         )
         content_to_relaxed_gap = row.content_hit_blocks - row.relaxed_hbm_hit_blocks
         relaxed_to_strict_gap = row.relaxed_hbm_hit_blocks - row.strict_prefix_replay_hbm_hit_blocks
+        strict_prefix_range_text = _strict_prefix_range_text(
+            is_zh=is_zh,
+            lower=row.strict_prefix_replay_hbm_hit_blocks,
+            upper=row.content_hit_blocks,
+        )
+        exact_certificate_text = (
+            "已证精确：`strict-prefix replay == content`，因此该桶的 strict-prefix 最优值就是这个数。"
+            if row.strict_prefix_exact_certified
+            else "未证精确：当前只能证明 strict-prefix 最优值落在 `strict-prefix replay` 与 `content` 之间。"
+        ) if is_zh else (
+            "exact certificate: `strict-prefix replay == content`, so the strict-prefix optimum on this bucket is exactly that value."
+            if row.strict_prefix_exact_certified
+            else "not yet exact: we can currently only prove that the strict-prefix optimum lies between `strict-prefix replay` and `content`."
+        )
         lines.extend(
             [
                 f"### {row.bucket_label}",
@@ -246,6 +283,8 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
                 f"- {'strict-prefix replay HBM 命中 blocks' if is_zh else 'strict-prefix replay hbm hit blocks'}: `{row.strict_prefix_replay_hbm_hit_blocks}` -> `{_rate_text(row.strict_prefix_replay_hbm_hit_rate)}`",
                 f"- {'content -> relaxed 差值' if is_zh else 'content -> relaxed gap'}: `{content_to_relaxed_gap}`",
                 f"- {'relaxed -> strict-prefix replay 差值' if is_zh else 'relaxed -> strict-prefix replay gap'}: `{relaxed_to_strict_gap}`",
+                f"- {'strict-prefix 可证区间' if is_zh else 'strict-prefix provable range'}: {strict_prefix_range_text}",
+                f"- {'strict-prefix 证书' if is_zh else 'strict-prefix certificate'}: {exact_certificate_text}",
                 f"- {'唯一前缀节点数' if is_zh else 'unique prefix nodes'}: `{row.unique_prefix_nodes}`",
                 f"- {'单请求最大 blocks' if is_zh else 'max request blocks'}: `{row.max_request_blocks}`",
                 f"- {'常驻容量/单请求最大 blocks 比值' if is_zh else 'resident/max-request ratio'}: `{resident_to_max_request_ratio:.2f}x`",
@@ -271,6 +310,11 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
                 "- `strict-prefix replay HBM hits` 是在 relaxed-optimal 调度上回放得到的连续前缀命中结果；它是一个可实现诊断值，但不是 strict-prefix oracle。"
                 if is_zh
                 else "- `strict-prefix replay HBM hits` is the contiguous-prefix hit result obtained by replaying the relaxed-optimal schedule; it is a realizable diagnostic, but not a strict-prefix oracle."
+            ),
+            (
+                "- 当 `strict-prefix replay HBM hits == content hits` 时，说明一个可实现调度已经碰到内容上界；此时该桶的 strict-prefix 最优值被直接证成精确值。"
+                if is_zh
+                else "- when `strict-prefix replay HBM hits == content hits`, a realizable schedule already reaches the content ceiling; the strict-prefix optimum on that bucket is therefore certified exactly."
             ),
             (
                 "- `hbm==content` 只表示 relaxed 空间模型没有进一步压低 content ceiling；它本身不能证明 strict-prefix 最优性。"
@@ -302,3 +346,9 @@ def _rate_text(value: float | None) -> str:
     if value is None:
         return ""
     return f"{value * 100:.2f}%"
+
+
+def _strict_prefix_range_text(is_zh: bool, lower: int, upper: int) -> str:
+    if is_zh:
+        return f"`[{lower}, {upper}]` blocks"
+    return f"`[{lower}, {upper}]` blocks"

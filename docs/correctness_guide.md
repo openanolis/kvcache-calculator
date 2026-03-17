@@ -119,6 +119,13 @@ content upper bound >= relaxed capacity upper bound >= strict-prefix achievable 
 
 当前项目已经精确拿到了第一项，也实现并验证了第二项，但第三项还没有独立 oracle。
 
+不过项目现在多做了一步：
+
+- `strict-prefix replay HBM hits` 被明确当成**可实现下界**
+- 一旦它与 `content upper bound` 相等，就可以直接给出该桶的 **strict-prefix exact certificate**
+
+也就是说，虽然通用的 strict-prefix capacity oracle 还没单独实现，但有些桶已经能被直接证成“最终答案就是这个数”。
+
 ## 为什么 content 是精确的
 
 `content upper bound` 的定义是：
@@ -203,6 +210,72 @@ content upper bound >= relaxed capacity upper bound >= strict-prefix achievable 
 - `极限命中率`：精确 content ceiling
 - `HBM KVCache 空间命中率`：离线 Belady relaxed ceiling
 
+## 最小 replay-gap 反例
+
+光知道 `relaxed upper bound` 会高估 strict-prefix 还不够。
+
+还要再区分一件事：
+
+- `strict-prefix replay HBM hits`
+  - 是“沿用 relaxed-optimal 调度，然后按 strict-prefix 语义重新计数”的结果
+- `strict-prefix optimal`
+  - 是“专门为了 strict-prefix 目标去优化 resident 调度”的真正最优值
+
+这两个也不是一回事。
+
+项目现在内置了一个最小 replay-gap 反例，说明：
+
+- `strict-prefix replay` 是有意义的可实现诊断值
+- 但它仍然**不是** strict-prefix oracle
+
+一个典型反例是：
+
+- requests: `("a","a","a")`, `("a","a","a")`, `("a",)`
+- resident block capacity: `2`
+
+在这个例子里：
+
+- `content hit blocks = 4`
+- `relaxed capacity hit blocks = 2`
+- `strict-prefix replay hit blocks = 1`
+- `strict prefix hit blocks = 2`
+
+这说明：
+
+1. relaxed-optimal 调度未必也是 strict-prefix-optimal 调度
+2. replay 结果是可实现的，但可能仍然偏低
+3. 所以 replay 最适合被理解成**下界诊断器**，不是最终 oracle
+
+## exact certificate：什么时候已经拿到 strict-prefix 精确值
+
+虽然通用 strict-prefix oracle 还没单独实现，但有一种情况已经可以直接下结论：
+
+```text
+strict-prefix replay == content upper bound
+```
+
+原因很直接：
+
+1. `content upper bound` 是 strict-prefix 语义下的精确上界
+2. `strict-prefix replay` 是一个实际可实现调度得到的命中结果，因此它是可实现下界
+3. 如果某个桶里二者相等，就说明“可实现值已经撞到理论上界”
+
+于是可以立即推出：
+
+```text
+strict-prefix replay <= strict-prefix optimal <= content upper bound
+```
+
+当左右两端相等时：
+
+```text
+strict-prefix optimal = strict-prefix replay = content upper bound
+```
+
+这就是 audit 报告里 `strict-prefix 已证精确` 的含义。
+
+它不是猜测，也不是经验判断，而是一个严格的夹逼证书。
+
 ## 为什么这两个概念不能混着说
 
 如果把 relaxed upper bound 直接当 strict-prefix 结果，就会犯两个错误：
@@ -229,6 +302,8 @@ content upper bound >= relaxed capacity upper bound >= strict-prefix achievable 
    - 展示 relaxed 空间模型是否进一步压低了 content ceiling。
 4. `relaxed_hbm_hit_blocks / strict_prefix_replay_hbm_hit_blocks`
    - 展示在 relaxed-optimal 调度下，零散命中有多少最终不能组成连续前缀。
+5. `strict_prefix_replay_hbm_hit_blocks / content_hit_blocks`
+   - 如果两者相等，就能直接证明该桶的 strict-prefix 最优值已经精确确定。
 
 这些信息会写入：
 
@@ -245,6 +320,7 @@ content upper bound >= relaxed capacity upper bound >= strict-prefix achievable 
 - `strict-prefix replay HBM hits` 不是最终 strict-prefix oracle
 - 它表示“如果沿用 relaxed-optimal 的 resident 调度，然后按 strict-prefix 语义重新计数，最终能得到多少连续前缀命中”
 - 因此它是一个**可实现诊断值**，很适合用来衡量 `relaxed` 和真实 strict-prefix 目标之间到底差了多少
+- 但如果它已经和 `content hits` 相等，那么这个桶的 strict-prefix 最优值就已经被证成了，不必等通用 oracle
 
 ## 当前最诚实的口径
 

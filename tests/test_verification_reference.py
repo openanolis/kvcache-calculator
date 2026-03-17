@@ -14,6 +14,7 @@ from kvcache_upper_bound.verification import (
     analyze_content_upper_bound_naive,
     build_bucket_audit_report,
     find_smallest_strict_prefix_gap_counterexample,
+    find_smallest_strict_prefix_replay_gap_counterexample,
     verify_exhaustive_small_cases,
     write_bucket_audit_outputs,
 )
@@ -74,6 +75,7 @@ class VerificationReferenceTest(unittest.TestCase):
 
         self.assertGreater(summary.content_case_count, 0)
         self.assertGreater(summary.relaxed_capacity_case_count, 0)
+        self.assertGreater(summary.strict_prefix_case_count, 0)
 
     def test_find_smallest_strict_prefix_gap_counterexample(self) -> None:
         counterexample = find_smallest_strict_prefix_gap_counterexample()
@@ -81,6 +83,14 @@ class VerificationReferenceTest(unittest.TestCase):
         self.assertGreater(
             counterexample.relaxed_capacity_hit_blocks,
             counterexample.strict_prefix_hit_blocks,
+        )
+
+    def test_find_smallest_strict_prefix_replay_gap_counterexample(self) -> None:
+        counterexample = find_smallest_strict_prefix_replay_gap_counterexample()
+
+        self.assertGreater(
+            counterexample.strict_prefix_hit_blocks,
+            counterexample.strict_prefix_replay_hit_blocks,
         )
 
     def test_audit_outputs_write_zh_and_en_markdown(self) -> None:
@@ -157,8 +167,12 @@ class VerificationReferenceTest(unittest.TestCase):
         self.assertTrue(en_md.startswith("# Correctness Report"))
         self.assertIn("## 穷举参考校验", zh_md)
         self.assertIn("## Exhaustive Reference", en_md)
+        self.assertIn("strict-prefix 校验样例数", zh_md)
+        self.assertIn("strict-prefix cases verified", en_md)
         self.assertIn("strict-prefix replay HBM 命中", zh_md)
         self.assertIn("strict-prefix replay HBM hits", en_md)
+        self.assertIn("strict-prefix 已证精确", zh_md)
+        self.assertIn("strict-prefix exact", en_md)
 
 
 if __name__ == "__main__":

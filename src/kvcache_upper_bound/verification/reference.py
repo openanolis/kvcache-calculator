@@ -6,7 +6,11 @@ from itertools import product
 from typing import Iterable, Sequence
 
 from kvcache_upper_bound.core.models import EffectiveRequest, ModelProfile, Scope
-from kvcache_upper_bound.oracle.capacity import _build_access_trace
+from kvcache_upper_bound.oracle.capacity import (
+    _build_access_trace,
+    _count_prefix_hits,
+    _run_belady,
+)
 from kvcache_upper_bound.oracle.content import (
     ContentAnalysisResult,
     ContentRequestMetric,
@@ -20,6 +24,7 @@ from kvcache_upper_bound.oracle.content import (
 class ExhaustiveVerificationSummary:
     content_case_count: int
     relaxed_capacity_case_count: int
+    strict_prefix_case_count: int
 
 
 @dataclass(frozen=True)
@@ -28,6 +33,16 @@ class StrictPrefixCounterexample:
     resident_block_capacity: int
     content_hit_blocks: int
     relaxed_capacity_hit_blocks: int
+    strict_prefix_hit_blocks: int
+
+
+@dataclass(frozen=True)
+class StrictPrefixReplayGapCounterexample:
+    requests: tuple[tuple[str, ...], ...]
+    resident_block_capacity: int
+    content_hit_blocks: int
+    relaxed_capacity_hit_blocks: int
+    strict_prefix_replay_hit_blocks: int
     strict_prefix_hit_blocks: int
 
 
@@ -128,6 +143,7 @@ def analyze_content_upper_bound_naive(
     )
 
 
+@lru_cache(maxsize=None)
 def verify_exhaustive_small_cases(
     max_requests: int = 4,
     max_blocks_per_request: int = 3,
@@ -136,13 +152,8 @@ def verify_exhaustive_small_cases(
     request_traces = _iter_small_request_traces(max_requests, max_blocks_per_request, alphabet)
     content_case_count = 0
     relaxed_capacity_case_count = 0
-    model_profile = ModelProfile(
-        n_layers=1,
-        n_kv_heads=1,
-        head_dim=1,
-        dtype_bytes=1,
-        block_size=16,
-    )
+    strict_prefix_case_count = 0
+    model_profile = _build_reference_model_profile()
     budget_bytes_per_block = model_profile.kv_bytes_per_block()
 
     from kvcache_upper_bound.oracle import analyze_capacity_upper_bound, analyze_content_upper_bound
@@ -172,23 +183,34 @@ def verify_exhaustive_small_cases(
                     f"trace={[_request_path_key(request) for request in requests]} "
                     f"capacity={capacity} got={got} want={want}"
                 )
+            strict_prefix_case_count += 1
+            strict_replay = _replay_strict_prefix_hit_count(requests, capacity)
+            strict_oracle = _bruteforce_strict_prefix_hit_count(requests, capacity)
+            if strict_replay > strict_oracle:
+                raise AssertionError(
+                    "strict replay must stay below strict oracle: "
+                    f"trace={[_request_path_key(request) for request in requests]} "
+                    f"capacity={capacity} replay={strict_replay} oracle={strict_oracle}"
+                )
+            if strict_oracle > slow.summary.hit_blocks:
+                raise AssertionError(
+                    "strict oracle must stay below content ceiling: "
+                    f"trace={[_request_path_key(request) for request in requests]} "
+                    f"capacity={capacity} oracle={strict_oracle} content={slow.summary.hit_blocks}"
+                )
 
     return ExhaustiveVerificationSummary(
         content_case_count=content_case_count,
         relaxed_capacity_case_count=relaxed_capacity_case_count,
+        strict_prefix_case_count=strict_prefix_case_count,
     )
 
 
+@lru_cache(maxsize=1)
 def find_smallest_strict_prefix_gap_counterexample() -> StrictPrefixCounterexample:
     from kvcache_upper_bound.oracle import analyze_capacity_upper_bound, analyze_content_upper_bound
 
-    model_profile = ModelProfile(
-        n_layers=1,
-        n_kv_heads=1,
-        head_dim=1,
-        dtype_bytes=1,
-        block_size=16,
-    )
+    model_profile = _build_reference_model_profile()
     budget_bytes_per_block = model_profile.kv_bytes_per_block()
 
     for requests in _iter_small_request_traces(max_requests=3, max_blocks_per_request=4, alphabet=("a", "b")):
@@ -215,6 +237,41 @@ def find_smallest_strict_prefix_gap_counterexample() -> StrictPrefixCounterexamp
                 )
 
     raise AssertionError("failed to find a strict-prefix counterexample")
+
+
+@lru_cache(maxsize=1)
+def find_smallest_strict_prefix_replay_gap_counterexample() -> StrictPrefixReplayGapCounterexample:
+    from kvcache_upper_bound.oracle import analyze_capacity_upper_bound, analyze_content_upper_bound
+
+    model_profile = _build_reference_model_profile()
+    budget_bytes_per_block = model_profile.kv_bytes_per_block()
+
+    for requests in _iter_small_request_traces(max_requests=4, max_blocks_per_request=4, alphabet=("a", "b")):
+        access_trace = _build_access_trace(requests)
+        unique_node_count = access_trace.unique_node_count
+        if unique_node_count <= 1:
+            continue
+
+        content_hit_blocks = analyze_content_upper_bound(requests, block_size=16).summary.hit_blocks
+        for capacity in range(1, min(5, unique_node_count + 1)):
+            relaxed_hit_blocks = analyze_capacity_upper_bound(
+                requests,
+                model_profile=model_profile,
+                budget_bytes=capacity * budget_bytes_per_block,
+            ).summary.hit_blocks
+            strict_prefix_replay_hit_blocks = _replay_strict_prefix_hit_count(requests, capacity)
+            strict_prefix_hit_blocks = _bruteforce_strict_prefix_hit_count(requests, capacity)
+            if strict_prefix_hit_blocks > strict_prefix_replay_hit_blocks:
+                return StrictPrefixReplayGapCounterexample(
+                    requests=tuple(_request_path_key(request) for request in requests),
+                    resident_block_capacity=capacity,
+                    content_hit_blocks=content_hit_blocks,
+                    relaxed_capacity_hit_blocks=relaxed_hit_blocks,
+                    strict_prefix_replay_hit_blocks=strict_prefix_replay_hit_blocks,
+                    strict_prefix_hit_blocks=strict_prefix_hit_blocks,
+                )
+
+    raise AssertionError("failed to find a strict-prefix replay gap counterexample")
 
 
 def _naive_matched_prefix_blocks(
@@ -304,6 +361,18 @@ def _bruteforce_strict_prefix_hit_count(
     return solve(0, tuple(), True)
 
 
+def _replay_strict_prefix_hit_count(
+    requests: Sequence[EffectiveRequest],
+    resident_block_capacity: int,
+) -> int:
+    access_trace = _build_access_trace(requests)
+    event_hits = _run_belady(access_trace.access_events, resident_block_capacity)
+    return sum(
+        _count_prefix_hits(event_hits, start, end)
+        for start, end in access_trace.request_ranges
+    )
+
+
 def _build_request_end_flags(
     request_ranges: Sequence[tuple[int, int]],
     event_count: int,
@@ -349,3 +418,13 @@ def _iter_small_request_traces(
 
 def _request_path_key(request: EffectiveRequest) -> tuple[str, ...]:
     return tuple(request.effective_hash_ids)
+
+
+def _build_reference_model_profile() -> ModelProfile:
+    return ModelProfile(
+        n_layers=1,
+        n_kv_heads=1,
+        head_dim=1,
+        dtype_bytes=1,
+        block_size=16,
+    )

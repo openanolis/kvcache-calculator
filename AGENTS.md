@@ -64,8 +64,8 @@ kvcache-upper-bound-oracle/
 - `src/kvcache_upper_bound/oracle/capacity.py`：空间上限分析；基于离线 Belady 对 HBM 或扩展空间预算做最优命中上界估计。
 - `src/kvcache_upper_bound/reporting/buckets.py`：按业务长度桶和部署规格生成汇总表，直接对接“机器数/规格/TPS/HBM/命中率”视图。
 - `src/kvcache_upper_bound/cli/main.py`：命令行入口；负责把 trace、配置、输出目录串成完整离线分析流程。
-- `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器和 strict-prefix 反例搜索器。
-- `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账、relaxed/strict-prefix replay 诊断写成 correctness report，并同时输出中英文 Markdown 报告。
+- `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器、strict-prefix 反例搜索器，以及 replay-gap / exact-certificate 证据生成器。
+- `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账、relaxed/strict-prefix replay 诊断、strict-prefix exact certificate 写成 correctness report，并同时输出中英文 Markdown 报告。
 - `src/kvcache_upper_bound/`：分析器实现根目录；后续继续扩展 `oracle/`, `reporting/`, `cli/`。
 - `tests/`：面向口径和边界条件的测试，不写和实现细节强绑定的脆弱测试。
 - `configs/`：样例机器配置、模型配置、实验矩阵。
@@ -86,6 +86,7 @@ kvcache-upper-bound-oracle/
 - `content.py` 只回答“历史上是否已有这段前缀”，不回答容量和带宽问题。
 - `capacity.py` 只回答“空间够不够”，不回答搬运带宽和系统调度问题。
 - `verification/` 负责证明与揭示边界：能证明的就输出证据，证明不了的就输出反例。
+- `verification/` 新增任何“证书”口径时，必须同时给出上下界链路，不能只给结论不给夹逼关系。
 - `reporting/` 负责把算法结果翻译成业务表格；不要反向污染 oracle 的数据结构。
 
 ## 开发规范

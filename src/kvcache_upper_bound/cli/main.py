@@ -125,12 +125,21 @@ def _run_audit_buckets(args: argparse.Namespace) -> int:
         "sample_request_limit": args.sample_request_limit,
         "content_case_count": audit_report.exhaustive_reference.content_case_count,
         "relaxed_capacity_case_count": audit_report.exhaustive_reference.relaxed_capacity_case_count,
+        "strict_prefix_case_count": audit_report.exhaustive_reference.strict_prefix_case_count,
         "strict_prefix_counterexample": {
             "requests": audit_report.strict_prefix_counterexample.requests,
             "resident_block_capacity": audit_report.strict_prefix_counterexample.resident_block_capacity,
             "content_hit_blocks": audit_report.strict_prefix_counterexample.content_hit_blocks,
             "relaxed_capacity_hit_blocks": audit_report.strict_prefix_counterexample.relaxed_capacity_hit_blocks,
             "strict_prefix_hit_blocks": audit_report.strict_prefix_counterexample.strict_prefix_hit_blocks,
+        },
+        "strict_prefix_replay_gap_counterexample": {
+            "requests": audit_report.strict_prefix_replay_gap_counterexample.requests,
+            "resident_block_capacity": audit_report.strict_prefix_replay_gap_counterexample.resident_block_capacity,
+            "content_hit_blocks": audit_report.strict_prefix_replay_gap_counterexample.content_hit_blocks,
+            "relaxed_capacity_hit_blocks": audit_report.strict_prefix_replay_gap_counterexample.relaxed_capacity_hit_blocks,
+            "strict_prefix_replay_hit_blocks": audit_report.strict_prefix_replay_gap_counterexample.strict_prefix_replay_hit_blocks,
+            "strict_prefix_hit_blocks": audit_report.strict_prefix_replay_gap_counterexample.strict_prefix_hit_blocks,
         },
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
