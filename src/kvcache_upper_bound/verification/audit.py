@@ -138,37 +138,55 @@ def write_bucket_audit_outputs(report: BucketAuditReport, output_dir: str | Path
         json.dumps(asdict(report), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    zh_markdown = _render_bucket_audit_markdown(report, language="zh")
+    en_markdown = _render_bucket_audit_markdown(report, language="en")
     (output_path / "correctness_report.md").write_text(
-        _render_bucket_audit_markdown(report),
+        zh_markdown,
+        encoding="utf-8",
+    )
+    (output_path / "correctness_report.zh.md").write_text(
+        zh_markdown,
+        encoding="utf-8",
+    )
+    (output_path / "correctness_report.en.md").write_text(
+        en_markdown,
         encoding="utf-8",
     )
 
 
-def _render_bucket_audit_markdown(report: BucketAuditReport) -> str:
+def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> str:
+    is_zh = language == "zh"
+    if language not in {"zh", "en"}:
+        raise ValueError(f"unsupported language: {language}")
+
     lines = [
-        "# Correctness Report",
+        "# 结果正确性报告" if is_zh else "# Correctness Report",
         "",
-        f"- trace: `{report.trace}`",
-        f"- config: `{report.config}`",
-        f"- kv bytes per token: `{report.model_kv_bytes_per_token}`",
-        f"- kv bytes per block: `{report.model_kv_bytes_per_block}`",
+        f"- {'trace' if not is_zh else 'trace'}: `{report.trace}`",
+        f"- {'config' if not is_zh else '配置'}: `{report.config}`",
+        f"- {'kv bytes per token' if not is_zh else '每 token KV 字节数'}: `{report.model_kv_bytes_per_token}`",
+        f"- {'kv bytes per block' if not is_zh else '每 block KV 字节数'}: `{report.model_kv_bytes_per_block}`",
         "",
-        "## Exhaustive Reference",
+        "## 穷举参考校验" if is_zh else "## Exhaustive Reference",
         "",
-        f"- content cases verified: `{report.exhaustive_reference.content_case_count}`",
-        f"- relaxed capacity cases verified: `{report.exhaustive_reference.relaxed_capacity_case_count}`",
+        f"- {'content 校验样例数' if is_zh else 'content cases verified'}: `{report.exhaustive_reference.content_case_count}`",
+        f"- {'relaxed capacity 校验样例数' if is_zh else 'relaxed capacity cases verified'}: `{report.exhaustive_reference.relaxed_capacity_case_count}`",
         "",
-        "## Strict Prefix Gap",
+        "## Strict Prefix 反例" if is_zh else "## Strict Prefix Gap",
         "",
-        f"- resident block capacity: `{report.strict_prefix_counterexample.resident_block_capacity}`",
-        f"- requests: `{report.strict_prefix_counterexample.requests}`",
-        f"- content hit blocks: `{report.strict_prefix_counterexample.content_hit_blocks}`",
-        f"- relaxed capacity hit blocks: `{report.strict_prefix_counterexample.relaxed_capacity_hit_blocks}`",
-        f"- strict prefix hit blocks: `{report.strict_prefix_counterexample.strict_prefix_hit_blocks}`",
+        f"- {'常驻 block 容量' if is_zh else 'resident block capacity'}: `{report.strict_prefix_counterexample.resident_block_capacity}`",
+        f"- {'请求序列' if is_zh else 'requests'}: `{report.strict_prefix_counterexample.requests}`",
+        f"- {'content 命中 blocks' if is_zh else 'content hit blocks'}: `{report.strict_prefix_counterexample.content_hit_blocks}`",
+        f"- {'relaxed capacity 命中 blocks' if is_zh else 'relaxed capacity hit blocks'}: `{report.strict_prefix_counterexample.relaxed_capacity_hit_blocks}`",
+        f"- {'strict prefix 命中 blocks' if is_zh else 'strict prefix hit blocks'}: `{report.strict_prefix_counterexample.strict_prefix_hit_blocks}`",
         "",
-        "## Bucket Audit",
+        "## 分桶审计" if is_zh else "## Bucket Audit",
         "",
-        "| bucket | requests | sample | sample fast==naive | total blocks | content hits | relaxed HBM hits | unique nodes | max req blocks | resident blocks | hbm==content |",
+        (
+            "| 分桶 | 请求数 | 抽样数 | 快速实现=朴素实现 | 总 blocks | content 命中 | relaxed HBM 命中 | 唯一前缀节点数 | 单请求最大 blocks | 常驻 blocks | hbm=content |"
+            if is_zh
+            else "| bucket | requests | sample | sample fast==naive | total blocks | content hits | relaxed HBM hits | unique nodes | max req blocks | resident blocks | hbm==content |"
+        ),
         "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
 
@@ -191,7 +209,7 @@ def _render_bucket_audit_markdown(report: BucketAuditReport) -> str:
     lines.extend(
         [
             "",
-            "## Derivation",
+            "## 推导过程" if is_zh else "## Derivation",
             "",
         ]
     )
@@ -208,27 +226,43 @@ def _render_bucket_audit_markdown(report: BucketAuditReport) -> str:
             [
                 f"### {row.bucket_label}",
                 "",
-                f"- window tokens: `{row.window_tokens}`",
-                f"- hbm kv total gb: `{row.hbm_kv_total_gb:.2f}`",
-                f"- resident block capacity: `floor({row.hbm_kv_total_gb:.2f} * 1024^3 / {report.model_kv_bytes_per_block}) = {row.resident_block_capacity}`",
-                f"- total blocks: `{row.total_blocks}`",
-                f"- content hit blocks: `{row.content_hit_blocks}` -> `{_rate_text(row.content_hit_rate)}`",
-                f"- relaxed hbm hit blocks: `{row.relaxed_hbm_hit_blocks}` -> `{_rate_text(row.relaxed_hbm_hit_rate)}`",
-                f"- unique prefix nodes: `{row.unique_prefix_nodes}`",
-                f"- max request blocks: `{row.max_request_blocks}`",
-                f"- resident/max-request ratio: `{resident_to_max_request_ratio:.2f}x`",
+                f"- {'窗口 token 上限' if is_zh else 'window tokens'}: `{row.window_tokens}`",
+                f"- {'HBM KV 总容量 (GB)' if is_zh else 'hbm kv total gb'}: `{row.hbm_kv_total_gb:.2f}`",
+                f"- {'常驻 block 容量' if is_zh else 'resident block capacity'}: `floor({row.hbm_kv_total_gb:.2f} * 1024^3 / {report.model_kv_bytes_per_block}) = {row.resident_block_capacity}`",
+                f"- {'总 blocks' if is_zh else 'total blocks'}: `{row.total_blocks}`",
+                f"- {'content 命中 blocks' if is_zh else 'content hit blocks'}: `{row.content_hit_blocks}` -> `{_rate_text(row.content_hit_rate)}`",
+                f"- {'relaxed HBM 命中 blocks' if is_zh else 'relaxed hbm hit blocks'}: `{row.relaxed_hbm_hit_blocks}` -> `{_rate_text(row.relaxed_hbm_hit_rate)}`",
+                f"- {'唯一前缀节点数' if is_zh else 'unique prefix nodes'}: `{row.unique_prefix_nodes}`",
+                f"- {'单请求最大 blocks' if is_zh else 'max request blocks'}: `{row.max_request_blocks}`",
+                f"- {'常驻容量/单请求最大 blocks 比值' if is_zh else 'resident/max-request ratio'}: `{resident_to_max_request_ratio:.2f}x`",
                 "",
             ]
         )
 
     lines.extend(
         [
-            "## Notes",
+            "## 说明" if is_zh else "## Notes",
             "",
-            "- `content hits` is exact for the defined `strict_prefix_window` semantics.",
-            "- `relaxed HBM hits` is an offline Belady upper bound over block access events, not a strict-prefix optimal oracle.",
-            "- `hbm==content` means the relaxed space model did not lower the content ceiling on that bucket; it does not, by itself, prove strict-prefix optimality.",
-            f"- capacities are counted in blocks where `1 block = {report.model_kv_bytes_per_block} bytes` in this report's model math.",
+            (
+                "- `content hits` 在当前 `strict_prefix_window` 语义下是精确值。"
+                if is_zh
+                else "- `content hits` is exact for the defined `strict_prefix_window` semantics."
+            ),
+            (
+                "- `relaxed HBM hits` 是基于 block access event 的离线 Belady 上界，不是 strict-prefix 最优 oracle。"
+                if is_zh
+                else "- `relaxed HBM hits` is an offline Belady upper bound over block access events, not a strict-prefix optimal oracle."
+            ),
+            (
+                "- `hbm==content` 只表示 relaxed 空间模型没有进一步压低 content ceiling；它本身不能证明 strict-prefix 最优性。"
+                if is_zh
+                else "- `hbm==content` means the relaxed space model did not lower the content ceiling on that bucket; it does not, by itself, prove strict-prefix optimality."
+            ),
+            (
+                f"- 本报告里容量统一按 block 计数，其中 `1 block = {report.model_kv_bytes_per_block} bytes`。"
+                if is_zh
+                else f"- capacities are counted in blocks where `1 block = {report.model_kv_bytes_per_block} bytes` in this report's model math."
+            ),
             "",
         ]
     )
@@ -249,4 +283,3 @@ def _rate_text(value: float | None) -> str:
     if value is None:
         return ""
     return f"{value * 100:.2f}%"
-

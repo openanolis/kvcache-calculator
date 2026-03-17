@@ -65,7 +65,7 @@ kvcache-upper-bound-oracle/
 - `src/kvcache_upper_bound/reporting/buckets.py`：按业务长度桶和部署规格生成汇总表，直接对接“机器数/规格/TPS/HBM/命中率”视图。
 - `src/kvcache_upper_bound/cli/main.py`：命令行入口；负责把 trace、配置、输出目录串成完整离线分析流程。
 - `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器和 strict-prefix 反例搜索器。
-- `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账和 bucket 诊断写成 correctness report。
+- `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账和 bucket 诊断写成 correctness report，并同时输出中英文 Markdown 报告。
 - `src/kvcache_upper_bound/`：分析器实现根目录；后续继续扩展 `oracle/`, `reporting/`, `cli/`。
 - `tests/`：面向口径和边界条件的测试，不写和实现细节强绑定的脆弱测试。
 - `configs/`：样例机器配置、模型配置、实验矩阵。

@@ -36,7 +36,9 @@ kvcache-upper-bound audit-buckets \
 - `details.json`：每个桶的 content/capacity 详细摘要
 - `metadata.json`：本次运行参数与加载统计
 - `correctness_report.json`：reference 校验与 bucket 侧证
-- `correctness_report.md`：可直接阅读的正确性说明
+- `correctness_report.md`：中文正确性说明
+- `correctness_report.zh.md`：中文正确性说明
+- `correctness_report.en.md`：英文正确性说明
 
 ## 配置说明
 
