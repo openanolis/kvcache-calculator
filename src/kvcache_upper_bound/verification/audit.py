@@ -24,9 +24,13 @@ class BucketAuditRow:
     request_count: int
     sample_request_count: int
     sample_content_fast_equals_naive: bool | None
+    window_tokens: int | None
+    hbm_kv_total_gb: float
     total_blocks: int
     content_hit_blocks: int
+    content_hit_rate: float | None
     relaxed_hbm_hit_blocks: int
+    relaxed_hbm_hit_rate: float | None
     unique_prefix_nodes: int
     max_request_blocks: int
     resident_block_capacity: int
@@ -97,9 +101,13 @@ def build_bucket_audit_report(
                 request_count=row.request_count,
                 sample_request_count=len(sample_requests),
                 sample_content_fast_equals_naive=sample_matches if has_requests else None,
+                window_tokens=row.window_tokens,
+                hbm_kv_total_gb=row.hbm_kv_total_gb,
                 total_blocks=detail.content_result.summary.total_blocks,
                 content_hit_blocks=detail.content_result.summary.hit_blocks,
+                content_hit_rate=detail.content_result.summary.block_hit_rate if has_requests else None,
                 relaxed_hbm_hit_blocks=detail.hbm_capacity_result.summary.hit_blocks,
+                relaxed_hbm_hit_rate=detail.hbm_capacity_result.summary.block_hit_rate if has_requests else None,
                 unique_prefix_nodes=access_trace.unique_node_count,
                 max_request_blocks=max((request.effective_blocks for request in normalized.requests), default=0),
                 resident_block_capacity=detail.hbm_capacity_result.summary.resident_block_capacity,
@@ -183,6 +191,38 @@ def _render_bucket_audit_markdown(report: BucketAuditReport) -> str:
     lines.extend(
         [
             "",
+            "## Derivation",
+            "",
+        ]
+    )
+
+    for row in report.rows:
+        if row.request_count == 0:
+            continue
+        resident_to_max_request_ratio = (
+            row.resident_block_capacity / row.max_request_blocks
+            if row.max_request_blocks > 0
+            else 0.0
+        )
+        lines.extend(
+            [
+                f"### {row.bucket_label}",
+                "",
+                f"- window tokens: `{row.window_tokens}`",
+                f"- hbm kv total gb: `{row.hbm_kv_total_gb:.2f}`",
+                f"- resident block capacity: `floor({row.hbm_kv_total_gb:.2f} * 1024^3 / {report.model_kv_bytes_per_block}) = {row.resident_block_capacity}`",
+                f"- total blocks: `{row.total_blocks}`",
+                f"- content hit blocks: `{row.content_hit_blocks}` -> `{_rate_text(row.content_hit_rate)}`",
+                f"- relaxed hbm hit blocks: `{row.relaxed_hbm_hit_blocks}` -> `{_rate_text(row.relaxed_hbm_hit_rate)}`",
+                f"- unique prefix nodes: `{row.unique_prefix_nodes}`",
+                f"- max request blocks: `{row.max_request_blocks}`",
+                f"- resident/max-request ratio: `{resident_to_max_request_ratio:.2f}x`",
+                "",
+            ]
+        )
+
+    lines.extend(
+        [
             "## Notes",
             "",
             "- `content hits` is exact for the defined `strict_prefix_window` semantics.",
@@ -203,3 +243,10 @@ def _bool_text(value: bool | None) -> str:
     if value is None:
         return ""
     return "yes" if value else "no"
+
+
+def _rate_text(value: float | None) -> str:
+    if value is None:
+        return ""
+    return f"{value * 100:.2f}%"
+
