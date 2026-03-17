@@ -10,6 +10,10 @@ from kvcache_upper_bound.reporting import (
     load_bucket_analysis_config,
     write_bucket_outputs,
 )
+from kvcache_upper_bound.verification import (
+    build_bucket_audit_report,
+    write_bucket_audit_outputs,
+)
 
 
 def main() -> int:
@@ -29,10 +33,31 @@ def main() -> int:
         default=None,
         help="Optional cap for quick iteration",
     )
+    audit_parser = subparsers.add_parser(
+        "audit-buckets",
+        help="Generate correctness and trace-shape audits for a bucket analysis config",
+    )
+    audit_parser.add_argument("--trace", required=True, help="Local JSONL path or http(s) URL")
+    audit_parser.add_argument("--config", required=True, help="Bucket analysis JSON config")
+    audit_parser.add_argument("--output-dir", required=True, help="Directory for CSV/JSON outputs")
+    audit_parser.add_argument(
+        "--max-records",
+        type=int,
+        default=None,
+        help="Optional cap for quick iteration",
+    )
+    audit_parser.add_argument(
+        "--sample-request-limit",
+        type=int,
+        default=256,
+        help="Prefix sample size for fast-vs-naive content cross-checks",
+    )
 
     args = parser.parse_args()
     if args.command == "analyze-buckets":
         return _run_analyze_buckets(args)
+    if args.command == "audit-buckets":
+        return _run_audit_buckets(args)
     raise ValueError(f"unsupported command: {args.command}")
 
 
@@ -72,6 +97,43 @@ def _run_analyze_buckets(args: argparse.Namespace) -> int:
         encoding="utf-8",
     )
     print(json.dumps(summary_payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _run_audit_buckets(args: argparse.Namespace) -> int:
+    config = load_bucket_analysis_config(args.config)
+    trace_result = load_request_records(args.trace, max_records=args.max_records)
+    analysis_result = analyze_bucket_deployments(trace_result.records, config)
+    output_dir = Path(args.output_dir)
+    write_bucket_outputs(analysis_result, output_dir)
+
+    audit_report = build_bucket_audit_report(
+        trace_result.records,
+        config=config,
+        analysis_result=analysis_result,
+        trace=args.trace,
+        config_path=str(Path(args.config).resolve()),
+        sample_request_limit=args.sample_request_limit,
+    )
+    write_bucket_audit_outputs(audit_report, output_dir)
+
+    payload = {
+        "trace": args.trace,
+        "config": str(Path(args.config).resolve()),
+        "output_dir": str(output_dir.resolve()),
+        "loaded_records": trace_result.stats.loaded_records,
+        "sample_request_limit": args.sample_request_limit,
+        "content_case_count": audit_report.exhaustive_reference.content_case_count,
+        "relaxed_capacity_case_count": audit_report.exhaustive_reference.relaxed_capacity_case_count,
+        "strict_prefix_counterexample": {
+            "requests": audit_report.strict_prefix_counterexample.requests,
+            "resident_block_capacity": audit_report.strict_prefix_counterexample.resident_block_capacity,
+            "content_hit_blocks": audit_report.strict_prefix_counterexample.content_hit_blocks,
+            "relaxed_capacity_hit_blocks": audit_report.strict_prefix_counterexample.relaxed_capacity_hit_blocks,
+            "strict_prefix_hit_blocks": audit_report.strict_prefix_counterexample.strict_prefix_hit_blocks,
+        },
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
 

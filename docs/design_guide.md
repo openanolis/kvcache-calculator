@@ -41,6 +41,24 @@
 
 ---
 
+## 正确性策略
+
+当前项目把“证明正确”拆成三类动作：
+
+1. **定义证明**
+   - 先冻结 window、scope、hit rate 和模型公式，避免实现时偷偷换口径。
+2. **reference 对账**
+   - 对 `content upper bound` 用朴素 reference 做逐例对账。
+   - 对当前 `capacity upper bound` 用暴力 reference 对账同一个 relaxed 目标。
+3. **反例暴露**
+   - 对严格前缀语义与 relaxed 容量目标之间的差异，不掩盖，直接输出最小反例。
+
+这套策略的目的不是粉饰结果，而是把“已经被证明的部分”和“仍然是上界近似的部分”切开。
+
+详细说明见 `docs/correctness_guide.md`。
+
+---
+
 ## 冻结口径：先把定义钉死
 
 ### 1. Window 语义

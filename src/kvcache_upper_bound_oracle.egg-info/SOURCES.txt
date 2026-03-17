@@ -15,6 +15,9 @@ src/kvcache_upper_bound/oracle/content.py
 src/kvcache_upper_bound/oracle/prefix_trie.py
 src/kvcache_upper_bound/reporting/__init__.py
 src/kvcache_upper_bound/reporting/buckets.py
+src/kvcache_upper_bound/verification/__init__.py
+src/kvcache_upper_bound/verification/audit.py
+src/kvcache_upper_bound/verification/reference.py
 src/kvcache_upper_bound_oracle.egg-info/PKG-INFO
 src/kvcache_upper_bound_oracle.egg-info/SOURCES.txt
 src/kvcache_upper_bound_oracle.egg-info/dependency_links.txt
@@ -25,3 +28,4 @@ tests/test_capacity_oracle.py
 tests/test_content_oracle.py
 tests/test_normalizer.py
 tests/test_trace_loader.py
+tests/test_verification_reference.py
