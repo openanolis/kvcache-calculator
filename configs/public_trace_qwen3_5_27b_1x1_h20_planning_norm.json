@@ -1,0 +1,124 @@
+{
+  "model_profile": {
+    "n_layers": 64,
+    "kv_cache_layer_count": 16,
+    "n_kv_heads": 4,
+    "head_dim": 256,
+    "dtype_bytes": 2,
+    "parameter_count": 27781419504,
+    "weight_dtype_bytes": 2,
+    "tp_size": 1,
+    "pp_size": 1,
+    "block_size": 16
+  },
+  "scope": "global",
+  "block_size": 16,
+  "prefill_savings_alpha": 0.8,
+  "bucket_deployments": [
+    {
+      "label": "0-32K",
+      "lower_tokens": 0,
+      "upper_tokens": 32768,
+      "accelerator_count": 1,
+      "cards_per_machine": 1,
+      "machine_spec": "h20",
+      "gpu_memory_gb_per_card": 96,
+      "extra_capacity_tiers": [
+        {
+          "label": "HBM+单机 1T 命中率",
+          "kv_gb_per_machine": 1024
+        },
+        {
+          "label": "HBM+单机 10T 命中率",
+          "kv_gb_per_machine": 10240
+        }
+      ],
+      "baseline_per_card_tps": 1.0,
+      "planning_target_total_tps": 8.0
+    },
+    {
+      "label": "32-64K",
+      "lower_tokens": 32768,
+      "upper_tokens": 65536,
+      "accelerator_count": 1,
+      "cards_per_machine": 1,
+      "machine_spec": "h20",
+      "gpu_memory_gb_per_card": 96,
+      "extra_capacity_tiers": [
+        {
+          "label": "HBM+单机 1T 命中率",
+          "kv_gb_per_machine": 1024
+        },
+        {
+          "label": "HBM+单机 10T 命中率",
+          "kv_gb_per_machine": 10240
+        }
+      ],
+      "baseline_per_card_tps": 1.0,
+      "planning_target_total_tps": 8.0
+    },
+    {
+      "label": "64-128K",
+      "lower_tokens": 65536,
+      "upper_tokens": 131072,
+      "accelerator_count": 1,
+      "cards_per_machine": 1,
+      "machine_spec": "h20",
+      "gpu_memory_gb_per_card": 96,
+      "extra_capacity_tiers": [
+        {
+          "label": "HBM+单机 1T 命中率",
+          "kv_gb_per_machine": 1024
+        },
+        {
+          "label": "HBM+单机 10T 命中率",
+          "kv_gb_per_machine": 10240
+        }
+      ],
+      "baseline_per_card_tps": 1.0,
+      "planning_target_total_tps": 8.0
+    },
+    {
+      "label": "128K-176K",
+      "lower_tokens": 131072,
+      "upper_tokens": 180224,
+      "accelerator_count": 1,
+      "cards_per_machine": 1,
+      "machine_spec": "h20",
+      "gpu_memory_gb_per_card": 96,
+      "extra_capacity_tiers": [
+        {
+          "label": "HBM+单机 1T 命中率",
+          "kv_gb_per_machine": 1024
+        },
+        {
+          "label": "HBM+单机 10T 命中率",
+          "kv_gb_per_machine": 10240
+        }
+      ],
+      "baseline_per_card_tps": 1.0,
+      "planning_target_total_tps": 8.0
+    },
+    {
+      "label": "176K+",
+      "lower_tokens": 180224,
+      "upper_tokens": null,
+      "accelerator_count": 1,
+      "cards_per_machine": 1,
+      "machine_spec": "h20",
+      "gpu_memory_gb_per_card": 96,
+      "extra_capacity_tiers": [
+        {
+          "label": "HBM+单机 1T 命中率",
+          "kv_gb_per_machine": 1024
+        },
+        {
+          "label": "HBM+单机 10T 命中率",
+          "kv_gb_per_machine": 10240
+        }
+      ],
+      "baseline_per_card_tps": 1.0,
+      "planning_target_total_tps": 8.0
+    }
+  ]
+}

@@ -13,7 +13,9 @@ kvcache-upper-bound-oracle/
 │   └── four_layer_model.md
 ├── configs/
 │   ├── public_trace_qwen3_5_27b.json
-│   └── public_trace_qwen3_5_27b_1x1_h20.json
+│   ├── public_trace_qwen3_5_27b_1x1_h20.json
+│   ├── public_trace_qwen3_5_27b_1x1_h20_planning_norm.json
+│   └── public_trace_qwen3_5_27b_planning_norm.json
 ├── outputs/
 ├── src/
 │   └── kvcache_upper_bound/
@@ -97,6 +99,8 @@ kvcache-upper-bound-oracle/
 - `tests/`：面向口径和边界条件的测试，不写和实现细节强绑定的脆弱测试。
 - `configs/public_trace_qwen3_5_27b.json`：公开 `1` 机 `8` 卡 `h20` 样例；适合看“容量基本不构成约束”时的上界结果。
 - `configs/public_trace_qwen3_5_27b_1x1_h20.json`：公开 `1` 机 `1` 卡 `h20` 样例；专门用来放大单卡显存约束，观察 HBM 上限如何压低命中率。
+- `configs/public_trace_qwen3_5_27b_planning_norm.json`：公开 `1` 机 `8` 卡归一化规划样例；固定 `baseline_per_card_tps = 1`、`planning_target_total_tps = 8`，用于直接演示目标 TPS 规划。
+- `configs/public_trace_qwen3_5_27b_1x1_h20_planning_norm.json`：公开 `1` 机 `1` 卡归一化规划样例；和 `1x8` 版本共享同一目标 TPS，专门用来横向比较部署形态。
 - `configs/`：样例机器配置、模型配置、实验矩阵。
 - `outputs/`：本地产出目录，只放实验结果，不承载源码语义。
 
@@ -127,7 +131,7 @@ kvcache-upper-bound-oracle/
 - `reporting/` 输出要坚持主次分离：命中估算是主结果，`TPS / 机器数` 是派生结果；不要把派生列淹没主口径。
 - 上界规划和策略规划必须显式分开：`planning_strict_prefix.csv` 代表 exact strict-prefix，`planning_lru.csv` 代表 LRU；不要再使用含混的 `HBM TPS Gain` 之类列名。
 - 绝对规划必须显式提供锚点：`baseline_per_card_tps` 给出无命中单卡基线吞吐，`planning_target_total_tps` 给出目标总 TPS；只有这两个量到位，`最小卡数 / 最小机器数` 才有可比性。
-- `同负载估算卡数 / 机器数` 只能当固定命中率下的算力等效值；真实部署规划必须回代“卡数变化 -> 容量变化 -> 命中率变化”这个闭环。
+- `同负载估算卡数 / 机器数` 只能当固定命中率下的算力等效值；它们留在 `details.json` 做诊断，不要再放进主 CSV 干扰部署规划阅读。
 - `LRU` 既是命中基线，也是策略规划输入；但它不能替代 exact strict-prefix 的上界地位。
 
 ## 开发规范
@@ -161,3 +165,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-18`：继续把 `reporting/output.py` 拆成 `table_common.py / hit_output.py / planning_output.py / output.py` 四层；现在输出编排、命中视图、规划视图、公共列名完全分离，单文件重新回到可维护规模。
 - `2026-03-18`：把 strict-prefix 规划文件显式改名为 `planning_strict_prefix.csv`，并新增公开 `1` 机 `1` 卡 `h20` 配置，专门暴露单卡显存约束下的命中率下降。
 - `2026-03-18`：新增 `reporting/config_loader.py` 与 `reporting/planning_search.py`；把配置解析/校验和 target-TPS 规划搜索从 `buckets.py` 拆开，同时新增 `baseline_per_card_tps + planning_target_total_tps -> 最小卡数 / 最小机器数` 的闭环规划结果。
+- `2026-03-18`：精简主 CSV 规划列：移除 `同负载估算卡数 / 机器数`，只保留 `TPS Gain / 估算总 TPS / 当前配置可承载总 TPS / 目标总 TPS 最小卡数 / 最小机器数`；同时新增两份归一化 planning 样例配置，方便直接比较 `1x8` 与 `1x1` 部署。

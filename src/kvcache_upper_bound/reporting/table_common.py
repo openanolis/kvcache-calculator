@@ -144,14 +144,6 @@ def strict_prefix_estimated_total_tps_column(label: str) -> str:
     return f"{strict_prefix_column_base(label)} Strict-Prefix 估算总 TPS"
 
 
-def strict_prefix_estimated_card_count_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} Strict-Prefix 同负载估算卡数"
-
-
-def strict_prefix_estimated_machine_count_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} Strict-Prefix 同负载估算机器数"
-
-
 def strict_prefix_current_cluster_capacity_tps_column(label: str) -> str:
     return f"{strict_prefix_column_base(label)} Strict-Prefix 当前配置可承载总 TPS"
 
@@ -170,14 +162,6 @@ def lru_tps_gain_column(label: str) -> str:
 
 def lru_estimated_total_tps_column(label: str) -> str:
     return f"{strict_prefix_column_base(label)} LRU 估算总 TPS"
-
-
-def lru_estimated_card_count_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} LRU 同负载估算卡数"
-
-
-def lru_estimated_machine_count_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} LRU 同负载估算机器数"
 
 
 def lru_current_cluster_capacity_tps_column(label: str) -> str:

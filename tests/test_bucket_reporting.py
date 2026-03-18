@@ -48,6 +48,50 @@ class BucketReportingTest(unittest.TestCase):
         self.assertAlmostEqual(result.rows[0].hbm_kv_gb_per_card, 44.2530737221241)
         self.assertAlmostEqual(result.rows[0].hbm_kv_total_gb, 44.2530737221241)
 
+    def test_public_normalized_planning_configs_share_same_target_tps(self) -> None:
+        repo_root = Path(__file__).resolve().parent.parent
+        cluster_config = load_bucket_analysis_config(
+            repo_root / "configs" / "public_trace_qwen3_5_27b_planning_norm.json"
+        )
+        single_card_config = load_bucket_analysis_config(
+            repo_root / "configs" / "public_trace_qwen3_5_27b_1x1_h20_planning_norm.json"
+        )
+
+        self.assertTrue(cluster_config.bucket_deployments)
+        self.assertTrue(single_card_config.bucket_deployments)
+        self.assertEqual(
+            {
+                bucket.planning_target_total_tps
+                for bucket in cluster_config.bucket_deployments
+            },
+            {8.0},
+        )
+        self.assertEqual(
+            {
+                bucket.planning_target_total_tps
+                for bucket in single_card_config.bucket_deployments
+            },
+            {8.0},
+        )
+        self.assertEqual(
+            {
+                bucket.baseline_per_card_tps
+                for bucket in cluster_config.bucket_deployments
+            },
+            {1.0},
+        )
+        self.assertEqual(
+            {
+                bucket.baseline_per_card_tps
+                for bucket in single_card_config.bucket_deployments
+            },
+            {1.0},
+        )
+        self.assertEqual(cluster_config.bucket_deployments[0].accelerator_count, 8)
+        self.assertEqual(cluster_config.bucket_deployments[0].cards_per_machine, 8)
+        self.assertEqual(single_card_config.bucket_deployments[0].accelerator_count, 1)
+        self.assertEqual(single_card_config.bucket_deployments[0].cards_per_machine, 1)
+
     def test_bucket_reporting_can_derive_hbm_kv_budget_from_gpu_memory_and_model_weights(self) -> None:
         records = [
             RequestRecord(

@@ -460,15 +460,15 @@ kvcache-upper-bound audit-buckets \
 |------|------|
 | `summary.csv` | 兼容汇总表；同时保留命中结果与派生规划列 |
 | `hit_summary.csv` | 核心命中估算表；只放 `content / relaxed / lru / replay / exact strict-prefix / proof source` |
-| `planning_strict_prefix.csv` | 上界规划表；基础列放 exact strict-prefix 命中率及其 `TPS Gain`；若配置了 `baseline_per_card_tps + planning_target_total_tps`，再额外输出 `当前配置可承载总 TPS / 目标总 TPS 最小卡数 / 目标总 TPS 最小机器数` |
-| `planning_lru.csv` | 策略规划表；基础列放 LRU 命中率及其 `TPS Gain`；若配置了 `baseline_per_card_tps + planning_target_total_tps`，再额外输出 `当前配置可承载总 TPS / 目标总 TPS 最小卡数 / 目标总 TPS 最小机器数` |
+| `planning_strict_prefix.csv` | 上界规划表；基础列只保留 exact strict-prefix 的 `TPS Gain`，若配置了 `total_tps` 则再带 `估算总 TPS`，若配置了 `baseline_per_card_tps + planning_target_total_tps` 则再额外输出 `当前配置可承载总 TPS / 目标总 TPS 最小卡数 / 最小机器数` |
+| `planning_lru.csv` | 策略规划表；基础列只保留 LRU 的 `TPS Gain`，其余规则与 `planning_strict_prefix.csv` 对齐 |
 | `details.json` | 每个桶的 content / relaxed / exact strict-prefix 详细摘要 |
 | `metadata.json` | 输入参数、加载统计、报表行镜像 |
 | `correctness_report.{json,md,zh.md,en.md}` | reference 校验、trace 采样对账、strict-prefix 求解路径说明 |
 
 其中：
 
-- `同负载估算卡数 / 机器数` 只是固定当前命中率不变时的算力等效值。
+- `同负载估算卡数 / 机器数` 只保留在 `details.json`，用于解释局部算力等效值。
 - `目标总 TPS 最小卡数 / 机器数` 才是闭环回代容量约束后的绝对规划结果。
 
 ---

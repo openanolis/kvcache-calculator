@@ -9,8 +9,6 @@ from .table_common import (
     format_rate,
     lru_column,
     lru_current_cluster_capacity_tps_column,
-    lru_estimated_card_count_column,
-    lru_estimated_machine_count_column,
     lru_estimated_total_tps_column,
     lru_min_card_count_for_target_total_tps_column,
     lru_min_machine_count_for_target_total_tps_column,
@@ -21,8 +19,6 @@ from .table_common import (
     row_range_payload,
     strict_prefix_column,
     strict_prefix_current_cluster_capacity_tps_column,
-    strict_prefix_estimated_card_count_column,
-    strict_prefix_estimated_machine_count_column,
     strict_prefix_estimated_total_tps_column,
     strict_prefix_min_card_count_for_target_total_tps_column,
     strict_prefix_min_machine_count_for_target_total_tps_column,
@@ -169,26 +165,14 @@ def lru_planning_payload(
 
 
 def _base_strict_prefix_metric_columns(*, include_total_tps: bool) -> list[str]:
-    columns = [
-        "HBM Strict-Prefix TPS Gain",
-        "HBM Strict-Prefix 同负载估算卡数",
-        "HBM Strict-Prefix 同负载估算机器数",
-    ]
+    columns = ["HBM Strict-Prefix TPS Gain"]
     if include_total_tps:
         columns.append("HBM Strict-Prefix 估算总 TPS")
     return columns
 
 
 def _base_strict_prefix_metric_payload(*, row: BucketReportRow, include_total_tps: bool) -> dict[str, Any]:
-    payload = {
-        "HBM Strict-Prefix TPS Gain": format_number(row.hbm_strict_prefix_tps_gain),
-        "HBM Strict-Prefix 同负载估算卡数": format_number(
-            row.hbm_strict_prefix_estimated_card_count_for_same_load
-        ),
-        "HBM Strict-Prefix 同负载估算机器数": format_number(
-            row.hbm_strict_prefix_estimated_machine_count_for_same_load
-        ),
-    }
+    payload = {"HBM Strict-Prefix TPS Gain": format_number(row.hbm_strict_prefix_tps_gain)}
     if include_total_tps:
         payload["HBM Strict-Prefix 估算总 TPS"] = format_number(
             row.hbm_strict_prefix_estimated_total_tps
@@ -197,11 +181,7 @@ def _base_strict_prefix_metric_payload(*, row: BucketReportRow, include_total_tp
 
 
 def _tier_strict_prefix_metric_columns(*, label: str, include_total_tps: bool) -> list[str]:
-    columns = [
-        strict_prefix_tps_gain_column(label),
-        strict_prefix_estimated_card_count_column(label),
-        strict_prefix_estimated_machine_count_column(label),
-    ]
+    columns = [strict_prefix_tps_gain_column(label)]
     if include_total_tps:
         columns.append(strict_prefix_estimated_total_tps_column(label))
     return columns
@@ -216,13 +196,7 @@ def _tier_strict_prefix_metric_payload(
     payload = {
         strict_prefix_tps_gain_column(label): format_number(
             row.extra_tier_strict_prefix_tps_gains.get(label)
-        ),
-        strict_prefix_estimated_card_count_column(label): format_number(
-            row.extra_tier_strict_prefix_estimated_card_counts_for_same_load.get(label)
-        ),
-        strict_prefix_estimated_machine_count_column(label): format_number(
-            row.extra_tier_strict_prefix_estimated_machine_counts_for_same_load.get(label)
-        ),
+        )
     }
     if include_total_tps:
         payload[strict_prefix_estimated_total_tps_column(label)] = format_number(
@@ -280,24 +254,14 @@ def _tier_strict_prefix_target_metric_payload(
 
 
 def _base_lru_metric_columns(*, include_total_tps: bool) -> list[str]:
-    columns = [
-        "HBM LRU TPS Gain",
-        "HBM LRU 同负载估算卡数",
-        "HBM LRU 同负载估算机器数",
-    ]
+    columns = ["HBM LRU TPS Gain"]
     if include_total_tps:
         columns.append("HBM LRU 估算总 TPS")
     return columns
 
 
 def _base_lru_metric_payload(*, row: BucketReportRow, include_total_tps: bool) -> dict[str, Any]:
-    payload = {
-        "HBM LRU TPS Gain": format_number(row.hbm_lru_tps_gain),
-        "HBM LRU 同负载估算卡数": format_number(row.hbm_lru_estimated_card_count_for_same_load),
-        "HBM LRU 同负载估算机器数": format_number(
-            row.hbm_lru_estimated_machine_count_for_same_load
-        ),
-    }
+    payload = {"HBM LRU TPS Gain": format_number(row.hbm_lru_tps_gain)}
     if include_total_tps:
         payload["HBM LRU 估算总 TPS"] = format_number(row.hbm_lru_estimated_total_tps)
     return payload
@@ -324,11 +288,7 @@ def _base_lru_target_metric_payload(*, row: BucketReportRow) -> dict[str, Any]:
 
 
 def _tier_lru_metric_columns(*, label: str, include_total_tps: bool) -> list[str]:
-    columns = [
-        lru_tps_gain_column(label),
-        lru_estimated_card_count_column(label),
-        lru_estimated_machine_count_column(label),
-    ]
+    columns = [lru_tps_gain_column(label)]
     if include_total_tps:
         columns.append(lru_estimated_total_tps_column(label))
     return columns
@@ -341,13 +301,7 @@ def _tier_lru_metric_payload(
     include_total_tps: bool,
 ) -> dict[str, Any]:
     payload = {
-        lru_tps_gain_column(label): format_number(row.extra_tier_lru_tps_gains.get(label)),
-        lru_estimated_card_count_column(label): format_number(
-            row.extra_tier_lru_estimated_card_counts_for_same_load.get(label)
-        ),
-        lru_estimated_machine_count_column(label): format_number(
-            row.extra_tier_lru_estimated_machine_counts_for_same_load.get(label)
-        ),
+        lru_tps_gain_column(label): format_number(row.extra_tier_lru_tps_gains.get(label))
     }
     if include_total_tps:
         payload[lru_estimated_total_tps_column(label)] = format_number(

@@ -66,7 +66,7 @@ LRU 现在已经接进主报表，但它的身份很明确：
 
 ### 1. 固定命中率的算力等效值
 
-这组列是辅助解释值，公式固定为：
+这组值现在只保留在 `details.json`，主 CSV 不再展示。它们仍然是有用的辅助解释值，公式固定为：
 
 ```text
 TPS Gain = 1 / (1 - alpha * h)
@@ -82,7 +82,7 @@ Estimated Machine Count For Same Load = Estimated Card Count / Cards Per Machine
 - `planning_strict_prefix.csv` 用 `exact strict-prefix` 命中率代入。
 - `planning_lru.csv` 用 `LRU` 命中率代入。
 
-这组列不会回代“缩容后容量变小、命中率也会变”这件事，所以它只能当局部算力等效值，不能直接当最终部署答案。
+这组值不会回代“缩容后容量变小、命中率也会变”这件事，所以它只能当局部算力等效值，不能直接当最终部署答案。
 
 ### 2. 目标总 TPS 下的自洽规划
 
@@ -117,7 +117,7 @@ machine/card count
 2. 看 `HBM Strict-Prefix 命中率`，判断当前 HBM 下真正能保住多少复用。
 3. 看 `HBM LRU 命中率`，判断简单在线策略和最优值差多远。
 4. 看额外容量层的 `Strict-Prefix 命中率`，判断扩容值不值得。
-5. 最后看规划表：优先读 `目标总 TPS 最小卡数 / 最小机器数`；只有在没有目标 TPS 锚点时，才把 `同负载估算卡数 / 机器数` 当辅助解释。
+5. 最后看规划表：优先读 `目标总 TPS 最小卡数 / 最小机器数`；如果还想看“固定命中率不回代容量变化”的局部等效值，再去查 `details.json`。
 
 各文件职责固定如下：
 
@@ -161,7 +161,7 @@ machine/card count
 下面这些还不是 oracle 结论：
 
 - `alpha` 的取值是否贴合某个线上系统。
-- `TPS Gain / 估算总 TPS / 同负载估算卡数 / 同负载估算机器数` 是否等于真实线上收益。
+- `TPS Gain / 估算总 TPS / details.json` 里的同负载等效值是否等于真实线上收益。
 - `baseline_per_card_tps` 是否等于真实线上单卡基线吞吐。
 - 带宽、搬运时延、跨层存储命中开销是否已经被完整建模。
 

@@ -38,6 +38,12 @@ kvcache-upper-bound audit-buckets \
 如果想故意放大 HBM 约束、观察单卡显存对命中率的限制，可以直接用
 `configs/public_trace_qwen3_5_27b_1x1_h20.json`。
 
+如果想直接看“统一目标总 TPS 下，1x8 和 1x1 两种部署形态怎么比较”，可以用
+`configs/public_trace_qwen3_5_27b_planning_norm.json` 和
+`configs/public_trace_qwen3_5_27b_1x1_h20_planning_norm.json`。
+这两个样例把 `baseline_per_card_tps = 1.0`、`planning_target_total_tps = 8.0`
+写死成归一化规划锚点，方便直接比较部署形态；它们是演示口径，不代表真实线上 TPS。
+
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `model_profile` | 是 | `n_layers / n_kv_heads / head_dim / dtype_bytes / block_size` |
@@ -67,8 +73,8 @@ kvcache-upper-bound audit-buckets \
 |------|------|------------|
 | `summary.csv` | 兼容总表，混合展示命中结果和规划结果 | 想快速扫一眼全部结果 |
 | `hit_summary.csv` | 只放命中相关列：content / relaxed / LRU / strict-prefix | 只关心 KV 命中估算 |
-| `planning_strict_prefix.csv` | 上界规划表；统一基于 exact strict-prefix 命中率 | 想看理论最优下最多能省多少机器 |
-| `planning_lru.csv` | 策略规划表；统一基于 LRU 命中率 | 想看如果实际采用 LRU，需要多少机器 |
+| `planning_strict_prefix.csv` | 上界规划表；统一基于 exact strict-prefix 命中率，只保留 `TPS Gain / 估算总 TPS / 当前配置可承载总 TPS / 目标总 TPS 最小卡数 / 最小机器数` 这些主列 | 想看理论最优下的资源规划 |
+| `planning_lru.csv` | 策略规划表；统一基于 LRU 命中率，只保留同一组主规划列 | 想看如果实际采用 LRU，需要多少机器 |
 | `details.json` | 每个桶的详细统计摘要 | 想查具体数字和中间结果 |
 | `metadata.json` | 输入参数、加载统计、归一化后的桶配置 | 想确认这次运行到底按什么口径算的 |
 | `correctness_report.zh.md` | 中文正确性报告 | 想确认结果边界和证明路径 |
@@ -104,7 +110,7 @@ LRU baseline <= exact strict-prefix <= relaxed upper bound <= content upper boun
 
 这组列是自洽的绝对规划结果：搜索时会把“卡数变化 -> HBM/扩展容量变化 -> 命中率变化 -> 集群总 TPS 变化”放进同一个闭环。
 
-`同负载估算卡数 / 机器数` 仍然保留，但它只是“固定当前命中率不变时的算力等效值”，不能替代目标 TPS 下的真实部署规划。
+`同负载估算卡数 / 机器数` 仍然保留在 `details.json`，但不再放进主 CSV。它只是“固定当前命中率不变时的算力等效值”，不能替代目标 TPS 下的真实部署规划。
 
 ## 文档入口
 
