@@ -32,6 +32,32 @@ class BucketCapacityTier:
 
 
 @dataclass(frozen=True)
+class BucketTierInputSummary:
+    label: str
+    extra_kv_gb_per_machine: float
+    extra_kv_total_gb: float
+    total_kv_gb: float
+
+
+@dataclass(frozen=True)
+class BucketInputSummary:
+    bucket_label: str
+    input_lower_tokens: int
+    input_upper_tokens: int | None
+    machine_count: int
+    card_count: int
+    cards_per_machine: int
+    machine_spec: str
+    total_tps_input: float | None
+    total_tps_input_unit: str | None
+    total_tps_cluster_total: float | None
+    hbm_kv_gb_per_card: float
+    hbm_kv_total_gb: float
+    model_weight_gb_per_card: float | None
+    extra_capacity_tiers: tuple[BucketTierInputSummary, ...]
+
+
+@dataclass(frozen=True)
 class BucketDeploymentConfig:
     label: str
     lower_tokens: int
@@ -190,6 +216,7 @@ def load_bucket_analysis_config(path: str | Path) -> BucketAnalysisConfig:
     )
     if not bucket_deployments:
         raise ValueError("bucket_deployments must not be empty")
+    _validate_bucket_deployments(bucket_deployments)
     return BucketAnalysisConfig(
         model_profile=model_profile,
         scope=scope,
@@ -414,6 +441,40 @@ def write_bucket_outputs(result: BucketAnalysisResult, output_dir: str | Path) -
     _write_hit_summary_csv(hit_summary_csv_path, result.rows, tier_labels)
     _write_planning_summary_csv(planning_summary_csv_path, result.rows, tier_labels)
     _write_details_json(details_json_path, result)
+
+
+def build_bucket_input_summaries(result: BucketAnalysisResult) -> list[BucketInputSummary]:
+    summaries: list[BucketInputSummary] = []
+    for row in result.rows:
+        detail = result.details[row.bucket_label]
+        tier_summaries = tuple(
+            BucketTierInputSummary(
+                label=tier.label,
+                extra_kv_gb_per_machine=tier.kv_gb_per_machine,
+                extra_kv_total_gb=row.machine_count * tier.kv_gb_per_machine,
+                total_kv_gb=row.hbm_kv_total_gb + row.machine_count * tier.kv_gb_per_machine,
+            )
+            for tier in detail.config.extra_capacity_tiers
+        )
+        summaries.append(
+            BucketInputSummary(
+                bucket_label=row.bucket_label,
+                input_lower_tokens=row.input_lower_tokens,
+                input_upper_tokens=row.input_upper_tokens,
+                machine_count=row.machine_count,
+                card_count=row.card_count,
+                cards_per_machine=row.cards_per_machine,
+                machine_spec=row.machine_spec,
+                total_tps_input=detail.config.total_tps,
+                total_tps_input_unit=row.total_tps_input_unit,
+                total_tps_cluster_total=row.total_tps,
+                hbm_kv_gb_per_card=row.hbm_kv_gb_per_card,
+                hbm_kv_total_gb=row.hbm_kv_total_gb,
+                model_weight_gb_per_card=row.model_weight_gb_per_card,
+                extra_capacity_tiers=tier_summaries,
+            )
+        )
+    return summaries
 
 
 def _write_summary_csv(
@@ -974,6 +1035,102 @@ def _load_bucket_deployment(payload: dict[str, Any]) -> BucketDeploymentConfig:
         actual_hit_rate_note=actual_hit_rate_note,
         extra_capacity_tiers=extra_tiers,
     )
+
+
+def _validate_bucket_deployments(
+    bucket_deployments: tuple[BucketDeploymentConfig, ...],
+) -> None:
+    seen_labels: set[str] = set()
+    previous_upper: int | None = None
+    previous_label: str | None = None
+    saw_open_ended = False
+
+    for deployment in bucket_deployments:
+        if deployment.label in seen_labels:
+            raise ValueError(f"duplicate bucket label: {deployment.label}")
+        seen_labels.add(deployment.label)
+        deployment.node_count()
+        deployment.resolved_total_tps()
+        _validate_bucket_bounds(deployment)
+        _validate_budget_fields(deployment)
+        _validate_extra_capacity_tiers(deployment)
+        if saw_open_ended:
+            raise ValueError("open-ended bucket must be the last bucket_deployment")
+        if previous_upper is not None and deployment.lower_tokens < previous_upper:
+            raise ValueError(
+                "bucket_deployments must be sorted by lower_tokens without overlap; "
+                f"{deployment.label} starts at {deployment.lower_tokens} before {previous_label} ends at {previous_upper}"
+            )
+        previous_upper = deployment.upper_tokens
+        previous_label = deployment.label
+        if deployment.upper_tokens is None:
+            saw_open_ended = True
+
+
+def _validate_bucket_bounds(deployment: BucketDeploymentConfig) -> None:
+    if deployment.lower_tokens < 0:
+        raise ValueError(f"{deployment.label}: lower_tokens must be non-negative")
+    if deployment.upper_tokens is not None and deployment.upper_tokens <= deployment.lower_tokens:
+        raise ValueError(f"{deployment.label}: upper_tokens must be greater than lower_tokens")
+    if deployment.window_tokens is not None and deployment.window_tokens < 0:
+        raise ValueError(f"{deployment.label}: window_tokens must be non-negative")
+    if deployment.total_tps is not None and deployment.total_tps < 0:
+        raise ValueError(f"{deployment.label}: total_tps must be non-negative")
+    if deployment.actual_hit_rate is not None and not 0.0 <= deployment.actual_hit_rate <= 1.0:
+        raise ValueError(f"{deployment.label}: actual_hit_rate must be within [0, 1]")
+
+
+def _validate_budget_fields(deployment: BucketDeploymentConfig) -> None:
+    if deployment.hbm_kv_gb_per_card is not None and deployment.hbm_kv_gb_per_card < 0:
+        raise ValueError(f"{deployment.label}: hbm_kv_gb_per_card must be non-negative")
+    if deployment.gpu_memory_gb_per_card is not None and deployment.gpu_memory_gb_per_card <= 0:
+        raise ValueError(f"{deployment.label}: gpu_memory_gb_per_card must be positive")
+    if deployment.runtime_reserve_gb_per_card < 0:
+        raise ValueError(f"{deployment.label}: runtime_reserve_gb_per_card must be non-negative")
+    if deployment.hbm_kv_utilization is not None and not 0.0 <= deployment.hbm_kv_utilization <= 1.0:
+        raise ValueError(f"{deployment.label}: hbm_kv_utilization must be within [0, 1]")
+    if (
+        deployment.hbm_kv_gb_per_card is not None
+        and deployment.gpu_memory_gb_per_card is not None
+    ):
+        raise ValueError(
+            f"{deployment.label}: provide either hbm_kv_gb_per_card or gpu_memory_gb_per_card, not both"
+        )
+    if (
+        deployment.hbm_kv_utilization is not None
+        and deployment.gpu_memory_gb_per_card is None
+    ):
+        raise ValueError(
+            f"{deployment.label}: hbm_kv_utilization requires gpu_memory_gb_per_card"
+        )
+    if (
+        deployment.hbm_kv_utilization is not None
+        and deployment.hbm_kv_gb_per_card is not None
+    ):
+        raise ValueError(
+            f"{deployment.label}: hbm_kv_utilization cannot be combined with hbm_kv_gb_per_card"
+        )
+    if (
+        deployment.hbm_kv_gb_per_card is None
+        and deployment.gpu_memory_gb_per_card is None
+    ):
+        raise ValueError(
+            f"{deployment.label}: either hbm_kv_gb_per_card or gpu_memory_gb_per_card must be provided"
+        )
+
+
+def _validate_extra_capacity_tiers(deployment: BucketDeploymentConfig) -> None:
+    seen_tier_labels: set[str] = set()
+    for tier in deployment.extra_capacity_tiers:
+        if not tier.label:
+            raise ValueError(f"{deployment.label}: extra_capacity_tiers label must not be empty")
+        if tier.label in seen_tier_labels:
+            raise ValueError(f"{deployment.label}: duplicate extra_capacity_tier label: {tier.label}")
+        if tier.kv_gb_per_machine < 0:
+            raise ValueError(
+                f"{deployment.label}: extra_capacity_tier {tier.label} must be non-negative"
+            )
+        seen_tier_labels.add(tier.label)
 
 
 def _normalize_rate(value: Any) -> float | None:

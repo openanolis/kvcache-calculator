@@ -4,12 +4,15 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from tests import _bootstrap  # noqa: F401
 
+from kvcache_upper_bound.cli.main import _build_analysis_metadata_payload
 from kvcache_upper_bound.core.models import RequestRecord
 from kvcache_upper_bound.reporting import (
     analyze_bucket_deployments,
+    build_bucket_input_summaries,
     load_bucket_analysis_config,
     write_bucket_outputs,
 )
@@ -256,6 +259,168 @@ class BucketReportingTest(unittest.TestCase):
             config_path.write_text(json.dumps(payload), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "total_tps_unit must be one of"):
                 load_bucket_analysis_config(config_path)
+
+    def test_bucket_reporting_rejects_ambiguous_budget_config(self) -> None:
+        payload = {
+            "model_profile": {
+                "n_layers": 1,
+                "n_kv_heads": 1,
+                "head_dim": 1,
+                "dtype_bytes": 1,
+                "block_size": 16,
+            },
+            "scope": "global",
+            "block_size": 16,
+            "bucket_deployments": [
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "accelerator_count": 8,
+                    "cards_per_machine": 8,
+                    "machine_spec": "h20",
+                    "hbm_kv_gb_per_card": 1,
+                    "gpu_memory_gb_per_card": 96,
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                "provide either hbm_kv_gb_per_card or gpu_memory_gb_per_card, not both",
+            ):
+                load_bucket_analysis_config(config_path)
+
+    def test_bucket_reporting_rejects_overlapping_bucket_ranges(self) -> None:
+        payload = {
+            "model_profile": {
+                "n_layers": 1,
+                "n_kv_heads": 1,
+                "head_dim": 1,
+                "dtype_bytes": 1,
+                "block_size": 16,
+            },
+            "scope": "global",
+            "block_size": 16,
+            "bucket_deployments": [
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "accelerator_count": 8,
+                    "cards_per_machine": 8,
+                    "machine_spec": "h20",
+                    "hbm_kv_gb_per_card": 1,
+                },
+                {
+                    "label": "24-64K",
+                    "lower_tokens": 24576,
+                    "upper_tokens": 65536,
+                    "accelerator_count": 8,
+                    "cards_per_machine": 8,
+                    "machine_spec": "h20",
+                    "hbm_kv_gb_per_card": 1,
+                },
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                "bucket_deployments must be sorted by lower_tokens without overlap",
+            ):
+                load_bucket_analysis_config(config_path)
+
+    def test_bucket_reporting_builds_normalized_input_summary_and_metadata(self) -> None:
+        records = [
+            RequestRecord(
+                request_id="r0",
+                source_index=0,
+                timestamp_ms=1000,
+                chat_id="c0",
+                parent_chat_id=None,
+                turn=1,
+                request_type="text",
+                input_length=16,
+                output_length=1,
+                hash_ids=("a",),
+            )
+        ]
+        payload = {
+            "prefill_savings_alpha": 0.8,
+            "model_profile": {
+                "n_layers": 1,
+                "n_kv_heads": 1,
+                "head_dim": 1,
+                "dtype_bytes": 1,
+                "block_size": 16,
+            },
+            "scope": "global",
+            "block_size": 16,
+            "bucket_deployments": [
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "accelerator_count": 8,
+                    "cards_per_machine": 4,
+                    "machine_spec": "h20",
+                    "total_tps": 500,
+                    "total_tps_unit": "per_machine",
+                    "hbm_kv_gb_per_card": 2,
+                    "extra_capacity_tiers": [
+                        {"label": "HBM+单机 1T 命中率", "kv_gb_per_machine": 1024}
+                    ],
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_path.write_text(json.dumps(payload), encoding="utf-8")
+            config = load_bucket_analysis_config(config_path)
+            result = analyze_bucket_deployments(records, config)
+
+        summaries = build_bucket_input_summaries(result)
+        self.assertEqual(len(summaries), 1)
+        self.assertEqual(summaries[0].machine_count, 2)
+        self.assertEqual(summaries[0].card_count, 8)
+        self.assertEqual(summaries[0].total_tps_input_unit, "per_machine")
+        self.assertAlmostEqual(summaries[0].total_tps_input or 0.0, 500.0)
+        self.assertAlmostEqual(summaries[0].total_tps_cluster_total or 0.0, 1000.0)
+        self.assertAlmostEqual(summaries[0].hbm_kv_gb_per_card, 2.0)
+        self.assertAlmostEqual(summaries[0].hbm_kv_total_gb, 16.0)
+        self.assertEqual(len(summaries[0].extra_capacity_tiers), 1)
+        self.assertAlmostEqual(
+            summaries[0].extra_capacity_tiers[0].extra_kv_total_gb,
+            2048.0,
+        )
+        self.assertAlmostEqual(
+            summaries[0].extra_capacity_tiers[0].total_kv_gb,
+            2064.0,
+        )
+
+        metadata = _build_analysis_metadata_payload(
+            trace="toy-trace",
+            config_path="/tmp/config.json",
+            output_dir=Path("/tmp/out"),
+            trace_result=SimpleNamespace(
+                stats=SimpleNamespace(loaded_records=1, skipped_records=0, total_lines=1)
+            ),
+            analysis_result=result,
+        )
+        self.assertIn("normalized_bucket_inputs", metadata)
+        self.assertEqual(metadata["normalized_bucket_inputs"][0]["machine_count"], 2)
+        self.assertEqual(metadata["normalized_bucket_inputs"][0]["card_count"], 8)
+        self.assertEqual(
+            metadata["normalized_bucket_inputs"][0]["extra_capacity_tiers"][0]["total_kv_gb"],
+            2064.0,
+        )
 
     def test_bucket_reporting_can_distinguish_machine_count_from_card_count(self) -> None:
         records = [

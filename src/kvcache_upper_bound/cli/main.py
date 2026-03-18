@@ -8,6 +8,7 @@ from pathlib import Path
 from kvcache_upper_bound.ingest import load_request_records
 from kvcache_upper_bound.reporting import (
     analyze_bucket_deployments,
+    build_bucket_input_summaries,
     load_bucket_analysis_config,
     write_bucket_outputs,
 )
@@ -148,6 +149,7 @@ def _build_analysis_metadata_payload(
     trace_result: object,
     analysis_result: object,
 ) -> dict[str, object]:
+    normalized_bucket_inputs = build_bucket_input_summaries(analysis_result)
     return {
         "trace": trace,
         "config": str(Path(config_path).resolve()),
@@ -158,6 +160,7 @@ def _build_analysis_metadata_payload(
         "prefill_savings_alpha": None
         if not analysis_result.rows
         else analysis_result.rows[0].prefill_savings_alpha,
+        "normalized_bucket_inputs": [asdict(item) for item in normalized_bucket_inputs],
         "rows": [asdict(row) for row in analysis_result.rows],
     }
 

@@ -8,7 +8,12 @@ from typing import Iterable
 from kvcache_upper_bound.core.models import RequestRecord
 from kvcache_upper_bound.ingest.normalizer import build_effective_requests
 from kvcache_upper_bound.oracle.capacity import _build_access_trace
-from kvcache_upper_bound.reporting.buckets import BucketAnalysisConfig, BucketAnalysisResult
+from kvcache_upper_bound.reporting.buckets import (
+    BucketAnalysisConfig,
+    BucketAnalysisResult,
+    BucketInputSummary,
+    build_bucket_input_summaries,
+)
 from kvcache_upper_bound.verification.reference import (
     ExhaustiveVerificationSummary,
     StrictPrefixCounterexample,
@@ -54,6 +59,7 @@ class BucketAuditReport:
     model_kv_bytes_per_token: int
     model_kv_bytes_per_block: int
     model_weight_gb_per_rank: float | None
+    normalized_bucket_inputs: list[BucketInputSummary]
     exhaustive_reference: ExhaustiveVerificationSummary
     strict_prefix_counterexample: StrictPrefixCounterexample | None
     strict_prefix_replay_gap_counterexample: StrictPrefixReplayGapCounterexample | None
@@ -167,6 +173,7 @@ def build_bucket_audit_report(
         model_weight_gb_per_rank=None
         if config.model_profile.weight_bytes_per_rank() is None
         else config.model_profile.weight_bytes_per_rank() / (1024**3),
+        normalized_bucket_inputs=build_bucket_input_summaries(analysis_result),
         exhaustive_reference=verify_exhaustive_small_cases(),
         strict_prefix_counterexample=None,
         strict_prefix_replay_gap_counterexample=None,
@@ -215,29 +222,86 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
             else ""
         ),
         "",
-        "## 穷举参考校验" if is_zh else "## Exhaustive Reference",
-        "",
-        f"- {'content 校验样例数' if is_zh else 'content cases verified'}: `{report.exhaustive_reference.content_case_count}`",
-        f"- {'relaxed capacity 校验样例数' if is_zh else 'relaxed capacity cases verified'}: `{report.exhaustive_reference.relaxed_capacity_case_count}`",
-        f"- {'strict-prefix 校验样例数' if is_zh else 'strict-prefix cases verified'}: `{report.exhaustive_reference.strict_prefix_case_count}`",
-        (
-            f"- {'已验证空间里 relaxed == exact strict-prefix' if is_zh else 'relaxed == exact strict-prefix in verified space'}: `{_bool_text(report.exhaustive_reference.relaxed_equals_strict_on_verified_cases)}`"
-        ),
-        (
-            f"- {'已验证空间里 replay == exact strict-prefix' if is_zh else 'replay == exact strict-prefix in verified space'}: `{_bool_text(report.exhaustive_reference.replay_equals_strict_on_verified_cases)}`"
-        ),
-        "",
-        "## Strict Prefix 等价校验" if is_zh else "## Strict Prefix Equivalence",
-        "",
-        "## 分桶审计" if is_zh else "## Bucket Audit",
+        "## 输入归一化摘要" if is_zh else "## Normalized Inputs",
         "",
         (
-            "| 分桶 | 请求数 | 抽样数 | 快速实现=朴素实现 | 总 blocks | content 命中 | relaxed HBM 命中 | strict-prefix replay HBM 命中 | strict-prefix HBM 命中 | strict-prefix 求解路径 | 唯一前缀节点数 | 单请求最大 blocks | 常驻 blocks | relaxed=content | strict=content |"
+            "| 分桶 | 机器数 | 卡数 | 单机卡数 | 规格 | 原始 TPS | TPS 输入口径 | 归一总 TPS | 单卡 HBM KV (GiB) | 总 HBM KV (GiB) |"
             if is_zh
-            else "| bucket | requests | sample | sample fast==naive | total blocks | content hits | relaxed HBM hits | strict-prefix replay HBM hits | strict-prefix HBM hits | strict-prefix proof source | unique nodes | max req blocks | resident blocks | relaxed==content | strict==content |"
+            else "| bucket | machines | cards | cards per machine | spec | input TPS | TPS input unit | normalized cluster TPS | hbm kv per card (GiB) | total hbm kv (GiB) |"
         ),
-        "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | --- |",
+        "| --- | ---: | ---: | ---: | --- | ---: | --- | ---: | ---: | ---: |",
     ]
+
+    for summary in report.normalized_bucket_inputs:
+        lines.append(
+            "| "
+            f"{summary.bucket_label} | "
+            f"{summary.machine_count} | "
+            f"{summary.card_count} | "
+            f"{summary.cards_per_machine} | "
+            f"{summary.machine_spec} | "
+            f"{_number_or_empty(summary.total_tps_input)} | "
+            f"{_text_or_empty(summary.total_tps_input_unit)} | "
+            f"{_number_or_empty(summary.total_tps_cluster_total)} | "
+            f"{summary.hbm_kv_gb_per_card:.2f} | "
+            f"{summary.hbm_kv_total_gb:.2f} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "### 扩展容量层归一化" if is_zh else "### Normalized Extra Capacity Tiers",
+            "",
+        ]
+    )
+
+    for summary in report.normalized_bucket_inputs:
+        if not summary.extra_capacity_tiers:
+            continue
+        lines.append(f"- {summary.bucket_label}:")
+        for tier in summary.extra_capacity_tiers:
+            lines.append(
+                "  "
+                + (
+                    f"`{tier.label}` = 每机 +{tier.extra_kv_gb_per_machine:.2f} GiB, "
+                    f"全集群 +{tier.extra_kv_total_gb:.2f} GiB, 总容量 {tier.total_kv_gb:.2f} GiB"
+                    if is_zh
+                    else f"`{tier.label}` = +{tier.extra_kv_gb_per_machine:.2f} GiB per machine, "
+                    f"+{tier.extra_kv_total_gb:.2f} GiB cluster total, {tier.total_kv_gb:.2f} GiB combined"
+                )
+            )
+
+    lines.extend(
+        [
+            "",
+            "## 穷举参考校验" if is_zh else "## Exhaustive Reference",
+            "",
+        ]
+    )
+    lines.extend(
+        [
+            f"- {'content 校验样例数' if is_zh else 'content cases verified'}: `{report.exhaustive_reference.content_case_count}`",
+            f"- {'relaxed capacity 校验样例数' if is_zh else 'relaxed capacity cases verified'}: `{report.exhaustive_reference.relaxed_capacity_case_count}`",
+            f"- {'strict-prefix 校验样例数' if is_zh else 'strict-prefix cases verified'}: `{report.exhaustive_reference.strict_prefix_case_count}`",
+            (
+                f"- {'已验证空间里 relaxed == exact strict-prefix' if is_zh else 'relaxed == exact strict-prefix in verified space'}: `{_bool_text(report.exhaustive_reference.relaxed_equals_strict_on_verified_cases)}`"
+            ),
+            (
+                f"- {'已验证空间里 replay == exact strict-prefix' if is_zh else 'replay == exact strict-prefix in verified space'}: `{_bool_text(report.exhaustive_reference.replay_equals_strict_on_verified_cases)}`"
+            ),
+            "",
+            "## Strict Prefix 等价校验" if is_zh else "## Strict Prefix Equivalence",
+            "",
+            "## 分桶审计" if is_zh else "## Bucket Audit",
+            "",
+            (
+                "| 分桶 | 请求数 | 抽样数 | 快速实现=朴素实现 | 总 blocks | content 命中 | relaxed HBM 命中 | strict-prefix replay HBM 命中 | strict-prefix HBM 命中 | strict-prefix 求解路径 | 唯一前缀节点数 | 单请求最大 blocks | 常驻 blocks | relaxed=content | strict=content |"
+                if is_zh
+                else "| bucket | requests | sample | sample fast==naive | total blocks | content hits | relaxed HBM hits | strict-prefix replay HBM hits | strict-prefix HBM hits | strict-prefix proof source | unique nodes | max req blocks | resident blocks | relaxed==content | strict==content |"
+            ),
+            "| --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- | --- |",
+        ]
+    )
 
     bucket_audit_marker = "## 分桶审计" if is_zh else "## Bucket Audit"
     insert_at = lines.index(bucket_audit_marker)
@@ -414,6 +478,12 @@ def _rate_text(value: float | None) -> str:
     if value is None:
         return ""
     return f"{value * 100:.2f}%"
+
+
+def _number_or_empty(value: float | None) -> str:
+    if value is None:
+        return ""
+    return f"{value:.2f}"
 
 
 def _strict_prefix_range_text(is_zh: bool, lower: int, upper: int) -> str:

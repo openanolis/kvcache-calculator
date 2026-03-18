@@ -39,7 +39,7 @@ kvcache-upper-bound audit-buckets \
 - `hit_summary.csv`：核心命中估算表，只放内容/容量/strict-prefix 命中结果
 - `planning_summary.csv`：派生规划表，明确标出它基于 exact strict-prefix 命中率推导
 - `details.json`：每个桶的 content/capacity 详细摘要
-- `metadata.json`：本次运行参数与加载统计
+- `metadata.json`：本次运行参数、加载统计、报表行镜像，以及 `normalized_bucket_inputs` 形式的输入归一化摘要
 - `correctness_report.json`：reference 校验与 bucket 侧证
 - `correctness_report.md`：中文正确性说明
 - `correctness_report.zh.md`：中文正确性说明
