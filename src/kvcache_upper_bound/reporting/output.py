@@ -104,10 +104,15 @@ def _write_details_json(path: Path, result: BucketAnalysisResult) -> None:
                 "config": asdict(detail.config),
                 "content_summary": asdict(detail.content_result.summary),
                 "hbm_capacity_summary": asdict(detail.hbm_capacity_result.summary),
+                "hbm_lru_summary": asdict(detail.hbm_lru_result.summary),
                 "hbm_strict_prefix_summary": asdict(detail.hbm_strict_prefix_result.summary),
                 "extra_capacity_summaries": {
                     tier_label: asdict(tier_result.summary)
                     for tier_label, tier_result in detail.extra_capacity_results.items()
+                },
+                "extra_lru_summaries": {
+                    tier_label: asdict(tier_result.summary)
+                    for tier_label, tier_result in detail.extra_lru_results.items()
                 },
                 "extra_strict_prefix_summaries": {
                     tier_label: asdict(tier_result.summary)
@@ -151,6 +156,7 @@ def _combined_summary_fieldnames(
     fieldnames.extend(
         [
             "HBM Relaxed Upper Bound 命中率",
+            "HBM LRU 命中率",
             "HBM Strict-Prefix Replay 命中率",
             "HBM Strict-Prefix 命中率",
             "HBM Strict-Prefix 求解路径",
@@ -162,6 +168,7 @@ def _combined_summary_fieldnames(
             [
                 label,
                 _relaxed_upper_bound_column(label),
+                _lru_column(label),
                 _strict_prefix_replay_column(label),
                 _strict_prefix_proof_column(label),
             ]
@@ -239,6 +246,7 @@ def _base_hit_fieldnames(
     fieldnames.extend(
         [
             "HBM Relaxed Upper Bound 命中率",
+            "HBM LRU 命中率",
             "HBM Strict-Prefix Replay 命中率",
             "HBM Strict-Prefix 命中率",
             "HBM Strict-Prefix 求解路径",
@@ -249,6 +257,7 @@ def _base_hit_fieldnames(
             [
                 label,
                 _relaxed_upper_bound_column(label),
+                _lru_column(label),
                 _strict_prefix_replay_column(label),
                 _strict_prefix_proof_column(label),
             ]
@@ -300,6 +309,7 @@ def _hit_summary_payload(
     if include_actual_hit_rate:
         payload["实际命中率"] = _format_rate(row.actual_hit_rate)
     payload["HBM Relaxed Upper Bound 命中率"] = _format_rate(row.hbm_relaxed_upper_bound_hit_rate)
+    payload["HBM LRU 命中率"] = _format_rate(row.hbm_lru_hit_rate)
     payload["HBM Strict-Prefix Replay 命中率"] = _format_rate(row.hbm_strict_prefix_replay_hit_rate)
     payload["HBM Strict-Prefix 命中率"] = _format_rate(row.hbm_strict_prefix_hit_rate)
     payload["HBM Strict-Prefix 求解路径"] = _format_text(row.hbm_strict_prefix_proof_source)
@@ -308,6 +318,7 @@ def _hit_summary_payload(
         payload[_relaxed_upper_bound_column(label)] = _format_rate(
             row.extra_tier_relaxed_upper_bound_hit_rates.get(label)
         )
+        payload[_lru_column(label)] = _format_rate(row.extra_tier_lru_hit_rates.get(label))
         payload[_strict_prefix_replay_column(label)] = _format_rate(
             row.extra_tier_strict_prefix_replay_hit_rates.get(label)
         )
@@ -445,6 +456,10 @@ def _relaxed_upper_bound_column(label: str) -> str:
 
 def _strict_prefix_replay_column(label: str) -> str:
     return f"{_strict_prefix_column_base(label)} Strict-Prefix Replay 命中率"
+
+
+def _lru_column(label: str) -> str:
+    return f"{_strict_prefix_column_base(label)} LRU 命中率"
 
 
 def _strict_prefix_proof_column(label: str) -> str:

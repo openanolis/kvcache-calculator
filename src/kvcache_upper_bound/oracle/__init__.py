@@ -12,6 +12,7 @@ from .content import (
     ContentSummary,
     analyze_content_upper_bound,
 )
+from .lru import LRUSimulationResult, analyze_lru_baseline
 from .prefix_trie import PrefixTrie, PrefixTrieNode
 from .strict_prefix import (
     StrictPrefixAnalysisResult,
@@ -27,6 +28,7 @@ __all__ = [
     "ContentAnalysisResult",
     "ContentRequestMetric",
     "ContentSummary",
+    "LRUSimulationResult",
     "PrefixTrie",
     "PrefixTrieNode",
     "StrictPrefixAnalysisResult",
@@ -34,5 +36,6 @@ __all__ = [
     "StrictPrefixSummary",
     "analyze_capacity_upper_bound",
     "analyze_content_upper_bound",
+    "analyze_lru_baseline",
     "analyze_strict_prefix_capacity_upper_bound",
 ]

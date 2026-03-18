@@ -27,6 +27,7 @@ kvcache-upper-bound-oracle/
 │           ├── __init__.py
 │           ├── capacity.py
 │           ├── content.py
+│           ├── lru.py
 │           ├── prefix_trie.py
 │           └── strict_prefix.py
 │       ├── reporting/
@@ -45,9 +46,11 @@ kvcache-upper-bound-oracle/
     ├── _bootstrap.py
     ├── __init__.py
     ├── conftest.py
+    ├── test_bucket_output_files.py
     ├── test_bucket_reporting.py
     ├── test_capacity_oracle.py
     ├── test_content_oracle.py
+    ├── test_lru_oracle.py
     ├── test_normalizer.py
     ├── test_strict_prefix_oracle.py
     ├── test_trace_loader.py
@@ -67,13 +70,16 @@ kvcache-upper-bound-oracle/
 - `src/kvcache_upper_bound/oracle/prefix_trie.py`：前缀路径状态机；只负责匹配和插入，不混入聚合逻辑。
 - `src/kvcache_upper_bound/oracle/content.py`：内容上限分析；对每请求输出 hit/miss，并汇总 block/token/byte 指标。
 - `src/kvcache_upper_bound/oracle/capacity.py`：空间上限分析；基于允许 `no-admit` 的离线 Belady，对 HBM 或扩展空间预算做 event-level 最优命中上界估计。
+- `src/kvcache_upper_bound/oracle/lru.py`：LRU 策略基线；在相同 prefix-path 语义下输出在线 LRU 的 strict-prefix 命中结果，只用来和 exact strict-prefix 对比，不充当上界。
 - `src/kvcache_upper_bound/oracle/strict_prefix.py`：严格前缀容量 oracle；先走 `content` / `relaxed==replay` 证书快路，证书不够时再做请求边界 DP 精确搜索。
 - `src/kvcache_upper_bound/reporting/buckets.py`：按长度分桶和部署规格做核心分析、配置校验与输入归一化；这里负责把“机器/卡/TPS/预算”语义钉死。
-- `src/kvcache_upper_bound/reporting/output.py`：把分析结果翻译成 `summary.csv / hit_summary.csv / planning_summary.csv / details.json`；只做输出整形，不反向污染 oracle。
+- `src/kvcache_upper_bound/reporting/output.py`：把分析结果翻译成 `summary.csv / hit_summary.csv / planning_summary.csv / details.json`；命中表可以带 LRU baseline，规划表只保留 exact strict-prefix 派生列。
 - `src/kvcache_upper_bound/cli/main.py`：命令行入口；负责把 trace、配置、输出目录串成完整离线分析流程，并让 `metadata.json` 同时输出报表行镜像和输入归一化摘要。
 - `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器、strict-prefix 精确 oracle 对账器，以及 `relaxed == replay == exact` 的穷举等价校验器。
 - `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账、relaxed/replay/exact strict-prefix 诊断、proof source 写成 correctness report，并同时输出中英文 Markdown 报告。
 - `src/kvcache_upper_bound/`：分析器实现根目录；后续继续扩展 `oracle/`, `reporting/`, `cli/`。
+- `tests/test_bucket_output_files.py`：报表文件和 `details.json` 的结构测试；专门承接输出层断言，避免 `test_bucket_reporting.py` 继续膨胀。
+- `tests/test_lru_oracle.py`：LRU 策略基线测试；覆盖“容量足够可复用”和“不能像 relaxed 一样 skip-admit”两类关键边界。
 - `tests/`：面向口径和边界条件的测试，不写和实现细节强绑定的脆弱测试。
 - `configs/`：样例机器配置、模型配置、实验矩阵。
 - `outputs/`：本地产出目录，只放实验结果，不承载源码语义。
@@ -103,6 +109,7 @@ kvcache-upper-bound-oracle/
 - `reporting/` 负责把算法结果翻译成汇总表和结果文件；不要反向污染 oracle 的数据结构。
 - `reporting/` 内允许做命中率到 `TPS / 机器数` 的纯后处理，但不能把机器数、调度和带宽反向混进 oracle 定义。
 - `reporting/` 输出要坚持主次分离：命中估算是主结果，`TPS / 机器数` 是派生结果；不要把派生列淹没主口径。
+- `LRU` 只是一条策略基线；它可以出现在命中报表里，但不能替代 exact strict-prefix，也不能直接驱动规划列。
 
 ## 开发规范
 
@@ -129,3 +136,5 @@ kvcache-upper-bound-oracle/
 - `2026-03-18`：把 HBM 预算命名彻底收紧到单卡口径：`hbm_kv_gb_per_card / gpu_memory_gb_per_card / runtime_reserve_gb_per_card` 成为唯一合法字段，输出 JSON 同步改名。
 - `2026-03-18`：新增部署配置语义校验与输入归一化摘要；`metadata.json` 和 `correctness_report` 现在显式写出归一后的卡数、机器数、TPS 与容量口径。
 - `2026-03-18`：把 `reporting/buckets.py` 拆出 `reporting/output.py`，避免单文件继续膨胀；分析、校验、输出三类职责重新分层。
+- `2026-03-18`：新增 `oracle/lru.py` 与对应测试；主报表开始同时输出 `HBM LRU 命中率` 和扩展容量层的 `LRU` 基线命中率，但规划列仍只基于 exact strict-prefix。
+- `2026-03-18`：把输出层测试拆到 `tests/test_bucket_output_files.py`，恢复单文件规模，继续保持测试职责分离。

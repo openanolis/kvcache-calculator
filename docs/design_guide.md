@@ -20,7 +20,7 @@
 | **容量上限** | 有限 GPU/CPU KV 预算下还能保住多少复用？ | trace + model + kv budget |
 | **系统上限** | 带宽和时间窗口是否允许把可复用 KV 搬到位？ | trace + model + machine |
 
-**决策**：当前阶段先做 `Oracle` 内的 `content` 和 `capacity`；对外需要的 `TPS / 机器数` 先作为报表层后处理，从 exact strict-prefix 命中率推导，不把它伪装成 `system oracle`。`Policy / Economics / Heuristic` 仍然作为更外层模块保留扩展位。
+**决策**：当前阶段先做 `Oracle` 内的 `content` 和 `capacity`；对外需要的 `TPS / 机器数` 先作为报表层后处理，从 exact strict-prefix 命中率推导，不把它伪装成 `system oracle`。`Policy / Economics / Heuristic` 仍然作为更外层模块保留扩展位。当前代码额外内置 `LRU baseline` 作为策略基线，用来和 exact strict-prefix 对比，但不参与上界定义。
 
 ---
 

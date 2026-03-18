@@ -10,6 +10,7 @@ from kvcache_upper_bound.core.models import ModelProfile, RequestRecord, Scope
 from kvcache_upper_bound.ingest.normalizer import build_effective_requests
 from kvcache_upper_bound.oracle.capacity import CapacityAnalysisResult, analyze_capacity_upper_bound
 from kvcache_upper_bound.oracle.content import ContentAnalysisResult, analyze_content_upper_bound
+from kvcache_upper_bound.oracle.lru import LRUSimulationResult, analyze_lru_baseline
 from kvcache_upper_bound.oracle.strict_prefix import (
     StrictPrefixAnalysisResult,
     analyze_strict_prefix_capacity_upper_bound,
@@ -168,6 +169,7 @@ class BucketReportRow:
     actual_hit_rate: float | None
     actual_hit_rate_note: str | None
     hbm_relaxed_upper_bound_hit_rate: float | None
+    hbm_lru_hit_rate: float | None
     hbm_strict_prefix_replay_hit_rate: float | None
     hbm_strict_prefix_hit_rate: float | None
     hbm_strict_prefix_proof_source: str | None
@@ -176,6 +178,7 @@ class BucketReportRow:
     hbm_estimated_card_count_for_same_load: float | None
     hbm_estimated_machine_count_for_same_load: float | None
     extra_tier_relaxed_upper_bound_hit_rates: dict[str, float | None]
+    extra_tier_lru_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_proof_sources: dict[str, str | None]
@@ -194,8 +197,10 @@ class BucketDetail:
     config: BucketDeploymentConfig
     content_result: ContentAnalysisResult
     hbm_capacity_result: CapacityAnalysisResult
+    hbm_lru_result: LRUSimulationResult
     hbm_strict_prefix_result: StrictPrefixAnalysisResult
     extra_capacity_results: dict[str, CapacityAnalysisResult]
+    extra_lru_results: dict[str, LRUSimulationResult]
     extra_strict_prefix_results: dict[str, StrictPrefixAnalysisResult]
 
 
@@ -267,6 +272,12 @@ def analyze_bucket_deployments(
             budget_bytes=hbm_budget_bytes,
             block_size=config.block_size,
         )
+        hbm_lru_result = analyze_lru_baseline(
+            normalized.requests,
+            model_profile=config.model_profile,
+            budget_bytes=hbm_budget_bytes,
+            block_size=config.block_size,
+        )
         hbm_strict_prefix_result = analyze_strict_prefix_capacity_upper_bound(
             normalized.requests,
             model_profile=config.model_profile,
@@ -275,8 +286,10 @@ def analyze_bucket_deployments(
         )
 
         extra_capacity_results: dict[str, CapacityAnalysisResult] = {}
+        extra_lru_results: dict[str, LRUSimulationResult] = {}
         extra_strict_prefix_results: dict[str, StrictPrefixAnalysisResult] = {}
         extra_tier_relaxed_upper_bound_hit_rates: dict[str, float | None] = {}
+        extra_tier_lru_hit_rates: dict[str, float | None] = {}
         extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None] = {}
         extra_tier_strict_prefix_hit_rates: dict[str, float | None] = {}
         extra_tier_strict_prefix_proof_sources: dict[str, str | None] = {}
@@ -325,10 +338,21 @@ def analyze_bucket_deployments(
                 ):
                     ceiling_strict_prefix_result = strict_prefix_result
 
+            total_budget_gb = hbm_kv_total_gb + node_count * tier.kv_gb_per_machine
+            lru_result = analyze_lru_baseline(
+                normalized.requests,
+                model_profile=config.model_profile,
+                budget_bytes=_gb_to_bytes(total_budget_gb),
+                block_size=config.block_size,
+            )
             extra_capacity_results[tier.label] = capacity_result
+            extra_lru_results[tier.label] = lru_result
             extra_strict_prefix_results[tier.label] = strict_prefix_result
             extra_tier_relaxed_upper_bound_hit_rates[tier.label] = (
                 None if not has_bucket_records else capacity_result.summary.block_hit_rate
+            )
+            extra_tier_lru_hit_rates[tier.label] = (
+                None if not has_bucket_records else lru_result.summary.strict_prefix_block_hit_rate
             )
             extra_tier_strict_prefix_replay_hit_rates[tier.label] = (
                 None if not has_bucket_records else capacity_result.summary.strict_prefix_block_hit_rate
@@ -358,6 +382,9 @@ def analyze_bucket_deployments(
 
         hbm_relaxed_upper_bound_hit_rate = (
             None if not has_bucket_records else hbm_capacity_result.summary.block_hit_rate
+        )
+        hbm_lru_hit_rate = (
+            None if not has_bucket_records else hbm_lru_result.summary.strict_prefix_block_hit_rate
         )
         hbm_strict_prefix_replay_hit_rate = (
             None if not has_bucket_records else hbm_capacity_result.summary.strict_prefix_block_hit_rate
@@ -395,6 +422,7 @@ def analyze_bucket_deployments(
             actual_hit_rate=deployment.actual_hit_rate,
             actual_hit_rate_note=deployment.actual_hit_rate_note,
             hbm_relaxed_upper_bound_hit_rate=hbm_relaxed_upper_bound_hit_rate,
+            hbm_lru_hit_rate=hbm_lru_hit_rate,
             hbm_strict_prefix_replay_hit_rate=hbm_strict_prefix_replay_hit_rate,
             hbm_strict_prefix_hit_rate=hbm_strict_prefix_hit_rate,
             hbm_strict_prefix_proof_source=hbm_strict_prefix_proof_source,
@@ -403,6 +431,7 @@ def analyze_bucket_deployments(
             hbm_estimated_card_count_for_same_load=hbm_estimated_card_count_for_same_load,
             hbm_estimated_machine_count_for_same_load=hbm_estimated_machine_count_for_same_load,
             extra_tier_relaxed_upper_bound_hit_rates=extra_tier_relaxed_upper_bound_hit_rates,
+            extra_tier_lru_hit_rates=extra_tier_lru_hit_rates,
             extra_tier_strict_prefix_replay_hit_rates=extra_tier_strict_prefix_replay_hit_rates,
             extra_tier_strict_prefix_hit_rates=extra_tier_strict_prefix_hit_rates,
             extra_tier_strict_prefix_proof_sources=extra_tier_strict_prefix_proof_sources,
@@ -420,8 +449,10 @@ def analyze_bucket_deployments(
             config=deployment,
             content_result=content_result,
             hbm_capacity_result=hbm_capacity_result,
+            hbm_lru_result=hbm_lru_result,
             hbm_strict_prefix_result=hbm_strict_prefix_result,
             extra_capacity_results=extra_capacity_results,
+            extra_lru_results=extra_lru_results,
             extra_strict_prefix_results=extra_strict_prefix_results,
         )
 

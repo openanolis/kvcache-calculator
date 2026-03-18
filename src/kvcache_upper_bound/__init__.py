@@ -17,10 +17,12 @@ from .oracle import (
     ContentAnalysisResult,
     ContentRequestMetric,
     ContentSummary,
+    LRUSimulationResult,
     PrefixTrie,
     PrefixTrieNode,
     analyze_capacity_upper_bound,
     analyze_content_upper_bound,
+    analyze_lru_baseline,
 )
 from .reporting import (
     BucketAnalysisConfig,
@@ -60,6 +62,7 @@ __all__ = [
     "ContentSummary",
     "EffectiveRequest",
     "ExhaustiveVerificationSummary",
+    "LRUSimulationResult",
     "MachineProfile",
     "ModelProfile",
     "NormalizationResult",
@@ -74,6 +77,7 @@ __all__ = [
     "analyze_bucket_deployments",
     "analyze_capacity_upper_bound",
     "analyze_content_upper_bound",
+    "analyze_lru_baseline",
     "analyze_content_upper_bound_naive",
     "build_effective_requests",
     "build_bucket_audit_report",
