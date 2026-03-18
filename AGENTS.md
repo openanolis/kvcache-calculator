@@ -31,7 +31,8 @@ kvcache-upper-bound-oracle/
 │           └── strict_prefix.py
 │       ├── reporting/
 │       │   ├── __init__.py
-│       │   └── buckets.py
+│       │   ├── buckets.py
+│       │   └── output.py
 │       ├── verification/
 │       │   ├── __init__.py
 │       │   ├── audit.py
@@ -67,7 +68,8 @@ kvcache-upper-bound-oracle/
 - `src/kvcache_upper_bound/oracle/content.py`：内容上限分析；对每请求输出 hit/miss，并汇总 block/token/byte 指标。
 - `src/kvcache_upper_bound/oracle/capacity.py`：空间上限分析；基于允许 `no-admit` 的离线 Belady，对 HBM 或扩展空间预算做 event-level 最优命中上界估计。
 - `src/kvcache_upper_bound/oracle/strict_prefix.py`：严格前缀容量 oracle；先走 `content` / `relaxed==replay` 证书快路，证书不够时再做请求边界 DP 精确搜索。
-- `src/kvcache_upper_bound/reporting/buckets.py`：按长度分桶和部署规格生成汇总表；兼容输出 `summary.csv`，并额外拆出 `hit_summary.csv` 与 `planning_summary.csv`，把核心命中估算和派生规划结果分开，同时显式区分物理机数与卡数。
+- `src/kvcache_upper_bound/reporting/buckets.py`：按长度分桶和部署规格做核心分析、配置校验与输入归一化；这里负责把“机器/卡/TPS/预算”语义钉死。
+- `src/kvcache_upper_bound/reporting/output.py`：把分析结果翻译成 `summary.csv / hit_summary.csv / planning_summary.csv / details.json`；只做输出整形，不反向污染 oracle。
 - `src/kvcache_upper_bound/cli/main.py`：命令行入口；负责把 trace、配置、输出目录串成完整离线分析流程，并让 `metadata.json` 同时输出报表行镜像和输入归一化摘要。
 - `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器、strict-prefix 精确 oracle 对账器，以及 `relaxed == replay == exact` 的穷举等价校验器。
 - `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账、relaxed/replay/exact strict-prefix 诊断、proof source 写成 correctness report，并同时输出中英文 Markdown 报告。
@@ -126,3 +128,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-18`：收紧部署配置 schema：`accelerator_count + cards_per_machine + machine_spec` 成为唯一合法机器描述；`total_tps_unit` 显式落盘并统一换算到集群总 TPS。
 - `2026-03-18`：把 HBM 预算命名彻底收紧到单卡口径：`hbm_kv_gb_per_card / gpu_memory_gb_per_card / runtime_reserve_gb_per_card` 成为唯一合法字段，输出 JSON 同步改名。
 - `2026-03-18`：新增部署配置语义校验与输入归一化摘要；`metadata.json` 和 `correctness_report` 现在显式写出归一后的卡数、机器数、TPS 与容量口径。
+- `2026-03-18`：把 `reporting/buckets.py` 拆出 `reporting/output.py`，避免单文件继续膨胀；分析、校验、输出三类职责重新分层。

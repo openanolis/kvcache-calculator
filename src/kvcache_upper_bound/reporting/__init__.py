@@ -11,8 +11,8 @@ from .buckets import (
     analyze_bucket_deployments,
     build_bucket_input_summaries,
     load_bucket_analysis_config,
-    write_bucket_outputs,
 )
+from .output import write_bucket_outputs
 
 __all__ = [
     "BucketAnalysisConfig",
