@@ -23,18 +23,21 @@ kvcache-upper-bound-oracle/
 │       │   ├── __init__.py
 │       │   ├── normalizer.py
 │       │   └── trace_loader.py
-│       └── oracle/
-│           ├── __init__.py
-│           ├── capacity.py
-│           ├── content.py
-│           ├── lru.py
-│           ├── prefix_trie.py
-│           └── strict_prefix.py
+│       ├── oracle/
+│       │   ├── __init__.py
+│       │   ├── capacity.py
+│       │   ├── content.py
+│       │   ├── lru.py
+│       │   ├── prefix_trie.py
+│       │   └── strict_prefix.py
 │       ├── reporting/
 │       │   ├── __init__.py
 │       │   ├── buckets.py
+│       │   ├── hit_output.py
 │       │   ├── inputs.py
-│       │   └── output.py
+│       │   ├── planning_output.py
+│       │   ├── output.py
+│       │   └── table_common.py
 │       ├── verification/
 │       │   ├── __init__.py
 │       │   ├── audit.py
@@ -75,7 +78,10 @@ kvcache-upper-bound-oracle/
 - `src/kvcache_upper_bound/oracle/strict_prefix.py`：严格前缀容量 oracle；先走 `content` / `relaxed==replay` 证书快路，证书不够时再做请求边界 DP 精确搜索。
 - `src/kvcache_upper_bound/reporting/buckets.py`：按长度分桶和部署规格做核心分析、配置校验与输入归一化；这里负责把“机器/卡/TPS/预算”语义钉死。
 - `src/kvcache_upper_bound/reporting/inputs.py`：输入归一化摘要；从分桶结果提炼 `metadata.json` 和 correctness report 需要的稳定输入口径。
-- `src/kvcache_upper_bound/reporting/output.py`：把分析结果翻译成 `summary.csv / hit_summary.csv / planning_summary.csv / planning_lru.csv / details.json`；上界规划和策略规划必须分文件输出，不能共用模糊列名。
+- `src/kvcache_upper_bound/reporting/table_common.py`：报表公共列名、格式化和行范围工具；统一 `Strict-Prefix / LRU` 列命名，避免多处手写漂移。
+- `src/kvcache_upper_bound/reporting/hit_output.py`：命中结果视图；负责 `summary.csv` 和 `hit_summary.csv` 里的命中列拼装。
+- `src/kvcache_upper_bound/reporting/planning_output.py`：规划结果视图；负责 exact strict-prefix 上界规划和 LRU 策略规划的字段与载荷生成。
+- `src/kvcache_upper_bound/reporting/output.py`：输出编排与落盘；只负责把各视图写成 `summary.csv / hit_summary.csv / planning_summary.csv / planning_lru.csv / details.json`。
 - `src/kvcache_upper_bound/cli/main.py`：命令行入口；负责把 trace、配置、输出目录串成完整离线分析流程，并让 `metadata.json` 同时输出报表行镜像和输入归一化摘要。
 - `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器、strict-prefix 精确 oracle 对账器，以及 `relaxed == replay == exact` 的穷举等价校验器。
 - `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账、relaxed/replay/exact strict-prefix 诊断、proof source 写成 correctness report，并同时输出中英文 Markdown 报告。
@@ -142,3 +148,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-18`：新增 `oracle/lru.py` 与对应测试；主报表开始同时输出 `HBM LRU 命中率` 和扩展容量层的 `LRU` 基线命中率，但规划列仍只基于 exact strict-prefix。
 - `2026-03-18`：把输出层测试拆到 `tests/test_bucket_output_files.py`，恢复单文件规模，继续保持测试职责分离。
 - `2026-03-18`：新增 `reporting/inputs.py`，把输入归一化摘要从 `buckets.py` 抽离；同时新增 `planning_lru.csv`，把 exact strict-prefix 上界规划和 LRU 策略规划彻底分开。
+- `2026-03-18`：继续把 `reporting/output.py` 拆成 `table_common.py / hit_output.py / planning_output.py / output.py` 四层；现在输出编排、命中视图、规划视图、公共列名完全分离，单文件重新回到可维护规模。
