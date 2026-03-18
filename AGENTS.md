@@ -59,7 +59,7 @@ kvcache-upper-bound-oracle/
 - `pyproject.toml`：本地可安装入口；保证 `kvcache-upper-bound` 命令可直接运行。
 - `docs/design_guide.md`：需求、口径、算法、阶段计划的单一事实来源。
 - `docs/correctness_guide.md`：解释哪些结果已被 reference 证明，哪些指标只是解释 exact strict-prefix 的辅助证据。
-- `docs/four_layer_model.md`：对外的通用框架设计；定义 Oracle / Policy / Economics / Heuristic 四层职责与边界。
+- `docs/four_layer_model.md`：对外展示文档；主线只讲 `容量 -> 命中 -> TPS -> 机器需求` 与无 profile 估计。
 - `src/kvcache_upper_bound/core/models.py`：稳定数据模型；这里定义请求、窗口化请求、模型配置，以及从模型参数量推导权重占用所需的核心对象。
 - `src/kvcache_upper_bound/ingest/trace_loader.py`：读取 JSONL trace，做字段解析、时间标准化和稳定排序。
 - `src/kvcache_upper_bound/ingest/normalizer.py`：把原始请求转成 window-aware 的 `EffectiveRequest`，并解析 session root。
@@ -114,4 +114,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-17`：新增 `verification/`、`correctness_guide.md` 和 `audit-buckets`，开始显式输出 reference 证明、strict-prefix 等价校验与中英双语 correctness report。
 - `2026-03-17`：把 exact `strict-prefix capacity oracle` 接入 `reporting/` 与 `verification/` 主路径；主报表和 correctness report 统一输出 exact hit rate 与 proof source。
 - `2026-03-17`：支持从 `gpu_memory_gb_per_machine - 模型权重分片 - runtime reserve` 推导 HBM KV 预算，公开 `h20` 配置不再写死魔法数字。
-- `2026-03-18`：新增 `docs/four_layer_model.md`，定义 `Oracle / Policy / Economics / Heuristic` 四层通用分析框架，并在 `design_guide.md` 中明确当前实现只覆盖 Layer 1。
+- `2026-03-18`：新增 `docs/four_layer_model.md`，定义对外展示用的 `容量 -> 命中 -> TPS -> 机器需求` 简化模型，并保留无 profile 估计入口。
