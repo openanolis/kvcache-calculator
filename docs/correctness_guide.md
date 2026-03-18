@@ -28,6 +28,56 @@
 | `relaxed event hit` | 不要求连续，只要这个 block event 命中 resident cache 就计数 | 当前 capacity 的优化目标 |
 | `relaxed upper bound` | 允许离线最优调度、允许 `no-admit` 时的 event-level 最优值 | 已实现；在当前穷举验证空间与 exact strict-prefix 一致 |
 
+## 报表字段到底怎么读
+
+很多人不是卡在算法，而是卡在“表里这一列和下一列到底差在哪”。下面按输出字段再解释一遍。
+
+### 一组最重要的命中列
+
+| 报表列 | 数学对象 | 该列回答的问题 | 什么时候最该看它 |
+|--------|----------|----------------|------------------|
+| `极限命中率` | `content upper bound` | 如果完全不缺空间，内容本身最多能复用多少？ | 判断 workload 是否值得做 KV cache |
+| `HBM Relaxed Upper Bound 命中率` | `relaxed capacity upper bound` | 给定 HBM 容量，离线最优 event 调度最多能保住多少命中？ | 判断空间约束压掉了多少内容天花板 |
+| `HBM Strict-Prefix Replay 命中率` | `strict-prefix replay` | relaxed 最优调度按 strict-prefix 重算后，还剩多少真正可复用前缀？ | 判断 relaxed 指标能否被 strict-prefix 语义兑现 |
+| `HBM Strict-Prefix 命中率` | `exact strict-prefix oracle` | 在 strict-prefix 语义下，给定容量后真正的最优值是多少？ | 所有后续 TPS / 缩扩容分析都应该看它 |
+| `HBM Strict-Prefix 求解路径` | `certificate` / `search` | 这个 exact 值是被证书直接夹出来，还是靠精确搜索求出来？ | 判断结果的可解释路径 |
+
+### 一组最重要的规划列
+
+| 报表列 | 含义 | 该列不是啥 |
+|--------|------|-------------|
+| `Prefill 节省系数 alpha` | 命中收益兑现成吞吐收益的比例假设 | 不是 trace 统计量，不是模型固有参数 |
+| `HBM TPS Gain` | exact strict-prefix 命中率折算后的吞吐放大倍数 | 不是直接观测值，而是后处理推导值 |
+| `HBM 同负载估算卡数` | 在同样总负载下，理论上需要多少卡 | 不是调度器会自动执行的缩容决策 |
+| `HBM 同负载估算机器数` | 在同样总负载下，理论上需要多少机器 | 本质上由估算卡数再除单机卡数得到 |
+| `HBM 估算总 TPS` | 如果不缩容，理论上最多能吃下多少总 TPS | 不是线上真实实测 TPS |
+| `TPS 输入口径` | `total_tps` 是按集群总量、单机还是单卡填写的 | 不是新的性能指标，只是解释输入语义 |
+
+### 一个最短例子
+
+假设：
+
+- `HBM Strict-Prefix 命中率 = 60%`
+- `Prefill 节省系数 alpha = 0.8`
+
+那么：
+
+```text
+TPS Gain = 1 / (1 - alpha * h)
+         = 1 / (1 - 0.8 * 0.6)
+         = 1 / 0.52
+         = 1.92
+```
+
+这表示：
+
+- 如果总负载不变，理论上所需卡数约缩到原来的 `1 / 1.92 = 52%`
+- 如果卡数不变，理论上总 TPS 可以放大到原来的 `1.92x`
+
+所以 `alpha` 的本质不是“命中率的一部分”，而是：
+
+> **“命中了多少前缀”如何翻译成“吞吐到底能涨多少”的兑现系数。**
+
 ## strict-prefix 到底是什么意思
 
 严格前缀的关键不是“这个 block 以前出现过”，而是：
@@ -122,6 +172,70 @@ content upper bound >= relaxed capacity upper bound >= exact strict-prefix hit r
 - `content upper bound`：前缀内容天花板
 - `capacity upper bound`：允许 `no-admit` 的 event-level 最优值
 - `strict-prefix capacity oracle`：真正的严格前缀容量最优值
+
+## 为什么还要同时保留 relaxed / replay / exact 三列
+
+如果已经有真正的 exact strict-prefix oracle，一个自然的问题就是：
+
+> “那还保留 relaxed 和 replay 干什么？”
+
+答案是：**它们现在主要负责解释 exact 值是怎么来的。**
+
+可以把三者看成一条夹逼链：
+
+```text
+strict-prefix replay <= exact strict-prefix <= relaxed upper bound <= content upper bound
+```
+
+于是：
+
+- `content` 告诉你天花板在哪
+- `relaxed` 告诉你 event-level 空间最优上界在哪
+- `replay` 告诉你一个可实现调度在 strict-prefix 语义下能达到哪
+- `exact` 告诉你真正答案
+
+当：
+
+- `replay == content`，或者
+- `relaxed == replay`
+
+时，exact 值可以直接被夹出来，不必再搜。
+
+所以现在保留 relaxed / replay 不是因为“没有 exact”，而是因为：
+
+1. 它们能证明 exact 结果为何可信。
+2. 它们能解释瓶颈究竟来自内容、空间还是 strict-prefix 连续性。
+3. 它们能帮助定位为什么某个桶扩容后提升不大。
+
+## 规划公式到底在说什么
+
+命中率结果本身回答的是“省掉了多少前缀重算”，但资源规划还需要回答：
+
+- 这能不能真的换成更高 TPS？
+- 或者同样负载下能不能少用卡？
+
+项目当前用下面这组后处理公式：
+
+```text
+TPS Gain = 1 / (1 - alpha * h)
+Estimated Total TPS = Input Total TPS * TPS Gain
+Estimated Card Count For Same Load = Current Card Count / TPS Gain
+Estimated Machine Count For Same Load = Estimated Card Count / Cards Per Machine
+```
+
+其中：
+
+- `h` 是 exact strict-prefix 命中率
+- `alpha` 是 prefill 节省兑现系数
+- `Input Total TPS` 会先根据 `TPS 输入口径` 归一到集群总 TPS
+
+这组公式的哲学要点是：
+
+- 命中率是 oracle 结果
+- `alpha` 是工程兑现假设
+- `TPS / 卡数 / 机器数` 是派生规划结果
+
+三者不要混为一谈。
 
 ## 为什么 content 是精确的
 

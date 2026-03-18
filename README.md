@@ -45,6 +45,38 @@ kvcache-upper-bound audit-buckets \
 - `correctness_report.zh.md`：中文正确性说明
 - `correctness_report.en.md`：英文正确性说明
 
+## 概念速查
+
+第一次看这个项目时，最容易混淆的不是代码，而是“这些命中率到底各自代表什么”。可以先按下面这张表记：
+
+| 概念 | 一句话解释 | 应该怎么理解 |
+|------|------------|--------------|
+| `block` | 默认 `16 tokens` 一个分析单位 | 项目主粒度；命中率先按 block 算 |
+| `prefix path` | 从请求第 1 个 block 开始的连续前缀路径 | 真正可复用的 KV 对象，不是“单独某个相同 block” |
+| `极限命中率` | 不考虑空间限制时，内容本身最多能复用多少 | 对应 `content upper bound`，是内容天花板 |
+| `HBM Relaxed Upper Bound 命中率` | 考虑 HBM 空间，但放松 strict-prefix 连续约束后的 event-level 最优值 | 是一个容量上界，用来解释“空间最优调度最多能保住多少命中” |
+| `HBM Strict-Prefix Replay 命中率` | 把 relaxed 最优调度按 strict-prefix 语义重新计数后的结果 | 是一个可实现下界/证书，帮助解释 exact 值 |
+| `HBM Strict-Prefix 命中率` | 真正的 strict-prefix capacity oracle 最优值 | 当前最重要的容量结果；后续规划统一基于它 |
+| `HBM Strict-Prefix 求解路径` | `certificate` 或 `search` | 表示 exact 值是被证书直接夹出，还是通过精确搜索得到 |
+| `Prefill 节省系数 alpha` | 命中收益能兑现成吞吐收益的比例 | 不是命中率本身，而是“命中 -> TPS” 的折算参数 |
+| `TPS Gain` | 命中率折算后的吞吐放大倍数 | 当前用 `1 / (1 - alpha * h)` 计算，其中 `h` 是 exact strict-prefix 命中率 |
+| `同负载估算卡数/机器数` | 在同样总负载下，理论上需要多少卡/机器 | 当前卡数或机器数除以 `TPS Gain` |
+| `估算总 TPS` | 在不缩容时，理论上能跑到多少总 TPS | 当前 `总 TPS * TPS Gain` |
+| `TPS 输入口径` | 配置里的 `total_tps` 原本是按集群、按机器还是按卡填写 | 报表里的 `总 TPS` 永远会先归一到集群总 TPS |
+
+一个最短主线是：
+
+```text
+内容天花板 -> 容量上限 -> exact strict-prefix 命中率 -> TPS Gain -> 卡数/机器数规划
+```
+
+如果你只看结果表，建议这样读：
+
+1. 先看 `极限命中率`，判断 workload 本身有没有复用空间。
+2. 再看 `HBM Strict-Prefix 命中率`，判断在当前 HBM 下真正能保住多少。
+3. 再看 `HBM+单机 1T / 10T`，判断额外 host/SSD 容量还能带来多少提升。
+4. 最后再看 `TPS Gain / 同负载估算卡数 / 同负载估算机器数`，把命中率翻译成资源规划语言。
+
 ## 配置说明
 
 配置文件示例见：
@@ -90,6 +122,7 @@ kvcache-upper-bound audit-buckets \
 - `HBM Strict-Prefix Replay 命中率` 是把 relaxed-optimal 调度按 strict-prefix 语义重计后的结果；在当前穷举验证空间里，它与 exact strict-prefix oracle 一致
 - `HBM Strict-Prefix 命中率` 来自真正的 exact strict-prefix oracle
 - `HBM Strict-Prefix 求解路径` 为 `certificate` 或 `search`；前者表示被 `replay == content` 或 `relaxed == replay` 直接夹出，后者表示证书不足时进入精确搜索
+- `Prefill 节省系数 alpha` 是命中收益兑现系数：命中率本身不直接等于 TPS 提升，项目当前用 `TPS Gain = 1 / (1 - alpha * h)` 把 exact strict-prefix 命中率 `h` 折算成吞吐收益
 - `planning_summary.csv` 里的 `HBM TPS Gain / HBM 同负载估算卡数 / HBM 同负载估算机器数 / HBM 估算总 TPS` 统一基于 exact strict-prefix 命中率计算；额外容量层的 TPS 列也采用相同公式
 - audit 报告会显式给出 `strict-prefix` 的穷举等价校验结论
 - 概念解释、直观例子和当前已验证的等价关系见 `docs/correctness_guide.md`
