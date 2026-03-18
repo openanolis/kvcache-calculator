@@ -13,6 +13,7 @@
 - 正确性审计：输出 exhaustive reference 校验、`relaxed == replay == exact strict-prefix` 的小规模穷举对账、真实 trace 采样对账，以及 strict-prefix exact proof path
 
 设计约束和算法边界见 `docs/design_guide.md`，正确性口径见 `docs/correctness_guide.md`。
+如果要看“上界 / 策略 / 收益 / 无 trace 粗估”之间的总框架关系，见 `docs/four_layer_model.md`。
 
 ## 快速开始
 

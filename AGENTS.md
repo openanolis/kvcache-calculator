@@ -9,7 +9,8 @@ kvcache-upper-bound-oracle/
 ├── pyproject.toml
 ├── docs/
 │   ├── correctness_guide.md
-│   └── design_guide.md
+│   ├── design_guide.md
+│   └── four_layer_model.md
 ├── configs/
 ├── outputs/
 ├── src/
@@ -58,6 +59,7 @@ kvcache-upper-bound-oracle/
 - `pyproject.toml`：本地可安装入口；保证 `kvcache-upper-bound` 命令可直接运行。
 - `docs/design_guide.md`：需求、口径、算法、阶段计划的单一事实来源。
 - `docs/correctness_guide.md`：解释哪些结果已被 reference 证明，哪些指标只是解释 exact strict-prefix 的辅助证据。
+- `docs/four_layer_model.md`：业务分析总框架；把 Oracle / Policy / Economics / Heuristic 四层职责与边界切开。
 - `src/kvcache_upper_bound/core/models.py`：稳定数据模型；这里定义请求、窗口化请求、模型配置，以及从模型参数量推导权重占用所需的核心对象。
 - `src/kvcache_upper_bound/ingest/trace_loader.py`：读取 JSONL trace，做字段解析、时间标准化和稳定排序。
 - `src/kvcache_upper_bound/ingest/normalizer.py`：把原始请求转成 window-aware 的 `EffectiveRequest`，并解析 session root。
@@ -79,6 +81,7 @@ kvcache-upper-bound-oracle/
 - 第一版先做离线 oracle，不做在线 serving runtime。
 - 统一以 block 为主粒度，默认 block size 为 16；token 粒度只做换算层。
 - 核心口径固定为：`strict_prefix_window`、`prefill only`、`content -> capacity -> system` 三级上限。
+- 更外层的业务规划框架固定为：`Oracle -> Policy -> Economics -> Heuristic` 四层；不要把四层混成一个公式。
 - `hash_ids` 必须按前缀路径解释，不能退化成裸 block 频次统计。
 - `ModelProfile.kv_bytes_per_token()` 表示整套部署的总 KV 占用，不是单卡 shard 占用；预算字段必须和它保持同一口径。
 - `ModelProfile.parameter_count` 只用于从显存反推理论 KV 预算；不提供时，就必须显式给出 `hbm_kv_gb_per_machine` 或利用率。
@@ -111,3 +114,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-17`：新增 `verification/`、`correctness_guide.md` 和 `audit-buckets`，开始显式输出 reference 证明、strict-prefix 等价校验与中英双语 correctness report。
 - `2026-03-17`：把 exact `strict-prefix capacity oracle` 接入 `reporting/` 与 `verification/` 主路径；主报表和 correctness report 统一输出 exact hit rate 与 proof source。
 - `2026-03-17`：支持从 `gpu_memory_gb_per_machine - 模型权重分片 - runtime reserve` 推导 HBM KV 预算，公开 `h20` 配置不再写死魔法数字。
+- `2026-03-18`：新增 `docs/four_layer_model.md`，把业务分析重写成 `Oracle / Policy / Economics / Heuristic` 四层框架，并在 `design_guide.md` 中明确当前仓库只覆盖 Layer 1。

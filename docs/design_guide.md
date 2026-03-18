@@ -11,7 +11,16 @@
 
 **在给定 window size、模型结构和机器资源的前提下，一个 workload 理论上最多能复用多少 KVCache？**
 
-这个问题必须拆成三层：
+如果把整个业务规划问题放大看，它应该被拆成四层，详见 `docs/four_layer_model.md`：
+
+| 大层级 | 要回答的问题 |
+|--------|--------------|
+| **Oracle** | 理论上最多能命中多少？ |
+| **Policy** | 某个缓存系统实际上会做到多少？ |
+| **Economics** | 命中率能换来多少 TPS / 节约多少机器？ |
+| **Heuristic** | 没有 trace 时怎么快速粗估？ |
+
+当前这份文档只覆盖 **Layer 1: Oracle**。在这一层内部，问题再拆成三层：
 
 | 层级 | 要回答的问题 | 依赖输入 |
 |------|--------------|----------|
@@ -19,7 +28,7 @@
 | **容量上限** | 有限 GPU/CPU KV 预算下还能保住多少复用？ | trace + model + kv budget |
 | **系统上限** | 带宽和时间窗口是否允许把可复用 KV 搬到位？ | trace + model + machine |
 
-**决策**：第一阶段先做 `content` 和 `capacity`，`system` 放在第二阶段实现。
+**决策**：当前阶段先做 `Oracle` 内的 `content` 和 `capacity`，`system` 放在第二阶段实现；`Policy / Economics / Heuristic` 作为更外层的后续模块。
 
 ---
 
