@@ -18,6 +18,36 @@ from kvcache_upper_bound.reporting import (
 
 
 class BucketReportingTest(unittest.TestCase):
+    def test_public_single_card_h20_config_exposes_tighter_hbm_budget(self) -> None:
+        records = [
+            RequestRecord(
+                request_id="r0",
+                source_index=0,
+                timestamp_ms=1000,
+                chat_id="c0",
+                parent_chat_id=None,
+                turn=1,
+                request_type="text",
+                input_length=16,
+                output_length=1,
+                hash_ids=("a",),
+            )
+        ]
+        repo_root = Path(__file__).resolve().parent.parent
+        config = load_bucket_analysis_config(
+            repo_root / "configs" / "public_trace_qwen3_5_27b_1x1_h20.json"
+        )
+
+        result = analyze_bucket_deployments(records, config)
+
+        self.assertEqual(config.model_profile.tp_size, 1)
+        self.assertEqual(result.rows[0].machine_count, 1)
+        self.assertEqual(result.rows[0].card_count, 1)
+        self.assertEqual(result.rows[0].cards_per_machine, 1)
+        self.assertAlmostEqual(result.rows[0].model_weight_gb_per_card or 0.0, 51.7469262778759)
+        self.assertAlmostEqual(result.rows[0].hbm_kv_gb_per_card, 44.2530737221241)
+        self.assertAlmostEqual(result.rows[0].hbm_kv_total_gb, 44.2530737221241)
+
     def test_bucket_reporting_can_derive_hbm_kv_budget_from_gpu_memory_and_model_weights(self) -> None:
         records = [
             RequestRecord(

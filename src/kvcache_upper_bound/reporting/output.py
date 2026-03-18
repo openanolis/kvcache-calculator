@@ -32,7 +32,7 @@ def write_bucket_outputs(result: BucketAnalysisResult, output_dir: str | Path) -
     _write_summary_csv(output_path / "summary.csv", result.rows, tier_labels)
     _write_hit_summary_csv(output_path / "hit_summary.csv", result.rows, tier_labels)
     _write_strict_prefix_planning_csv(
-        output_path / "planning_summary.csv",
+        output_path / "planning_strict_prefix.csv",
         result.rows,
         tier_labels,
     )

@@ -80,12 +80,14 @@ class BucketOutputFilesTest(unittest.TestCase):
             config = load_bucket_analysis_config(config_path)
             result = analyze_bucket_deployments(records, config)
             write_bucket_outputs(result, output_dir)
-            planning_summary_csv = (output_dir / "planning_summary.csv").read_text(encoding="utf-8")
+            planning_strict_prefix_csv = (
+                output_dir / "planning_strict_prefix.csv"
+            ).read_text(encoding="utf-8")
 
         self.assertEqual(result.rows[0].machine_count, 1)
         self.assertEqual(result.rows[0].card_count, 8)
         self.assertEqual(result.rows[0].cards_per_machine, 8)
-        self.assertIn("机器数,卡数,单机卡数,规格", planning_summary_csv)
+        self.assertIn("机器数,卡数,单机卡数,规格", planning_strict_prefix_csv)
 
     def test_bucket_reporting_outputs_requested_columns(self) -> None:
         records = [
@@ -153,7 +155,9 @@ class BucketOutputFilesTest(unittest.TestCase):
             write_bucket_outputs(result, output_dir)
             summary_csv = (output_dir / "summary.csv").read_text(encoding="utf-8")
             hit_summary_csv = (output_dir / "hit_summary.csv").read_text(encoding="utf-8")
-            planning_summary_csv = (output_dir / "planning_summary.csv").read_text(encoding="utf-8")
+            planning_strict_prefix_csv = (
+                output_dir / "planning_strict_prefix.csv"
+            ).read_text(encoding="utf-8")
             planning_lru_csv = (output_dir / "planning_lru.csv").read_text(encoding="utf-8")
             details_json = json.loads((output_dir / "details.json").read_text(encoding="utf-8"))
 
@@ -184,15 +188,15 @@ class BucketOutputFilesTest(unittest.TestCase):
         self.assertIn("TPS 输入口径", hit_summary_csv)
         self.assertNotIn("HBM Strict-Prefix TPS Gain", hit_summary_csv)
         self.assertNotIn("HBM LRU TPS Gain", hit_summary_csv)
-        self.assertIn("Prefill 节省系数 alpha", planning_summary_csv)
-        self.assertIn("TPS 输入口径", planning_summary_csv)
-        self.assertIn("HBM Strict-Prefix TPS Gain", planning_summary_csv)
-        self.assertIn("HBM Strict-Prefix 同负载估算卡数", planning_summary_csv)
-        self.assertIn("HBM Strict-Prefix 估算总 TPS", planning_summary_csv)
-        self.assertIn("HBM+单机 1T Strict-Prefix TPS Gain", planning_summary_csv)
-        self.assertIn("HBM+单机 1T Strict-Prefix 同负载估算卡数", planning_summary_csv)
-        self.assertNotIn("HBM Relaxed Upper Bound 命中率", planning_summary_csv)
-        self.assertNotIn("HBM Strict-Prefix Replay 命中率", planning_summary_csv)
+        self.assertIn("Prefill 节省系数 alpha", planning_strict_prefix_csv)
+        self.assertIn("TPS 输入口径", planning_strict_prefix_csv)
+        self.assertIn("HBM Strict-Prefix TPS Gain", planning_strict_prefix_csv)
+        self.assertIn("HBM Strict-Prefix 同负载估算卡数", planning_strict_prefix_csv)
+        self.assertIn("HBM Strict-Prefix 估算总 TPS", planning_strict_prefix_csv)
+        self.assertIn("HBM+单机 1T Strict-Prefix TPS Gain", planning_strict_prefix_csv)
+        self.assertIn("HBM+单机 1T Strict-Prefix 同负载估算卡数", planning_strict_prefix_csv)
+        self.assertNotIn("HBM Relaxed Upper Bound 命中率", planning_strict_prefix_csv)
+        self.assertNotIn("HBM Strict-Prefix Replay 命中率", planning_strict_prefix_csv)
         self.assertIn("Prefill 节省系数 alpha", planning_lru_csv)
         self.assertIn("HBM LRU TPS Gain", planning_lru_csv)
         self.assertIn("HBM LRU 同负载估算卡数", planning_lru_csv)
@@ -408,7 +412,9 @@ class BucketOutputFilesTest(unittest.TestCase):
             write_bucket_outputs(result, output_dir)
             summary_csv = (output_dir / "summary.csv").read_text(encoding="utf-8")
             hit_summary_csv = (output_dir / "hit_summary.csv").read_text(encoding="utf-8")
-            planning_summary_csv = (output_dir / "planning_summary.csv").read_text(encoding="utf-8")
+            planning_strict_prefix_csv = (
+                output_dir / "planning_strict_prefix.csv"
+            ).read_text(encoding="utf-8")
             planning_lru_csv = (output_dir / "planning_lru.csv").read_text(encoding="utf-8")
 
         self.assertNotIn("实际命中率", summary_csv)
@@ -418,9 +424,9 @@ class BucketOutputFilesTest(unittest.TestCase):
         self.assertIn("HBM Strict-Prefix 同负载估算卡数", summary_csv)
         self.assertIn("HBM Strict-Prefix 同负载估算机器数", summary_csv)
         self.assertNotIn("HBM Strict-Prefix TPS Gain", hit_summary_csv)
-        self.assertIn("HBM Strict-Prefix TPS Gain", planning_summary_csv)
-        self.assertIn("HBM Strict-Prefix 同负载估算卡数", planning_summary_csv)
-        self.assertNotIn("HBM Strict-Prefix 估算总 TPS", planning_summary_csv)
+        self.assertIn("HBM Strict-Prefix TPS Gain", planning_strict_prefix_csv)
+        self.assertIn("HBM Strict-Prefix 同负载估算卡数", planning_strict_prefix_csv)
+        self.assertNotIn("HBM Strict-Prefix 估算总 TPS", planning_strict_prefix_csv)
         self.assertIn("HBM LRU TPS Gain", planning_lru_csv)
         self.assertNotIn("HBM LRU 估算总 TPS", planning_lru_csv)
 

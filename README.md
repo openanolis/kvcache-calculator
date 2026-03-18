@@ -35,6 +35,9 @@ kvcache-upper-bound audit-buckets \
 
 配置示例见 `configs/public_trace_qwen3_5_27b.json`。
 
+如果想故意放大 HBM 约束、观察单卡显存对命中率的限制，可以直接用
+`configs/public_trace_qwen3_5_27b_1x1_h20.json`。
+
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `model_profile` | 是 | `n_layers / n_kv_heads / head_dim / dtype_bytes / block_size` |
@@ -62,7 +65,7 @@ kvcache-upper-bound audit-buckets \
 |------|------|------------|
 | `summary.csv` | 兼容总表，混合展示命中结果和规划结果 | 想快速扫一眼全部结果 |
 | `hit_summary.csv` | 只放命中相关列：content / relaxed / LRU / strict-prefix | 只关心 KV 命中估算 |
-| `planning_summary.csv` | 上界规划表；统一基于 exact strict-prefix 命中率 | 想看理论最优下最多能省多少机器 |
+| `planning_strict_prefix.csv` | 上界规划表；统一基于 exact strict-prefix 命中率 | 想看理论最优下最多能省多少机器 |
 | `planning_lru.csv` | 策略规划表；统一基于 LRU 命中率 | 想看如果实际采用 LRU，需要多少机器 |
 | `details.json` | 每个桶的详细统计摘要 | 想查具体数字和中间结果 |
 | `metadata.json` | 输入参数、加载统计、归一化后的桶配置 | 想确认这次运行到底按什么口径算的 |
@@ -86,9 +89,9 @@ kvcache-upper-bound audit-buckets \
 LRU baseline <= exact strict-prefix <= relaxed upper bound <= content upper bound
 ```
 
-`planning_summary.csv` 和 `planning_lru.csv` 使用同一套规划公式，但命中率来源不同：
+`planning_strict_prefix.csv` 和 `planning_lru.csv` 使用同一套规划公式，但命中率来源不同：
 
-- `planning_summary.csv`：`h = exact strict-prefix hit rate`
+- `planning_strict_prefix.csv`：`h = exact strict-prefix hit rate`
 - `planning_lru.csv`：`h = lru hit rate`
 
 ## 文档入口
