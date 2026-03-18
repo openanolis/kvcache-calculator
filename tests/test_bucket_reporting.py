@@ -142,6 +142,8 @@ class BucketReportingTest(unittest.TestCase):
             result = analyze_bucket_deployments(records, config)
             write_bucket_outputs(result, output_dir)
             summary_csv = (output_dir / "summary.csv").read_text(encoding="utf-8")
+            hit_summary_csv = (output_dir / "hit_summary.csv").read_text(encoding="utf-8")
+            planning_summary_csv = (output_dir / "planning_summary.csv").read_text(encoding="utf-8")
             details_json = json.loads((output_dir / "details.json").read_text(encoding="utf-8"))
 
         self.assertIn("分桶", summary_csv)
@@ -160,6 +162,15 @@ class BucketReportingTest(unittest.TestCase):
         self.assertIn("HBM+单机 1T 估算总 TPS", summary_csv)
         self.assertIn("HBM+单机 1T 同负载估算机器数", summary_csv)
         self.assertIn("HBM+单机 10T 命中率", summary_csv)
+        self.assertIn("HBM Relaxed Upper Bound 命中率", hit_summary_csv)
+        self.assertNotIn("HBM TPS Gain", hit_summary_csv)
+        self.assertNotIn("HBM 估算总 TPS", hit_summary_csv)
+        self.assertIn("Prefill 节省系数 alpha", planning_summary_csv)
+        self.assertIn("HBM TPS Gain", planning_summary_csv)
+        self.assertIn("HBM 估算总 TPS", planning_summary_csv)
+        self.assertIn("HBM+单机 1T TPS Gain", planning_summary_csv)
+        self.assertNotIn("HBM Relaxed Upper Bound 命中率", planning_summary_csv)
+        self.assertNotIn("HBM Strict-Prefix Replay 命中率", planning_summary_csv)
         self.assertEqual(details_json["rows"][0]["bucket_label"], "0-32K")
         self.assertEqual(details_json["rows"][0]["machine_spec"], "h20")
         self.assertEqual(details_json["rows"][0]["machine_count"], 8)
@@ -282,12 +293,17 @@ class BucketReportingTest(unittest.TestCase):
             result = analyze_bucket_deployments(records, config)
             write_bucket_outputs(result, output_dir)
             summary_csv = (output_dir / "summary.csv").read_text(encoding="utf-8")
+            hit_summary_csv = (output_dir / "hit_summary.csv").read_text(encoding="utf-8")
+            planning_summary_csv = (output_dir / "planning_summary.csv").read_text(encoding="utf-8")
 
         self.assertNotIn("实际命中率", summary_csv)
         self.assertNotIn("总 TPS", summary_csv)
         self.assertNotIn("HBM 估算总 TPS", summary_csv)
         self.assertIn("HBM TPS Gain", summary_csv)
         self.assertIn("HBM 同负载估算机器数", summary_csv)
+        self.assertNotIn("HBM TPS Gain", hit_summary_csv)
+        self.assertIn("HBM TPS Gain", planning_summary_csv)
+        self.assertNotIn("HBM 估算总 TPS", planning_summary_csv)
 
 
 if __name__ == "__main__":
