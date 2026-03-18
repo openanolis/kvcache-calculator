@@ -59,7 +59,7 @@ kvcache-upper-bound-oracle/
 - `pyproject.toml`：本地可安装入口；保证 `kvcache-upper-bound` 命令可直接运行。
 - `docs/design_guide.md`：需求、口径、算法、阶段计划的单一事实来源。
 - `docs/correctness_guide.md`：解释哪些结果已被 reference 证明，哪些指标只是解释 exact strict-prefix 的辅助证据。
-- `docs/four_layer_model.md`：业务分析总框架；把 Oracle / Policy / Economics / Heuristic 四层职责与边界切开。
+- `docs/four_layer_model.md`：通用分析总框架；把 Oracle / Policy / Economics / Heuristic 四层职责与边界切开。
 - `src/kvcache_upper_bound/core/models.py`：稳定数据模型；这里定义请求、窗口化请求、模型配置，以及从模型参数量推导权重占用所需的核心对象。
 - `src/kvcache_upper_bound/ingest/trace_loader.py`：读取 JSONL trace，做字段解析、时间标准化和稳定排序。
 - `src/kvcache_upper_bound/ingest/normalizer.py`：把原始请求转成 window-aware 的 `EffectiveRequest`，并解析 session root。
@@ -67,7 +67,7 @@ kvcache-upper-bound-oracle/
 - `src/kvcache_upper_bound/oracle/content.py`：内容上限分析；对每请求输出 hit/miss，并汇总 block/token/byte 指标。
 - `src/kvcache_upper_bound/oracle/capacity.py`：空间上限分析；基于允许 `no-admit` 的离线 Belady，对 HBM 或扩展空间预算做 event-level 最优命中上界估计。
 - `src/kvcache_upper_bound/oracle/strict_prefix.py`：严格前缀容量 oracle；先走 `content` / `relaxed==replay` 证书快路，证书不够时再做请求边界 DP 精确搜索。
-- `src/kvcache_upper_bound/reporting/buckets.py`：按业务长度桶和部署规格生成汇总表；主表直接输出 relaxed / replay / exact strict-prefix / proof source。
+- `src/kvcache_upper_bound/reporting/buckets.py`：按长度分桶和部署规格生成汇总表；主表直接输出 relaxed / replay / exact strict-prefix / proof source。
 - `src/kvcache_upper_bound/cli/main.py`：命令行入口；负责把 trace、配置、输出目录串成完整离线分析流程。
 - `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器、strict-prefix 精确 oracle 对账器，以及 `relaxed == replay == exact` 的穷举等价校验器。
 - `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账、relaxed/replay/exact strict-prefix 诊断、proof source 写成 correctness report，并同时输出中英文 Markdown 报告。
@@ -81,7 +81,7 @@ kvcache-upper-bound-oracle/
 - 第一版先做离线 oracle，不做在线 serving runtime。
 - 统一以 block 为主粒度，默认 block size 为 16；token 粒度只做换算层。
 - 核心口径固定为：`strict_prefix_window`、`prefill only`、`content -> capacity -> system` 三级上限。
-- 更外层的业务规划框架固定为：`Oracle -> Policy -> Economics -> Heuristic` 四层；不要把四层混成一个公式。
+- 更外层的通用分析框架固定为：`Oracle -> Policy -> Economics -> Heuristic` 四层；不要把四层混成一个公式。
 - `hash_ids` 必须按前缀路径解释，不能退化成裸 block 频次统计。
 - `ModelProfile.kv_bytes_per_token()` 表示整套部署的总 KV 占用，不是单卡 shard 占用；预算字段必须和它保持同一口径。
 - `ModelProfile.parameter_count` 只用于从显存反推理论 KV 预算；不提供时，就必须显式给出 `hbm_kv_gb_per_machine` 或利用率。
@@ -95,7 +95,7 @@ kvcache-upper-bound-oracle/
 - `strict_prefix.py` 只回答“严格前缀语义下空间最优能到哪”，不要把 trace 读取、报表拼接塞进去。
 - `verification/` 负责证明与揭示边界：能证明的就输出证据，证明不了的就明确上下界，不编造确定性。
 - `verification/` 新增任何“证书”口径时，必须同时给出上下界链路，不能只给结论不给夹逼关系。
-- `reporting/` 负责把算法结果翻译成业务表格；不要反向污染 oracle 的数据结构。
+- `reporting/` 负责把算法结果翻译成汇总表和结果文件；不要反向污染 oracle 的数据结构。
 
 ## 开发规范
 
@@ -110,8 +110,8 @@ kvcache-upper-bound-oracle/
 - `2026-03-17`：初始化项目骨架，落地设计指导文档。
 - `2026-03-17`：新增 `core/` 与 `ingest/`，开始实现 M1 trace 规范化路径。
 - `2026-03-17`：新增 `oracle/`，开始实现 M2 content upper bound。
-- `2026-03-17`：新增 `capacity/reporting/cli`，开始支持按业务分桶输出 HBM 与扩展空间命中率。
+- `2026-03-17`：新增 `capacity/reporting/cli`，开始支持按长度分桶输出 HBM 与扩展空间命中率。
 - `2026-03-17`：新增 `verification/`、`correctness_guide.md` 和 `audit-buckets`，开始显式输出 reference 证明、strict-prefix 等价校验与中英双语 correctness report。
 - `2026-03-17`：把 exact `strict-prefix capacity oracle` 接入 `reporting/` 与 `verification/` 主路径；主报表和 correctness report 统一输出 exact hit rate 与 proof source。
 - `2026-03-17`：支持从 `gpu_memory_gb_per_machine - 模型权重分片 - runtime reserve` 推导 HBM KV 预算，公开 `h20` 配置不再写死魔法数字。
-- `2026-03-18`：新增 `docs/four_layer_model.md`，把业务分析重写成 `Oracle / Policy / Economics / Heuristic` 四层框架，并在 `design_guide.md` 中明确当前仓库只覆盖 Layer 1。
+- `2026-03-18`：新增 `docs/four_layer_model.md`，把整体分析问题重写成 `Oracle / Policy / Economics / Heuristic` 四层框架，并在 `design_guide.md` 中明确当前仓库只覆盖 Layer 1。

@@ -24,7 +24,7 @@
 | `block` | 16 tokens 一组的最小缓存分析单位 | 主分析粒度 |
 | `prefix path` | 从请求第 1 个 block 开始的整段前缀路径 | 真正可复用的对象 |
 | `content upper bound` | 忽略空间限制，只问历史里有没有相同前缀路径 | 已精确实现 |
-| `strict-prefix hit` | 一个请求从开头开始连续命中的 block 数 | 业务真正关心 |
+| `strict-prefix hit` | 一个请求从开头开始连续命中的 block 数 | 核心容量指标 |
 | `relaxed event hit` | 不要求连续，只要这个 block event 命中 resident cache 就计数 | 当前 capacity 的优化目标 |
 | `relaxed upper bound` | 允许离线最优调度、允许 `no-admit` 时的 event-level 最优值 | 已实现；在当前穷举验证空间与 exact strict-prefix 一致 |
 
@@ -115,7 +115,7 @@ content upper bound >= relaxed capacity upper bound >= exact strict-prefix hit r
 
 - `content upper bound` 忽略空间，因此一定最大
 - `relaxed capacity upper bound` 考虑空间，但目标仍是 event-level hit
-- `exact strict-prefix hit rate` 才是业务真正想知道的容量约束结果
+- `exact strict-prefix hit rate` 才是最终想知道的容量约束结果
 
 当前项目已经把三者都落地了：
 
@@ -165,9 +165,9 @@ content upper bound >= relaxed capacity upper bound >= exact strict-prefix hit r
 
 这表示 Belady 实现与同一目标下的暴力 reference 完全一致。
 
-问题在于，这个目标和业务最终关心的指标不是同一个“说法”。
+问题在于，这个目标和最终关心的指标不是同一个“说法”。
 
-业务最终关心的是：
+最终关心的是：
 
 - 一个请求从第 1 个 block 开始，能连续复用多少前缀 block
 
@@ -264,5 +264,5 @@ strict-prefix replay <= strict-prefix optimal <= relaxed upper bound <= content 
 现在真正剩下的工作，不再是“有没有 strict-prefix oracle”，而是：
 
 - 怎样把 exact strict-prefix oracle 更快地扩展到更大的 trace
-- 怎样把 exact / certificate / search 三种路径更清楚地展示到业务报表里
+- 怎样把 exact / certificate / search 三种路径更清楚地展示到结果报表里
 - 怎样把 `system upper bound` 的带宽与 deadline 约束接上来
