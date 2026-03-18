@@ -86,7 +86,8 @@ kvcache-upper-bound-oracle/
 - `ModelProfile.kv_bytes_per_token()` 表示整套部署的总 KV 占用，不是单卡 shard 占用；预算字段必须和它保持同一口径。
 - 部署配置必须显式提供 `accelerator_count` 与 `cards_per_machine`；`machine_count` 和 `8*h20` 这类隐式写法都不再接受。
 - 报表里的 `机器数` 始终由 `accelerator_count / cards_per_machine` 推导；`总 TPS` 始终归一成集群总 TPS，原始输入单位单独记录在 `TPS 输入口径`。
-- `ModelProfile.parameter_count` 只用于从显存反推理论 KV 预算；不提供时，就必须显式给出 `hbm_kv_gb_per_machine` 或利用率。
+- `ModelProfile.parameter_count` 只用于从显存反推理论 KV 预算；不提供时，就必须显式给出 `hbm_kv_gb_per_card` 或利用率。
+- HBM / 显存 / runtime reserve 预算字段必须使用显式 `*_per_card` 命名；`*_per_machine` 旧名字一律视为错误输入。
 - 混合注意力模型必须显式提供 `kv_cache_layer_count`；不能拿总层数硬套 KV 公式。
 - 纯计算逻辑放 `src/`，文件 IO 和命令行入口后置，避免副作用污染核心算法。
 - `core/` 不依赖 `ingest/`；数据结构必须比解析逻辑更稳定。
@@ -117,9 +118,10 @@ kvcache-upper-bound-oracle/
 - `2026-03-17`：新增 `capacity/reporting/cli`，开始支持按长度分桶输出 HBM 与扩展空间命中率。
 - `2026-03-17`：新增 `verification/`、`correctness_guide.md` 和 `audit-buckets`，开始显式输出 reference 证明、strict-prefix 等价校验与中英双语 correctness report。
 - `2026-03-17`：把 exact `strict-prefix capacity oracle` 接入 `reporting/` 与 `verification/` 主路径；主报表和 correctness report 统一输出 exact hit rate 与 proof source。
-- `2026-03-17`：支持从 `gpu_memory_gb_per_machine - 模型权重分片 - runtime reserve` 推导 HBM KV 预算，公开 `h20` 配置不再写死魔法数字。
+- `2026-03-17`：支持从 `gpu_memory_gb_per_card - 模型权重分片 - runtime reserve` 推导 HBM KV 预算，公开 `h20` 配置不再写死魔法数字。
 - `2026-03-18`：新增 `docs/four_layer_model.md`，定义对外展示用的 `容量 -> 命中 -> TPS -> 机器需求` 简化模型，并保留无 profile 估计入口。
 - `2026-03-18`：把 `prefill_savings_alpha` 接入分桶报表和 `metadata.json`，基于 exact strict-prefix 命中率新增 `TPS Gain / 估算总 TPS / 同负载估算机器数` 后处理。
 - `2026-03-18`：新增 `hit_summary.csv` 与 `planning_summary.csv` 输出，显式把核心 KV 命中估算和派生容量规划结果拆开，`summary.csv` 仅作兼容视图保留。
 - `2026-03-18`：把部署规模口径从含混的“机器数”修正为“卡数优先、机器数显式推导”；公开配置改成 `1` 机 `8` 卡，报表新增 `卡数 / 单机卡数 / 同负载估算卡数`。
 - `2026-03-18`：收紧部署配置 schema：`accelerator_count + cards_per_machine + machine_spec` 成为唯一合法机器描述；`total_tps_unit` 显式落盘并统一换算到集群总 TPS。
+- `2026-03-18`：把 HBM 预算命名彻底收紧到单卡口径：`hbm_kv_gb_per_card / gpu_memory_gb_per_card / runtime_reserve_gb_per_card` 成为唯一合法字段，输出 JSON 同步改名。

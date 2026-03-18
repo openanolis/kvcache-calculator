@@ -53,8 +53,8 @@ class BucketReportingTest(unittest.TestCase):
                     "accelerator_count": 2,
                     "cards_per_machine": 1,
                     "machine_spec": "h20",
-                    "gpu_memory_gb_per_machine": 1.25,
-                    "runtime_reserve_gb_per_machine": 0.25,
+                    "gpu_memory_gb_per_card": 1.25,
+                    "runtime_reserve_gb_per_card": 0.25,
                 }
             ],
         }
@@ -91,7 +91,7 @@ class BucketReportingTest(unittest.TestCase):
                     "machine_count": 8,
                     "cards_per_machine": 8,
                     "machine_spec": "h20",
-                    "hbm_kv_gb_per_machine": 1,
+                    "hbm_kv_gb_per_card": 1,
                 },
                 "machine_count is no longer accepted",
             ),
@@ -103,7 +103,7 @@ class BucketReportingTest(unittest.TestCase):
                     "accelerator_count": 8,
                     "cards_per_machine": 8,
                     "machine_spec": "8*h20",
-                    "hbm_kv_gb_per_machine": 1,
+                    "hbm_kv_gb_per_card": 1,
                 },
                 "machine_spec must be a plain spec label",
             ),
@@ -114,7 +114,7 @@ class BucketReportingTest(unittest.TestCase):
                     "upper_tokens": 32768,
                     "accelerator_count": 8,
                     "machine_spec": "h20",
-                    "hbm_kv_gb_per_machine": 1,
+                    "hbm_kv_gb_per_card": 1,
                 },
                 "cards_per_machine is required",
             ),
@@ -127,6 +127,61 @@ class BucketReportingTest(unittest.TestCase):
                 payload["bucket_deployments"] = [deployment_payload]
                 config_path.write_text(json.dumps(payload), encoding="utf-8")
                 with self.assertRaisesRegex(ValueError, expected_message):
+                    load_bucket_analysis_config(config_path)
+
+    def test_bucket_reporting_rejects_legacy_budget_field_names(self) -> None:
+        base_payload = {
+            "model_profile": {
+                "n_layers": 1,
+                "n_kv_heads": 1,
+                "head_dim": 1,
+                "dtype_bytes": 1,
+                "block_size": 16,
+            },
+            "scope": "global",
+            "block_size": 16,
+        }
+        cases = [
+            {
+                "label": "0-32K",
+                "lower_tokens": 0,
+                "upper_tokens": 32768,
+                "accelerator_count": 8,
+                "cards_per_machine": 8,
+                "machine_spec": "h20",
+                "hbm_kv_gb_per_machine": 1,
+            },
+            {
+                "label": "0-32K",
+                "lower_tokens": 0,
+                "upper_tokens": 32768,
+                "accelerator_count": 8,
+                "cards_per_machine": 8,
+                "machine_spec": "h20",
+                "gpu_memory_gb_per_machine": 80,
+            },
+            {
+                "label": "0-32K",
+                "lower_tokens": 0,
+                "upper_tokens": 32768,
+                "accelerator_count": 8,
+                "cards_per_machine": 8,
+                "machine_spec": "h20",
+                "gpu_memory_gb_per_card": 80,
+                "runtime_reserve_gb_per_machine": 4,
+            },
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            for deployment_payload in cases:
+                payload = dict(base_payload)
+                payload["bucket_deployments"] = [deployment_payload]
+                config_path.write_text(json.dumps(payload), encoding="utf-8")
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "legacy per-machine budget fields are no longer accepted",
+                ):
                     load_bucket_analysis_config(config_path)
 
     def test_bucket_reporting_resolves_total_tps_input_units(self) -> None:
@@ -175,7 +230,7 @@ class BucketReportingTest(unittest.TestCase):
                         "machine_spec": "h20",
                         "total_tps": input_total_tps,
                         "total_tps_unit": total_tps_unit,
-                        "hbm_kv_gb_per_machine": 1,
+                        "hbm_kv_gb_per_card": 1,
                     }
                 ]
                 config_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -195,7 +250,7 @@ class BucketReportingTest(unittest.TestCase):
                     "machine_spec": "h20",
                     "total_tps": 120,
                     "total_tps_unit": "per_rack",
-                    "hbm_kv_gb_per_machine": 1,
+                    "hbm_kv_gb_per_card": 1,
                 }
             ]
             config_path.write_text(json.dumps(payload), encoding="utf-8")
@@ -235,7 +290,7 @@ class BucketReportingTest(unittest.TestCase):
                     "accelerator_count": 8,
                     "cards_per_machine": 8,
                     "machine_spec": "h20",
-                    "hbm_kv_gb_per_machine": 1,
+                    "hbm_kv_gb_per_card": 1,
                 }
             ],
         }
@@ -300,7 +355,7 @@ class BucketReportingTest(unittest.TestCase):
                     "accelerator_count": 8,
                     "cards_per_machine": 8,
                     "machine_spec": "h20",
-                    "hbm_kv_gb_per_machine": 0.0,
+                    "hbm_kv_gb_per_card": 0.0,
                     "extra_capacity_tiers": [
                         {"label": "HBM+单机 1 block 命中率", "kv_gb_per_machine": one_block_gb}
                     ],
@@ -382,7 +437,7 @@ class BucketReportingTest(unittest.TestCase):
                     "machine_spec": "h20",
                     "total_tps": 500,
                     "total_tps_unit": "per_machine",
-                    "hbm_kv_gb_per_machine": 0.00000001,
+                    "hbm_kv_gb_per_card": 0.00000001,
                     "actual_hit_rate": "69%(2 个部署)",
                     "extra_capacity_tiers": [
                         {"label": "HBM+单机 1T 命中率", "kv_gb_per_machine": 0.00000001},
@@ -444,6 +499,9 @@ class BucketReportingTest(unittest.TestCase):
         self.assertAlmostEqual(details_json["rows"][0]["total_tps"], 1000.0)
         self.assertAlmostEqual(details_json["rows"][0]["prefill_savings_alpha"], 0.5)
         self.assertAlmostEqual(details_json["rows"][0]["actual_hit_rate"], 0.69)
+        self.assertIn("hbm_kv_gb_per_card", details_json["rows"][0])
+        self.assertIn("model_weight_gb_per_card", details_json["rows"][0])
+        self.assertNotIn("hbm_kv_gb_per_machine", details_json["rows"][0])
         self.assertIn("hbm_strict_prefix_replay_hit_rate", details_json["rows"][0])
         self.assertIn("hbm_strict_prefix_hit_rate", details_json["rows"][0])
         self.assertIn("hbm_strict_prefix_proof_source", details_json["rows"][0])
@@ -561,7 +619,7 @@ class BucketReportingTest(unittest.TestCase):
                     "accelerator_count": 8,
                     "cards_per_machine": 8,
                     "machine_spec": "h20",
-                    "hbm_kv_gb_per_machine": 1
+                    "hbm_kv_gb_per_card": 1
                 }
             ],
         }

@@ -22,7 +22,7 @@
       "accelerator_count": 8,
       "cards_per_machine": 8,
       "machine_spec": "h20",
-      "gpu_memory_gb_per_machine": 96,
+      "gpu_memory_gb_per_card": 96,
       "extra_capacity_tiers": [
         {
           "label": "HBM+单机 1T 命中率",
@@ -41,7 +41,7 @@
       "accelerator_count": 8,
       "cards_per_machine": 8,
       "machine_spec": "h20",
-      "gpu_memory_gb_per_machine": 96,
+      "gpu_memory_gb_per_card": 96,
       "extra_capacity_tiers": [
         {
           "label": "HBM+单机 1T 命中率",
@@ -60,7 +60,7 @@
       "accelerator_count": 8,
       "cards_per_machine": 8,
       "machine_spec": "h20",
-      "gpu_memory_gb_per_machine": 96,
+      "gpu_memory_gb_per_card": 96,
       "extra_capacity_tiers": [
         {
           "label": "HBM+单机 1T 命中率",
@@ -79,7 +79,7 @@
       "accelerator_count": 8,
       "cards_per_machine": 8,
       "machine_spec": "h20",
-      "gpu_memory_gb_per_machine": 96,
+      "gpu_memory_gb_per_card": 96,
       "extra_capacity_tiers": [
         {
           "label": "HBM+单机 1T 命中率",
@@ -98,7 +98,7 @@
       "accelerator_count": 8,
       "cards_per_machine": 8,
       "machine_spec": "h20",
-      "gpu_memory_gb_per_machine": 96,
+      "gpu_memory_gb_per_card": 96,
       "extra_capacity_tiers": [
         {
           "label": "HBM+单机 1T 命中率",

@@ -134,7 +134,7 @@ class VerificationReferenceTest(unittest.TestCase):
                     "accelerator_count": 8,
                     "cards_per_machine": 8,
                     "machine_spec": "h20",
-                    "hbm_kv_gb_per_machine": 1,
+                    "hbm_kv_gb_per_card": 1,
                 }
             ],
         }

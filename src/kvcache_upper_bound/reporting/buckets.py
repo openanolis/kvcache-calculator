@@ -18,6 +18,11 @@ from kvcache_upper_bound.oracle.strict_prefix import (
 
 BYTES_PER_GB = 1024**3
 VALID_TOTAL_TPS_UNITS = ("cluster_total", "per_machine", "per_card")
+LEGACY_PER_MACHINE_BUDGET_FIELDS = (
+    "hbm_kv_gb_per_machine",
+    "gpu_memory_gb_per_machine",
+    "runtime_reserve_gb_per_machine",
+)
 
 
 @dataclass(frozen=True)
@@ -36,10 +41,10 @@ class BucketDeploymentConfig:
     machine_spec: str
     total_tps: float | None
     total_tps_unit: str = "cluster_total"
-    hbm_kv_gb_per_machine: float | None = None
-    gpu_memory_gb_per_machine: float | None = None
+    hbm_kv_gb_per_card: float | None = None
+    gpu_memory_gb_per_card: float | None = None
     hbm_kv_utilization: float | None = None
-    runtime_reserve_gb_per_machine: float = 0.0
+    runtime_reserve_gb_per_card: float = 0.0
     window_tokens: int | None = None
     actual_hit_rate: float | None = None
     actual_hit_rate_note: str | None = None
@@ -74,26 +79,26 @@ class BucketDeploymentConfig:
             return True
         return input_length < self.upper_tokens
 
-    def resolved_hbm_kv_gb_per_machine(self, model_profile: ModelProfile) -> float:
-        if self.hbm_kv_gb_per_machine is not None:
-            return self.hbm_kv_gb_per_machine
-        if self.gpu_memory_gb_per_machine is None:
+    def resolved_hbm_kv_gb_per_card(self, model_profile: ModelProfile) -> float:
+        if self.hbm_kv_gb_per_card is not None:
+            return self.hbm_kv_gb_per_card
+        if self.gpu_memory_gb_per_card is None:
             raise ValueError(
-                f"{self.label}: either hbm_kv_gb_per_machine or gpu_memory_gb_per_machine must be provided"
+                f"{self.label}: either hbm_kv_gb_per_card or gpu_memory_gb_per_card must be provided"
             )
         if self.hbm_kv_utilization is not None:
-            return self.gpu_memory_gb_per_machine * self.hbm_kv_utilization
+            return self.gpu_memory_gb_per_card * self.hbm_kv_utilization
 
         model_weight_bytes_per_rank = model_profile.weight_bytes_per_rank()
         if model_weight_bytes_per_rank is None:
             raise ValueError(
-                f"{self.label}: gpu_memory_gb_per_machine requires either hbm_kv_utilization or model_profile.parameter_count"
+                f"{self.label}: gpu_memory_gb_per_card requires either hbm_kv_utilization or model_profile.parameter_count"
             )
         model_weight_gb_per_rank = model_weight_bytes_per_rank / BYTES_PER_GB
         resolved = (
-            self.gpu_memory_gb_per_machine
+            self.gpu_memory_gb_per_card
             - model_weight_gb_per_rank
-            - self.runtime_reserve_gb_per_machine
+            - self.runtime_reserve_gb_per_card
         )
         if resolved < 0:
             raise ValueError(
@@ -130,9 +135,9 @@ class BucketReportRow:
     total_tps: float | None
     total_tps_input_unit: str | None
     prefill_savings_alpha: float
-    hbm_kv_gb_per_machine: float
+    hbm_kv_gb_per_card: float
     hbm_kv_total_gb: float
-    model_weight_gb_per_machine: float | None
+    model_weight_gb_per_card: float | None
     extreme_hit_rate: float | None
     actual_hit_rate: float | None
     actual_hit_rate_note: str | None
@@ -219,10 +224,10 @@ def analyze_bucket_deployments(
             block_size=config.block_size,
         )
 
-        hbm_kv_gb_per_machine = deployment.resolved_hbm_kv_gb_per_machine(config.model_profile)
-        hbm_kv_total_gb = deployment.accelerator_count * hbm_kv_gb_per_machine
+        hbm_kv_gb_per_card = deployment.resolved_hbm_kv_gb_per_card(config.model_profile)
+        hbm_kv_total_gb = deployment.accelerator_count * hbm_kv_gb_per_card
         model_weight_bytes_per_rank = config.model_profile.weight_bytes_per_rank()
-        model_weight_gb_per_machine = (
+        model_weight_gb_per_card = (
             None
             if model_weight_bytes_per_rank is None
             else model_weight_bytes_per_rank / BYTES_PER_GB
@@ -356,9 +361,9 @@ def analyze_bucket_deployments(
             total_tps=resolved_total_tps,
             total_tps_input_unit=None if deployment.total_tps is None else deployment.total_tps_unit,
             prefill_savings_alpha=config.prefill_savings_alpha,
-            hbm_kv_gb_per_machine=hbm_kv_gb_per_machine,
+            hbm_kv_gb_per_card=hbm_kv_gb_per_card,
             hbm_kv_total_gb=hbm_kv_total_gb,
-            model_weight_gb_per_machine=model_weight_gb_per_machine,
+            model_weight_gb_per_card=model_weight_gb_per_card,
             extreme_hit_rate=None if not has_bucket_records else content_result.summary.block_hit_rate,
             actual_hit_rate=deployment.actual_hit_rate,
             actual_hit_rate_note=deployment.actual_hit_rate_note,
@@ -934,6 +939,7 @@ def _load_model_profile(payload: dict[str, Any]) -> ModelProfile:
 def _load_bucket_deployment(payload: dict[str, Any]) -> BucketDeploymentConfig:
     accelerator_count, cards_per_machine, machine_spec = _parse_machine_fields(payload)
     total_tps_unit = _parse_total_tps_unit(payload)
+    _reject_legacy_per_machine_budget_fields(payload)
     extra_tiers = tuple(
         BucketCapacityTier(
             label=str(item["label"]),
@@ -953,16 +959,16 @@ def _load_bucket_deployment(payload: dict[str, Any]) -> BucketDeploymentConfig:
         machine_spec=machine_spec,
         total_tps=None if payload.get("total_tps") is None else float(payload["total_tps"]),
         total_tps_unit=total_tps_unit,
-        hbm_kv_gb_per_machine=None
-        if payload.get("hbm_kv_gb_per_machine") is None
-        else float(payload["hbm_kv_gb_per_machine"]),
-        gpu_memory_gb_per_machine=None
-        if payload.get("gpu_memory_gb_per_machine") is None
-        else float(payload["gpu_memory_gb_per_machine"]),
+        hbm_kv_gb_per_card=None
+        if payload.get("hbm_kv_gb_per_card") is None
+        else float(payload["hbm_kv_gb_per_card"]),
+        gpu_memory_gb_per_card=None
+        if payload.get("gpu_memory_gb_per_card") is None
+        else float(payload["gpu_memory_gb_per_card"]),
         hbm_kv_utilization=None
         if payload.get("hbm_kv_utilization") is None
         else float(payload["hbm_kv_utilization"]),
-        runtime_reserve_gb_per_machine=float(payload.get("runtime_reserve_gb_per_machine", 0.0)),
+        runtime_reserve_gb_per_card=float(payload.get("runtime_reserve_gb_per_card", 0.0)),
         window_tokens=None if payload.get("window_tokens") is None else int(payload["window_tokens"]),
         actual_hit_rate=actual_hit_rate,
         actual_hit_rate_note=actual_hit_rate_note,
@@ -1032,3 +1038,18 @@ def _parse_total_tps_unit(payload: dict[str, Any]) -> str:
             f"total_tps_unit must be one of {', '.join(VALID_TOTAL_TPS_UNITS)}"
         )
     return unit
+
+
+def _reject_legacy_per_machine_budget_fields(payload: dict[str, Any]) -> None:
+    legacy_fields = [
+        field_name
+        for field_name in LEGACY_PER_MACHINE_BUDGET_FIELDS
+        if field_name in payload and payload[field_name] is not None
+    ]
+    if not legacy_fields:
+        return
+    formatted = ", ".join(legacy_fields)
+    raise ValueError(
+        f"legacy per-machine budget fields are no longer accepted: {formatted}; "
+        "use hbm_kv_gb_per_card, gpu_memory_gb_per_card, runtime_reserve_gb_per_card"
+    )
