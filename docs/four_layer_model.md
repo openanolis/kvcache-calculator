@@ -319,6 +319,30 @@ h_lru_like_est(C) = min(h_content, (S + g(r_lru) * P) / L_request)
 - 容量规划初筛
 - profile 到来前的第一版资源预算
 
+### 3.6 trace 回标
+
+如果已经拿到一小段代表性 trace，框架允许再做一步轻量回标：
+
+- 固定结构层参数
+- 用 trace 观测结果回标 `zipf_s`
+- 用 trace 观测结果回标 `LRU-like efficiency`
+
+但这一步的公开口径必须保持克制：
+
+- 它是 `calibration`，不是 `proof`
+- 它只能说明“这组参数更贴近这个样本”
+- 如果 `content ceiling` 还明显对不齐，说明问题在结构假设，而不是曲线参数本身
+
+### 3.7 trace 结构建议
+
+如果 `content_gap` 很大，框架会再往前走一步：
+
+- 不再只调 `zipf_s / LRU-like`
+- 直接根据 trace 的 session 形态反推 `shared prefix / Delta / T / W / n`
+- 生成一份 `recommended_heuristic_config.json`
+
+这份配置的意义是“把 heuristic 结构模板先摆正”，不是“证明 workload 一定长这样”。
+
 ---
 
 ## 4. 参数说明

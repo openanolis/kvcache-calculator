@@ -184,6 +184,8 @@ class MultiAgentHeuristicTest(unittest.TestCase):
             heuristic_tier_summary_csv = output_dir / "heuristic_tier_summary.csv"
             details_json = output_dir / "details.json"
             metadata_json = output_dir / "metadata.json"
+            heuristic_report_zh = output_dir / "heuristic_report.zh.md"
+            heuristic_report_en = output_dir / "heuristic_report.en.md"
 
             with heuristic_summary_csv.open("r", encoding="utf-8", newline="") as handle:
                 summary_rows = list(csv.DictReader(handle))
@@ -191,6 +193,8 @@ class MultiAgentHeuristicTest(unittest.TestCase):
                 tier_rows = list(csv.DictReader(handle))
             details = json.loads(details_json.read_text(encoding="utf-8"))
             metadata = json.loads(metadata_json.read_text(encoding="utf-8"))
+            report_zh_text = heuristic_report_zh.read_text(encoding="utf-8")
+            report_en_text = heuristic_report_en.read_text(encoding="utf-8")
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(len(summary_rows), 1)
@@ -204,6 +208,8 @@ class MultiAgentHeuristicTest(unittest.TestCase):
         self.assertIn("heuristic_multi_agent", details)
         self.assertIn("scenario_summaries", details)
         self.assertIn("toy", details["scenarios"])
+        self.assertIn("# Heuristic 结果报告", report_zh_text)
+        self.assertIn("# Heuristic Report", report_en_text)
         self.assertIn('"mode": "multi_agent_heuristic"', stdout.getvalue())
 
 

@@ -73,6 +73,8 @@ def build_bucket_audit_report(
     trace: str,
     config_path: str,
     sample_request_limit: int = 256,
+    reference_max_requests: int = 2,
+    reference_max_blocks_per_request: int = 2,
 ) -> BucketAuditReport:
     record_list = list(records)
     rows: list[BucketAuditRow] = []
@@ -174,7 +176,10 @@ def build_bucket_audit_report(
         if config.model_profile.weight_bytes_per_rank() is None
         else config.model_profile.weight_bytes_per_rank() / (1024**3),
         normalized_bucket_inputs=build_bucket_input_summaries(analysis_result),
-        exhaustive_reference=verify_exhaustive_small_cases(),
+        exhaustive_reference=verify_exhaustive_small_cases(
+            max_requests=reference_max_requests,
+            max_blocks_per_request=reference_max_blocks_per_request,
+        ),
         strict_prefix_counterexample=None,
         strict_prefix_replay_gap_counterexample=None,
         rows=rows,

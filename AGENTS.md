@@ -27,9 +27,12 @@ kvcache-upper-bound-oracle/
 │       │   └── models.py
 │       ├── heuristic/
 │       │   ├── __init__.py
+│       │   ├── calibration.py
 │       │   ├── config_loader.py
 │       │   ├── multi_agent.py
-│       │   └── output.py
+│       │   ├── output.py
+│       │   ├── report.py
+│       │   └── structure.py
 │       ├── ingest/
 │       │   ├── __init__.py
 │       │   ├── normalizer.py
@@ -68,7 +71,9 @@ kvcache-upper-bound-oracle/
     ├── test_capacity_oracle.py
     ├── test_content_oracle.py
     ├── test_lru_oracle.py
+    ├── test_multi_agent_calibration.py
     ├── test_multi_agent_heuristic.py
+    ├── test_multi_agent_structure.py
     ├── test_normalizer.py
     ├── test_strict_prefix_oracle.py
     ├── test_trace_loader.py
@@ -84,8 +89,11 @@ kvcache-upper-bound-oracle/
 - `docs/four_layer_model.md`：对外展示文档；主线只讲 `容量 -> 命中 -> TPS -> 机器需求` 与无 profile 估计。
 - `src/kvcache_upper_bound/core/models.py`：稳定数据模型；这里定义请求、窗口化请求、模型配置，以及从模型参数量推导权重占用所需的核心对象。
 - `src/kvcache_upper_bound/heuristic/multi_agent.py`：无 trace 多 Agent 冷启动估计器；用 `shared/private` 工作集分解、曲线形状函数和 `policy_efficiency` 输出 `strict-prefix` 上界估计与 `LRU-like` 估计。
+- `src/kvcache_upper_bound/heuristic/calibration.py`：trace 回标引擎；把分桶 trace oracle 聚合成单一观测目标，对 `zipf_s × lru_like` 做网格搜索，并输出最佳参数、分层误差与回标后的配置。
 - `src/kvcache_upper_bound/heuristic/config_loader.py`：无 trace heuristic 配置解析与校验；负责把 `curve_mode / zipf_s / policy_efficiency / deployment budgets` 的口径钉死。
 - `src/kvcache_upper_bound/heuristic/output.py`：无 trace heuristic 输出层；负责写 `heuristic_summary.csv / heuristic_tier_summary.csv / details.json`，并生成归一化输入摘要。
+- `src/kvcache_upper_bound/heuristic/report.py`：无 trace heuristic 双语报告输出；负责生成 `heuristic_report.md / heuristic_report.zh.md / heuristic_report.en.md`，并在有回标时追加 calibration 章节。
+- `src/kvcache_upper_bound/heuristic/structure.py`：trace 结构建议器；从 session 形态提取 `shared prefix / Delta / T / W / n` 的候选模板，并生成 `recommended_heuristic_config.json`。
 - `src/kvcache_upper_bound/ingest/trace_loader.py`：读取 JSONL trace，做字段解析、时间标准化和稳定排序。
 - `src/kvcache_upper_bound/ingest/normalizer.py`：把原始请求转成 window-aware 的 `EffectiveRequest`，并解析 session root。
 - `src/kvcache_upper_bound/oracle/prefix_trie.py`：前缀路径状态机；只负责匹配和插入，不混入聚合逻辑。
@@ -108,6 +116,8 @@ kvcache-upper-bound-oracle/
 - `tests/test_bucket_output_files.py`：报表文件和 `details.json` 的结构测试；专门承接输出层断言，避免 `test_bucket_reporting.py` 继续膨胀。
 - `tests/test_lru_oracle.py`：LRU 策略基线测试；覆盖“容量足够可复用”和“不能像 relaxed 一样 skip-admit”两类关键边界。
 - `tests/test_multi_agent_heuristic.py`：无 trace 多 Agent heuristic 测试；覆盖私有工作集平均值、Zipf 派生参数、单调性、`LRU-like <= strict-prefix` 和 CLI 输出文件。
+- `tests/test_multi_agent_calibration.py`：trace 回标测试；覆盖 synthetic target 参数恢复、`calibrate-multi-agent` CLI 输出文件和双语报告。
+- `tests/test_multi_agent_structure.py`：trace 结构建议测试；覆盖 append-only session 结构恢复和推荐模板回填。
 - `tests/`：面向口径和边界条件的测试，不写和实现细节强绑定的脆弱测试。
 - `configs/public_trace_qwen3_5_27b.json`：公开 `1` 机 `8` 卡 `h20` 样例；适合看“容量基本不构成约束”时的上界结果。
 - `configs/public_trace_qwen3_5_27b_1x1_h20.json`：公开 `1` 机 `1` 卡 `h20` 样例；专门用来放大单卡显存约束，观察 HBM 上限如何压低命中率。
@@ -146,6 +156,8 @@ kvcache-upper-bound-oracle/
 - 主 CSV 优先服务“当前 HBM 怎么看”；额外容量层不要再横向展开成超宽表，而要放进 `tier_summary.csv` 这种长表里做层间比较。
 - 上界规划和策略规划必须显式分开：`planning_strict_prefix.csv` 代表 exact strict-prefix，`planning_lru.csv` 代表 LRU；不要再使用含混的 `HBM TPS Gain` 之类列名。
 - `heuristic/` 是第四层冷启动引擎，不是 oracle；它只能输出 `估计`，不能输出 `proof source`，也不能和 exact strict-prefix/LRU 主表混成一张表。
+- `heuristic/calibration.py` 只能做“参数贴合”，不能偷换成“结果证明”；凡是回标结果，都必须同时输出误差和边界说明。
+- `heuristic/structure.py` 可以用 trace 反推结构模板，但它输出的是“推荐配置”，不是“真实 workload 真相”；一旦和 oracle 不一致，必须让报告显式展示差值。
 - 绝对规划必须显式提供锚点：`baseline_per_card_tps` 给出无命中单卡基线吞吐，`planning_target_total_tps` 给出目标总 TPS；只有这两个量到位，`最小卡数 / 最小机器数` 才有可比性。
 - `同负载估算卡数 / 机器数` 只能当固定命中率下的算力等效值；它们留在 `details.json` 做诊断，不要再放进主 CSV 干扰部署规划阅读。
 - 命中表必须显式回答“是容量瓶颈还是策略瓶颈”；不要让读者自己拿三列数字脑补。
@@ -185,3 +197,5 @@ kvcache-upper-bound-oracle/
 - `2026-03-18`：精简主 CSV 规划列：移除 `同负载估算卡数 / 机器数`，只保留 `TPS Gain / 估算总 TPS / 当前配置可承载总 TPS / 目标总 TPS 最小卡数 / 最小机器数`；同时新增两份归一化 planning 样例配置，方便直接比较 `1x8` 与 `1x1` 部署。
 - `2026-03-18`：主表继续窄化：`hit_summary.csv / planning_*.csv` 只保留 HBM 当前层主列；新增 `tier_summary.csv` 长表统一承接 `HBM / 1T / 10T` 层间比较，并新增“达到上界 / 达到 strict / 当前主要瓶颈 / 相对上一层增益”诊断列。
 - `2026-03-18`：新增 `heuristic/` 包和 `estimate-multi-agent` CLI；现在项目支持不依赖 trace 的多 Agent 冷启动估计，并额外输出 `heuristic_summary.csv / heuristic_tier_summary.csv / metadata.json`。
+- `2026-03-18`：新增 `heuristic/calibration.py`、`heuristic/report.py` 和 `calibrate-multi-agent` CLI；现在项目支持用小样本 trace 回标 `zipf_s / lru_like`，并固定输出双语 heuristic 报告与 calibration 工件。
+- `2026-03-18`：新增 `heuristic/structure.py` 与 `recommended_heuristic_config.json` 输出；现在 calibration 路径会同时给出 trace 驱动的结构模板建议，并把 content 对齐效果写入双语报告。

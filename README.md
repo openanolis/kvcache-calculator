@@ -34,6 +34,13 @@ kvcache-upper-bound audit-buckets \
 kvcache-upper-bound estimate-multi-agent \
   --config configs/public_multi_agent_qwen3_5_27b.json \
   --output-dir outputs/heuristic_qwen_1x8
+
+kvcache-upper-bound calibrate-multi-agent \
+  --trace https://media.githubusercontent.com/media/alibaba-edu/qwen-bailian-usagetraces-anon/main/qwen_traceA_blksz_16.jsonl \
+  --bucket-config configs/public_trace_qwen3_5_27b.json \
+  --heuristic-config configs/public_multi_agent_qwen3_5_27b.json \
+  --output-dir outputs/heuristic_qwen_1x8_calibrated \
+  --max-records 5000
 ```
 
 ## 最少要配什么
@@ -55,6 +62,19 @@ kvcache-upper-bound estimate-multi-agent \
 - `configs/public_multi_agent_qwen3_5_27b_1x1_h20.json`
 
 这两份样例基于 `Qwen/Qwen3.5-27B` 的公开模型参数，分别演示 `1x8 h20` 和 `1x1 h20` 下的无 trace multi-agent heuristic 估计。
+
+如果想先用一小段真实 trace 回标 `zipf_s` 和 `lru_like`，可以直接用：
+
+- `--bucket-config configs/public_trace_qwen3_5_27b.json`
+- `--heuristic-config configs/public_multi_agent_qwen3_5_27b.json`
+
+这条路径会先用 trace 算 exact strict-prefix / LRU 观测值，再把 heuristic 里的 `zipf_s` 和 `lru_like` 回标到更贴近样本的位置，同时保留“这不是 oracle”的边界说明。
+
+现在这条路径还会额外输出一份 `recommended_heuristic_config.json`：
+
+- 它不是回标后的最优参数，而是 trace 结构建议器给出的模板。
+- 它优先回答 `shared prefix / Delta / T / W / n` 应该怎么设。
+- 如果 `content_gap` 很大，优先看它，而不是继续只调 `zipf_s / lru_like`。
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
@@ -104,6 +124,12 @@ kvcache-upper-bound estimate-multi-agent \
 | `tier_summary.csv` | 容量层长表；把 `HBM / HBM+1T / HBM+10T ...` 展成多行，统一给出 `Strict-Prefix / LRU / 增益 / 诊断 / 规划` | 想比较扩容层之间到底差多少，不想看超宽表 |
 | `heuristic_summary.csv` | 无 trace 主表；只保留 HBM 当前层的 heuristic 估计和主规划列 | 想快速看冷启动场景下当前部署的大致上限 |
 | `heuristic_tier_summary.csv` | 无 trace 容量层长表；把 `HBM / HBM+1T / HBM+10T ...` 展成多行 | 想比较冷启动估计里不同容量层的变化 |
+| `heuristic_report.zh.md` | 中文 heuristic 报告 | 想看假设、公式、参数和结果边界 |
+| `heuristic_report.en.md` | 英文 heuristic 报告 | 想对外同步英文解释 |
+| `calibration.json` | trace 回标摘要 | 想看观测目标、最佳参数和分层误差 |
+| `calibration_trials.csv` | 参数网格搜索结果 | 想看 `zipf_s / lru_like` 的误差分布 |
+| `calibrated_config.json` | 回标后的 heuristic 配置 | 想拿最佳参数直接继续跑冷启动估计 |
+| `recommended_heuristic_config.json` | trace 结构建议模板 | 想先把 `shared prefix / Delta / T / W / n` 设到更贴近样本的位置 |
 | `details.json` | 每个桶的详细统计摘要 | 想查具体数字和中间结果 |
 | `metadata.json` | 输入参数、加载统计、归一化后的桶配置 | 想确认这次运行到底按什么口径算的 |
 | `correctness_report.zh.md` | 中文正确性报告 | 想确认结果边界和证明路径 |
@@ -120,6 +146,7 @@ kvcache-upper-bound estimate-multi-agent \
 | `exact strict-prefix` | strict-prefix 语义下的真正最优值 |
 | `alpha` | 命中收益换算成吞吐收益的兑现系数 |
 | `multi-agent heuristic` | 没有 trace 时，用 `shared/private` 工作集结构和曲线形状做的冷启动估计 |
+| `trace-backed calibration` | 用小样本 trace 回标 `zipf_s / lru_like` 的过程；只做参数贴合，不做证明 |
 
 结果关系可以直接记成：
 

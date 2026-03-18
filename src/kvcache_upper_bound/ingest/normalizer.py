@@ -27,6 +27,12 @@ class NormalizationResult:
     stats: NormalizationStats
 
 
+@dataclass(frozen=True)
+class SessionRootResolution:
+    root_by_chat_id: dict[str, str]
+    missing_parent_links: int
+
+
 def build_effective_requests(
     records: Iterable[RequestRecord],
     window_tokens: int,
@@ -39,7 +45,9 @@ def build_effective_requests(
         raise ValueError("window_tokens must be non-negative")
 
     ordered_records = sorted(records, key=lambda record: (record.timestamp_ms, record.source_index))
-    session_roots, missing_parent_links = _resolve_session_roots(ordered_records)
+    session_root_resolution = resolve_session_roots(ordered_records)
+    session_roots = session_root_resolution.root_by_chat_id
+    missing_parent_links = session_root_resolution.missing_parent_links
     window_blocks = window_to_block_count(window_tokens, block_size)
 
     effective_requests: list[EffectiveRequest] = []
@@ -112,6 +120,15 @@ def input_length_matches_blocks(input_length: int, block_count: int, block_size:
     lower_bound = (block_count - 1) * block_size + 1
     upper_bound = block_count * block_size
     return lower_bound <= input_length <= upper_bound
+
+
+def resolve_session_roots(records: Iterable[RequestRecord]) -> SessionRootResolution:
+    ordered_records = list(records)
+    root_by_chat_id, missing_parent_links = _resolve_session_roots(ordered_records)
+    return SessionRootResolution(
+        root_by_chat_id=root_by_chat_id,
+        missing_parent_links=missing_parent_links,
+    )
 
 
 def _resolve_session_roots(records: list[RequestRecord]) -> tuple[dict[str, str], int]:

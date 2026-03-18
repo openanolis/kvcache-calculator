@@ -158,6 +158,56 @@ h_lru_like_est(C) = min(h_content, (S + g(r_lru) * P) / L_request)
 - `LRU-like` 的效率系数必须不超过 `strict-prefix upper bound`。
 - 任何 heuristic 结果都必须和 trace oracle 分开输出。
 
+### trace 回标
+
+第四层允许再多做一步：用一小段真实 trace 去回标 `zipf_s` 和 `lru_like`，但口径必须固定为：
+
+- 只回标形状参数和策略效率参数。
+- 不把回标结果说成“证明正确”。
+- 如果 `content ceiling` 仍然明显对不齐，就明确指出问题在结构参数，而不是继续假装 `zipf_s` 能解决一切。
+
+回标目标来自 trace oracle 的聚合结果：
+
+```text
+observed content hit rate
+observed strict-prefix hit curve
+observed LRU hit curve
+```
+
+当前实现对 `zipf_s × lru_like` 做网格搜索，输出：
+
+- `calibration.json`
+- `calibration_trials.csv`
+- `calibrated_config.json`
+- `recommended_heuristic_config.json`
+
+并在 `heuristic_report.zh.md / heuristic_report.en.md` 里显式写出：
+
+- 样本来源
+- trace 结构建议
+- 最佳参数
+- 分层误差
+- `content_gap`
+
+其中 `content_gap` 是最重要的诊断值之一：
+
+```text
+content_gap = heuristic_content_ceiling - observed_content_ceiling
+```
+
+如果它很大，说明应该先改 `shared/private` 结构假设，而不是继续细抠曲线参数。
+
+### trace 结构建议
+
+除了 `zipf_s / lru_like` 回标，第四层现在还支持一条“结构建议器”路径：
+
+- 用 root 请求的两两公共前缀估计共享前缀规模。
+- 用 session 生命周期重叠估计并发 agent 数。
+- 用观测私有复用量反推 `avg_turns_per_session / private_window_tokens`。
+- 如果已经有 trace content ceiling，再把 `Delta` 回代到能对齐 content ceiling 的位置。
+
+它输出的是一份 `recommended_heuristic_config.json`，目的不是替代 oracle，而是把 heuristic 的结构模板先摆正。
+
 ---
 
 ## 冻结口径：先把定义钉死
@@ -558,6 +608,13 @@ kvcache-upper-bound audit-buckets \
 kvcache-upper-bound estimate-multi-agent \
   --config configs/public_multi_agent_qwen3_5_27b.json \
   --output-dir outputs/heuristic_run_001
+
+kvcache-upper-bound calibrate-multi-agent \
+  --trace https://media.githubusercontent.com/media/alibaba-edu/qwen-bailian-usagetraces-anon/main/qwen_traceA_blksz_16.jsonl \
+  --bucket-config configs/public_trace_qwen3_5_27b.json \
+  --heuristic-config configs/public_multi_agent_qwen3_5_27b.json \
+  --output-dir outputs/heuristic_calibrated_001 \
+  --max-records 5000
 ```
 
 输出最少包含：
@@ -574,6 +631,11 @@ kvcache-upper-bound estimate-multi-agent \
 | `correctness_report.{json,md,zh.md,en.md}` | reference 校验、trace 采样对账、strict-prefix 求解路径说明 |
 | `heuristic_summary.csv` | 无 trace 主表；只保留 HBM 当前层的 cold-start 估计与主规划列 |
 | `heuristic_tier_summary.csv` | 无 trace 容量层长表；统一比较 `HBM / HBM+1T / HBM+10T` 等层级 |
+| `heuristic_report.{md,zh.md,en.md}` | 无 trace heuristic 说明报告；固定解释假设、参数、公式、结果边界 |
+| `calibration.json` | trace 回标摘要；固定记录样本来源、最佳参数和分层误差 |
+| `calibration_trials.csv` | trace 回标网格搜索结果 |
+| `calibrated_config.json` | 回标后的 heuristic 配置 |
+| `recommended_heuristic_config.json` | trace 结构建议模板；固定记录更贴近样本的 `shared/private` 假设 |
 
 其中：
 
@@ -581,6 +643,7 @@ kvcache-upper-bound estimate-multi-agent \
 - `目标总 TPS 最小卡数 / 机器数` 才是闭环回代容量约束后的绝对规划结果。
 - `tier_summary.csv` 的 `相对上一层 Strict-Prefix / LRU 增益` 用来回答“加这一层容量到底值不值”。
 - `heuristic_summary.csv / heuristic_tier_summary.csv` 只能代表冷启动估计，不得和 oracle 主表混读成“已证明结果”。
+- `calibration.json` 只能说明“这组参数更贴近这段样本”，不能自动升级成 `oracle proof`。
 
 ---
 
