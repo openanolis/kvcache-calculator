@@ -1,27 +1,27 @@
-# KVCache 规划四层模型：上界、策略、收益与估算
+# KVCache 通用分析框架：四层架构设计
 
-> **“先分清你在算上界、在模拟策略，还是在做收益闭环；把这三件事混成一条曲线，最后一定谁都解释不清。”**
-> 这份文档把整体分析问题重写成一个四层框架。它的目的不是替代当前实现，而是给当前实现一个正确的位置，并给后续演进划清边界。
+> **“不要把上界、策略、收益和粗估混成同一条曲线；先分层，再求解，最后再闭环。”**
+> 这份文档定义一个面向通用推理系统的 KVCache 分析框架。它适用于不同模型、不同缓存介质、不同部署规模，也适用于从离线容量规划到在线策略评估的完整分析链路。
 
 ---
 
-## 背景：为什么必须重写成四层
+## 1. 设计目标
 
-这个通用框架真正想回答的问题其实不是一个，而是一串因果链：
+KVCache 相关问题通常表面上只是在问“要配多大缓存”，但真正需要回答的是一组层层递进的问题：
 
-1. **理论上** 这个 workload 最多能复用多少 KV？
-2. **某个具体缓存系统** 实际能保住多少命中？
-3. 命中率提升后，**GPU prefill 负载** 能下降多少？
-4. 这些节省能不能转成 **更高 TPS 或更少机器**？
-5. 如果没有 trace，能不能用 **统计模型** 快速估个量级？
+1. 在给定 workload 下，**理论上最多** 能复用多少 KV？
+2. 某个具体缓存系统，**实际上** 能保住多少命中？
+3. 这些命中带来的 prefill 节省，能换来多少 **TPS 提升或机器节约**？
+4. 如果没有 trace，能否用少量统计量对容量需求做 **快速估算**？
 
-这五个问题不是同一层。当前仓库已经把第一个问题做得很扎实，但第二、第三、第四、第五个问题还不能和第一个问题混写成同一个公式。
+这四个问题不是同一个数学对象，也不应该由同一条公式直接回答。为避免口径混乱，KVCache 分析框架应固定拆成四层：
 
 ```mermaid
 flowchart LR
     A["Layer 1\nOracle"] --> B["Layer 2\nPolicy"]
     B --> C["Layer 3\nEconomics"]
-    D["Layer 4\nHeuristic"] -. no trace / early sizing .-> C
+    D["Layer 4\nHeuristic"] -. sizing / cold start .-> C
+    D -. prior / initialization .-> B
 
     style A fill:#c8e6c9
     style B fill:#fff3cd
@@ -29,145 +29,195 @@ flowchart LR
     style D fill:#e3f2fd
 ```
 
-最核心的架构判断是：
+---
 
-- **Layer 1** 解决“上限”
-- **Layer 2** 解决“真实系统行为”
-- **Layer 3** 解决“收益闭环”
-- **Layer 4** 解决“无 trace 时的粗估”
+## 2. 四层总览
+
+| 层级 | 核心问题 | 典型输入 | 核心输出 | 本质定位 |
+|------|----------|----------|----------|----------|
+| **Layer 1: Oracle** | 理论上最多能命中多少？ | trace + model + budget | 上界曲线 / 精确最优值 / 证书 | 数学上界 |
+| **Layer 2: Policy** | 某个缓存系统实际会命中多少？ | trace + policy + budget | 策略曲线 / 实际命中率 | 系统行为模拟 |
+| **Layer 3: Economics** | 命中率能换来多少吞吐或机器收益？ | policy result + service profile | TPS gain / machine saved / fixed point | 资源收益模型 |
+| **Layer 4: Heuristic** | 无 trace 时怎么快速估量容量？ | 少量统计量 / 经验参数 | 粗粒度 sizing curve | 先验估算 |
+
+### 2.1 分层原则
+
+- **Layer 1 不模拟策略**，只回答理论极限。
+- **Layer 2 不冒充上界**，只回答具体系统行为。
+- **Layer 3 不直接产生命中率**，而是把命中率映射成资源收益。
+- **Layer 4 不替代真实分析**，只在缺少 trace 时提供粗估。
+
+### 2.2 常见错误
+
+| 错误做法 | 问题 |
+|---------|------|
+| 用上界结果代替真实系统命中率 | 过度乐观 |
+| 用某个策略模拟结果代替理论上界 | 失去最优性参照 |
+| 用 TPS 放大公式直接反推命中率 | 忽略访问流结构变化 |
+| 用 Zipf 或 shared/private 模型替代真实 trace | 误差不可控 |
 
 ---
 
-## 四层一览
+## 3. Layer 1: Oracle
 
-| 层级 | 回答的问题 | 输入 | 输出 | 当前状态 |
-|------|------------|------|------|----------|
-| **Layer 1: Oracle** | 理论上最多能命中多少？ | trace + model + budget | `content/capacity/system` upper bound | ✅ `content` 和 `strict-prefix capacity` 已实现 |
-| **Layer 2: Policy** | 某个缓存系统实际能命中多少？ | trace + policy + budget | `LRU/TTL/admission/spill` 命中率 | ❌ 未实现 |
-| **Layer 3: Economics** | 命中率能换来多少 TPS / 节约多少机器？ | policy result + service profile | `TPS gain / machine saved / fixed point` | ❌ 未实现 |
-| **Layer 4: Heuristic** | 没有 trace 时如何快速估算？ | 少量统计量 / 人工假设 | 粗粒度 sizing curve | ❌ 未实现 |
-
-结论先摆在台面上：
-
-- 当前仓库的主能力属于 **Layer 1**
-- 原始分析笔记里的 `2.1 LRU` 更像 **Layer 2**
-- 原始分析笔记里的 `2.2 TPS 修正模型` 属于 **Layer 3**
-- 原始分析笔记里的 `2.3 Agent / Zipf` 属于 **Layer 4**
-
-如果不这样切开，就会发生最常见的概念污染：
-
-- 用上界数字去解释真实线上命中率
-- 用策略模拟结果去当理论极限
-- 用收益闭环公式去反推缓存命中
-- 用无 trace 的粗估模型去替代真实 profile
-
----
-
-## Layer 1：Oracle 层
-
-### 它回答什么
+### 3.1 目标
 
 Oracle 层只回答一个问题：
 
-**给定 trace、window、模型和容量预算，这个 workload 在定义好的语义下理论最多能复用多少 KV。**
+**给定 trace、窗口语义、模型配置和容量预算，在定义好的复用语义下，理论上最多能复用多少 KV。**
 
-它不回答：
+它回答的是上界，而不是某个具体系统已经达到的结果。
 
-- 真实线上是不是 LRU
-- 缓存对象怎么 admission
-- host/SSD 的带宽是否来得及
-- 命中率提升后 TPS 会不会反馈改变流量
+### 3.2 输入与输出
 
-### 当前仓库在这一层已经实现了什么
+### 输入
+
+- 请求 trace
+- window 策略
+- 复用 scope
+- 模型 profile
+- 容量预算
+- 可选的带宽/时限参数
+
+### 输出
+
+- `content upper bound`
+- `capacity upper bound`
+- `system upper bound`
+- `block/token/kv-byte` 三类命中率
+- 对精确值的证明信息或上下界证书
+
+### 3.3 Oracle 内部再分三层
 
 ```mermaid
 graph TB
     A["Trace"] --> B["Window / Scope Normalization"]
-    B --> C["Prefix Trie"]
+    B --> C["Prefix-Aware State"]
     C --> D["Content Upper Bound"]
-    C --> E["Relaxed Capacity Upper Bound"]
-    C --> F["Exact Strict-Prefix Capacity Oracle"]
+    C --> E["Capacity Upper Bound"]
+    C --> F["System Upper Bound"]
 
     style D fill:#c8e6c9
     style E fill:#fff3cd
-    style F fill:#c8e6c9
+    style F fill:#ffe0b2
 ```
 
-当前仓库在 Layer 1 内部又分成三层：
+| 子层 | 回答的问题 | 是否需要容量信息 |
+|------|------------|------------------|
+| **content** | 内容本身最多能复用多少？ | 否 |
+| **capacity** | 有限空间下还能保住多少？ | 是 |
+| **system** | 带宽和时间窗口下最终能搬到多少？ | 是 |
 
-| 子层 | 定义 | 当前状态 |
-|------|------|----------|
-| **content upper bound** | 忽略容量，只问历史里是否已有相同前缀路径 | ✅ 已实现 |
-| **capacity upper bound** | 在有限 budget 下，最多能保住多少命中 | ✅ 已实现 |
-| **system upper bound** | 在容量之外，再考虑带宽和 deadline | ❌ 未实现 |
+### 3.4 语义要求
 
-### 当前实现与经典 LRU 的关系
+### 3.4.1 复用对象必须是前缀路径，而不是平坦 key
 
-这里最容易误解。
+对 LLM prefill 而言，可复用对象不是“曾经见过某个 block hash”，而是“曾经出现过相同前缀路径上的状态”。
 
-当前实现的主对象不是“平坦 key”，而是“前缀路径节点”。
+```mermaid
+graph LR
+    R["root"] --> A["x"]
+    A --> B["x/y"]
+    R --> C["z"]
+    C --> D["z/y"]
 
-所以它不是经典教科书里的：
+    style B fill:#c8e6c9
+    style D fill:#ffccbc
+```
 
-- flat key LRU
-- stack distance directly over raw keys
+`x/y` 和 `z/y` 虽然最后一个 block 都是 `y`，但它们不代表同一个可复用前缀状态。
 
-而是：
+### 3.4.2 strict-prefix 是核心语义
 
-- prefix-aware reuse object
-- strict-prefix semantics
-- exact oracle or provable upper bound
+只有从请求第一个 block 开始连续命中的那一段，才构成真正可复用的前缀。
 
-### Layer 1 的核心公式
+```mermaid
+flowchart LR
+    A["hit pattern = [1, 1, 0, 1]"] --> B["strict-prefix hit = 2"]
+    B --> C["first miss cuts reusable prefix"]
 
-对单 token KV 大小，当前项目采用：
+    style B fill:#c8e6c9
+    style C fill:#fff3cd
+```
+
+### 3.4.3 Prefill / Decode 分界
+
+第一类核心指标只统计 prefill 复用：
+
+- 输入前缀能否复用，计入命中
+- decode 产生的新 token KV，不进入主命中率
+- decode 只在 Layer 3 的收益映射中进入计算
+
+### 3.5 核心公式
+
+### 3.5.1 模型尺寸进入容量计算的方式
+
+对标准 Transformer / GQA，单 token KV 大小定义为：
 
 ```python
-def kv_bytes_per_token(layers, kv_heads, head_dim, dtype_bytes):
-    return 2 * layers * kv_heads * head_dim * dtype_bytes
+from dataclasses import dataclass
+
+@dataclass(frozen=True)
+class ModelProfile:
+    n_layers: int
+    n_kv_heads: int
+    head_dim: int
+    dtype_bytes: int
+    kv_cache_layer_count: int | None = None
+    block_size: int = 16
+
+    def kv_bytes_per_token(self) -> int:
+        layers = self.n_layers if self.kv_cache_layer_count is None else self.kv_cache_layer_count
+        return 2 * layers * self.n_kv_heads * self.head_dim * self.dtype_bytes
+
+    def kv_bytes_per_block(self) -> int:
+        return self.block_size * self.kv_bytes_per_token()
 ```
 
-对 `Qwen/Qwen3.5-27B` 这类混合注意力模型，还要区分：
+其中：
 
-- 总层数 `n_layers = 64`
-- 真正进入 token-linear KV cache 的层数 `kv_cache_layer_count = 16`
+- `2` 表示 `K + V`
+- `n_kv_heads` 必须使用 KV 头数，而不是 attention 总头数
+- 混合注意力模型必须显式提供 `kv_cache_layer_count`
 
-所以当前项目里的 budget 曲线：
+### 3.5.2 三类上界的关系
 
-- **访问模式** 主要由 trace 决定
-- **bytes 轴** 由模型 profile 决定
+```text
+content upper bound >= capacity upper bound >= system upper bound
+```
 
-这也是为什么“命中率曲线只和访问模式有关、和模型无关”这个说法只能成立一半：
+更细一点：
 
-- 如果横轴是“resident blocks”，基本只和访问模式有关
-- 如果横轴是“GB / HBM / 机器数”，就一定和模型有关
+```text
+content upper bound >= relaxed capacity upper bound >= exact strict-prefix capacity >= realizable policy result
+```
 
-### Layer 1 的结果该怎么用
+### 3.6 Layer 1 的价值
 
-能用来：
+能回答：
 
-- 给容量规划一个 **硬天花板**
-- 判断当前 workload 是否已经接近 `content ceiling`
-- 判断“多加空间”还有没有理论收益
-- 给 Layer 2/3 提供上界约束
+- workload 的理论复用极限
+- 多加空间是否还有理论收益
+- 哪些分桶已经接近内容天花板
+- 某个真实策略离理论最优还差多少
 
-不能用来：
+不能直接回答：
 
-- 直接当真实线上命中率
-- 直接当真实 TPS 提升
-- 直接推断某个具体缓存策略已经达到这个数
+- 某个具体系统当前到底命中多少
+- TPS 会提升多少
+- 机器数应该缩减多少
 
 ---
 
-## Layer 2：Policy 层
+## 4. Layer 2: Policy
 
-### 它回答什么
+### 4.1 目标
 
 Policy 层回答：
 
-**给定一个具体缓存系统和调度策略，它在相同 trace 上实际会做到多少命中。**
+**给定一个具体缓存系统、调度规则和容量分层，它在相同输入流上实际能做到多少命中。**
 
-典型策略包括：
+典型系统包括：
 
 - `LRU`
 - `LFU`
@@ -175,345 +225,337 @@ Policy 层回答：
 - `admission control`
 - `HBM + host spill`
 - `HBM + SSD spill`
+- 分级 promotion / demotion
 
-### 这才是经典复用距离理论最适合出现的地方
+### 4.2 它与 Oracle 的区别
 
-原始分析笔记里的这部分：
+| 维度 | Oracle | Policy |
+|------|--------|--------|
+| 目标 | 理论最优 | 特定系统行为 |
+| 是否证明最优 | ✅ | ❌ |
+| 是否依赖策略细节 | 低 | 高 |
+| 是否可直接映射具体系统 | 间接 | 直接 |
 
-- `2.1.1 Reuse Distance`
-- `2.1.2 存储空间-命中率曲线`
+### 4.3 经典 LRU 在这里的位置
 
-本质上属于 Layer 2，而不是 Layer 1。
+经典 reuse distance / stack distance 理论最适合出现在 Policy 层，因为它描述的是：
 
-经典 LRU 公式：
+- 给定访问流
+- 给定 LRU 策略
+- 给定容量 `C`
+- event-level cache hit 会是多少
+
+典型形式：
 
 ```text
 h(C) = P(reuse_distance < C)
 ```
 
-它回答的是：
+这可以成为一个非常好的 baseline，但它不是全部。
 
-- **在 LRU 策略下**
-- **给定某个访问流**
-- **容量为 C 时**
-- event-level cache hit 会是多少
+### 4.4 为什么 flat-key LRU 不足以覆盖 LLM prefix reuse
 
-### 为什么它不能直接替代当前 Oracle
+对 LLM workload 来说，至少要区分两种策略建模：
 
-因为当前项目的核心语义是 strict-prefix prefill reuse：
+| 建模方式 | 优点 | 缺点 | 适用性 |
+|----------|------|------|--------|
+| **Flat-key LRU** | ✅ 实现简单 | ❌ 不符合 strict-prefix 复用语义 | 只适合 baseline |
+| **Prefix-aware LRU** | ✅ 与前缀复用一致 | ❌ 状态更复杂 | 推荐主路线 |
 
-- 复用对象是 prefix path，不是 raw key
-- 关心的是“从请求开头连续命中多少 block”
-- 一个后面的 block hit，并不必然带来可复用前缀
+### 4.5 Layer 2 的建议输出
 
-所以，Layer 2 里如果要做 LRU，至少有两种不同建模方式：
+- `policy_block_hit_rate`
+- `policy_strict_prefix_hit_rate`
+- `policy_token_hit_rate`
+- `policy_kv_byte_hit_rate`
+- `policy_vs_oracle_gap`
+- 分层介质命中分解：`HBM / host / SSD / remote`
 
-| 建模方式 | 优点 | 缺点 | 建议 |
-|----------|------|------|------|
-| **Flat key LRU** | ✅ 实现简单 | ❌ 不符合 strict-prefix 语义 | 只做 baseline |
-| **Prefix-aware LRU** | ✅ 语义对齐 | ❌ 状态空间更大 | ⭐ 推荐主路线 |
-
-### 当前仓库和 Layer 2 的偏差
-
-当前仓库没有实现 Policy 层。
-
-更准确地说，它刻意跳过了 Policy 层，直接求上界。
-
-这不是 bug，而是设计选择：
-
-- 先知道“最多能有多少收益”
-- 再决定“某个具体策略值不值得做”
-
-### Layer 2 建议的数据结构
+### 4.6 Layer 2 的推荐接口
 
 ```python
 from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PolicyConfig:
-    name: str  # lru / ttl / hbm_host / hbm_ssd
+    name: str
     resident_block_capacity: int
-    allow_no_admit: bool
+    allow_no_admit: bool = True
     host_block_capacity: int = 0
     ssd_block_capacity: int = 0
     ttl_ms: int | None = None
 ```
 
-这层的目标不是“证明最优”，而是：
-
-- 可重现实验
-- 可比较不同策略
-- 输出真实策略曲线
-
 ---
 
-## Layer 3：Economics 层
+## 5. Layer 3: Economics
 
-### 它回答什么
+### 5.1 目标
 
 Economics 层回答：
 
-**命中率提升以后，节省下来的 prefill 计算，最终能换成多少 TPS 或多少机器节约？**
+**命中率提升以后，节省下来的 prefill 计算最终能转成多少 TPS 提升、多少机器节约，或者多少额外流量承载能力。**
 
-这一层才真正连接资源规划与部署决策。
+它不是上界模型，也不是缓存策略模型，而是资源收益映射层。
 
-### 原始分析笔记 2.2 的价值和局限
-
-原始分析笔记里的思路是合理的：
-
-- 命中率提高
-- prefill 计算减少
-- GPU 利用率释放
-- 吞吐上升或机器数下降
-
-但当前写法：
-
-```text
-gamma(h) = 1 / (1 - alpha * h)
-```
-
-更适合作为 **一阶启发式近似**，不应直接当精确模型。
-
-因为真实系统里至少还受这些量控制：
-
-- prefill / decode 比例
-- batching 形状
-- scheduler 限流
-- tail latency 约束
-- KV 搬运带宽
-- 队列长度与到达过程
-
-### 为什么 `d'_i = d_i * gamma(h)` 不是稳固结论
-
-这里是原始分析笔记最需要收敛口径的地方。
-
-如果 `d_i` 指的是经典 reuse distance，也就是：
-
-- 在访问流里
-- 两次相同 key 之间
-- 间隔了多少不同 key
-
-那么吞吐放大并不会自动让它线性乘 `gamma`。
-
-只有当“输入流结构本身被重采样并叠加”时，distance 分布才会变化。而它如何变化，取决于：
-
-- 会话并发数
-- 请求长度分布
-- shared prefix 覆盖率
-- 调度器如何把新增请求插入时间轴
-
-所以更稳妥的 Layer 3 结构不是：
-
-```text
-h = F(C / gamma(h))
-```
-
-而是：
-
-```text
-policy hit rate
-    -> saved prefill FLOPs / bytes
-    -> effective TPS gain
-    -> new offered load
-    -> replay / superposition
-    -> new hit rate
-```
-
-### 推荐的 Layer 3 计算链
+### 5.2 基本计算链
 
 ```mermaid
 flowchart TD
-    A["Policy hit rate h"] --> B["saved prefill compute"]
+    A["Policy hit rate"] --> B["saved prefill compute"]
     B --> C["effective TPS gain"]
     C --> D["new offered load"]
-    D --> E["replayed or resampled trace"]
+    D --> E["replayed / resampled trace"]
     E --> F["new policy hit rate"]
     F --> G["fixed point"]
 
     style G fill:#c8e6c9
 ```
 
-### Layer 3 推荐输出
+这条链表达的是：
 
-| 指标 | 含义 |
-|------|------|
-| `prefill_saved_ratio` | 命中带来的 prefill 节省比例 |
-| `effective_tps_gain` | 在服务 profile 下折算出的 TPS 提升 |
-| `machine_saved_at_fixed_load` | 固定流量下可减少的机器数 |
-| `load_supported_at_fixed_machine` | 固定机器下可承载的新流量 |
-| `fixed_point_hit_rate` | 考虑反馈后的稳定命中率 |
+- 命中率本身不会直接变成收益
+- 它先变成 prefill 节省
+- prefill 节省再变成吞吐释放
+- 吞吐释放会改变输入流密度
+- 输入流密度变化又会反过来影响命中率
+
+### 5.3 一阶近似公式
+
+如果系统满足：
+
+- prefill 是主要瓶颈
+- decode 开销近似独立
+- 输入流形态在短期内近似同分布
+
+可以用一阶近似：
+
+```text
+gamma(h) = 1 / (1 - alpha * h)
+```
+
+其中：
+
+- `h`：命中率
+- `alpha`：命中后节省的计算比例
+- `gamma(h)`：吞吐放大因子
+
+### 重要说明
+
+这个公式只能作为 Layer 3 的近似收益映射，不能反向替代 Layer 1 或 Layer 2：
+
+- 它不是严格 oracle
+- 它不是精确策略模拟
+- 它没有自动决定新的 reuse-distance 分布
+
+### 5.4 为什么需要 fixed point
+
+命中率提高后：
+
+- 固定机器数时，系统会尝试提高吞吐
+- 固定流量时，系统会尝试减少机器
+
+这两种控制方式会导致不同的稳态。
+
+因此 Layer 3 至少要支持两种问题：
+
+| 模式 | 回答的问题 |
+|------|------------|
+| **fixed load** | 固定流量下可以节省多少机器？ |
+| **fixed fleet** | 固定机器下可以承载多少额外流量？ |
+
+### 5.5 推荐输出
+
+- `prefill_saved_ratio`
+- `effective_tps_gain`
+- `machine_saved_at_fixed_load`
+- `load_supported_at_fixed_machine`
+- `fixed_point_hit_rate`
+- `fixed_point_tps`
 
 ---
 
-## Layer 4：Heuristic 层
+## 6. Layer 4: Heuristic
 
-### 它回答什么
+### 6.1 目标
 
-Heuristic 层只在一个场景下出现：
+Heuristic 层只在一种场景下出现：
 
-**没有 trace、没有 profile，仍然要快速估一个 KVCache 量级。**
+**没有 trace、没有 profile，仍然需要快速估算 KVCache 容量的量级。**
 
-这时可以用：
+它提供的是 sizing prior，而不是精确分析结果。
 
-- `shared + private` 的 agent 模型
-- `Zipf` 频率近似
-- 少量统计量驱动的经验曲线
+### 6.2 两类典型近似
 
-### 原始分析笔记 2.3 可以保留，但必须降级为 heuristic
+### 6.2.1 Shared / Private 分解
 
-例如：
+将工作集拆成：
 
 ```text
 W_total = W_shared + n * W_private
 ```
 
-和：
+其中：
+
+- `W_shared`：跨请求或跨会话共享的部分
+- `W_private`：单个并发体私有的部分
+- `n`：有效并发数
+
+### 6.2.2 Zipf 频率近似
+
+如果访问频率满足 Zipf 分布，可写成：
 
 ```text
 h(C) ≈ (C / W_total)^(1 - 1 / s)
 ```
 
-都可以留，但文档里必须明确写：
-
-- 这不是 oracle
-- 这不是策略模拟
-- 这只是 sizing heuristic
-
-### 为什么二项 `shared + private` 不够
-
-LLM workload 的共享往往是分层的：
-
-1. 全局 system prompt
-2. 某类 agent / tool schema
-3. 某个 tenant / scenario
-4. 某个 session root
-5. 某次多轮对话的尾部 window
-
-所以更好的 heuristic 不是二项分解，而是分层共享：
-
-| 层次 | 典型来源 | 是否全局共享 |
-|------|----------|--------------|
-| **global shared** | system prompt / common tools | 高 |
-| **class shared** | 某类 agent 模板 | 中 |
-| **session shared** | 同一会话历史 | 中高 |
-| **tail private** | 最近窗口 / 用户特定上下文 | 低 |
-
-### Layer 4 能做什么
-
-能用来：
-
-- 提前做容量级别判断
-- 给采购/资源规划一个粗估量级
-- 没 trace 时给 Layer 1/2 选一个起始实验点
-
-不能用来：
-
-- 取代真实 trace 分析
-- 直接当上线前的容量结论
-- 直接对齐 strict-prefix exact 结果
-
----
-
-## 四层之间的依赖关系
-
-### 正确依赖
-
-```text
-Layer 1 Oracle
-    -> 给出理论上界
-Layer 2 Policy
-    -> 在上界之下给出真实策略曲线
-Layer 3 Economics
-    -> 把策略曲线映射成 TPS / machine 收益
-Layer 4 Heuristic
-    -> 在缺数据时提供粗估，辅助前面三层
-```
-
-### 错误依赖
-
-```text
-Heuristic -> 直接替代 Oracle
-Oracle -> 直接当真实线上命中率
-TPS 闭环公式 -> 直接替代策略模拟
-LRU stack distance -> 直接替代 strict-prefix exact
-```
-
-### 对当前仓库最准确的定位
-
-| 问题 | 当前仓库能不能回答 | 说明 |
-|------|--------------------|------|
-| 理论最多能命中多少？ | ✅ | Layer 1 主能力 |
-| LRU 线上现在能命中多少？ | ❌ | 需要 Layer 2 |
-| 命中率能换来多少 TPS？ | ❌ | 需要 Layer 3 |
-| 没 trace 时怎么估？ | ❌ | 需要 Layer 4 |
-
----
-
-## 推荐的实施顺序
-
-### 路线一：继续当前主线
-
-1. 先把 **Layer 1 system upper bound** 补上
-2. 再引入 **Layer 2 prefix-aware policy simulator**
-3. 然后实现 **Layer 3 economics fixed point**
-4. 最后补 **Layer 4 heuristic estimator**
-
-### 路线二：结果优先
-
-1. 先做 **Layer 2 LRU baseline**
-2. 再做 **Layer 3 简化收益模型**
-3. Oracle 保持作为上界对照组
-
-### 最终建议 ⭐
-
-| 路线 | 价值 | 风险 | 建议 |
-|------|------|------|------|
-| **先做 Policy/Economics** | ✅ 很快能产出结果 | ❌ 容易口径漂移 | 不建议直接跳 |
-| **先稳住 Oracle，再扩到 Policy** | ✅ 语义最干净 | ✅ 迭代稍慢 | ⭐ 推荐 |
-
-**决策理由：**
-
-1. 没有上界，策略结果无法判断“离极限还差多少”
-2. 没有策略层，收益模型会悬空
-3. 没有闭环层，机器/TPS 结论会显得过度乐观
-
----
-
-## 对原始分析笔记的重写建议
-
-建议把原文从“2.1 / 2.2 / 2.3”改写成下面的目录：
-
-```text
-1. 背景与核心问题
-2. 四层分析框架
-   2.1 Layer 1: Oracle
-   2.2 Layer 2: Policy
-   2.3 Layer 3: Economics
-   2.4 Layer 4: Heuristic
-3. 当前实现覆盖范围
-4. 后续实现路线
-```
-
 其中：
 
-- 原 `2.1` 重命名为 `Layer 2: Policy`，并明确 LRU 只是 baseline
-- 原 `2.2` 重命名为 `Layer 3: Economics`，并明确是近似闭环，不是严格 oracle
-- 原 `2.3` 重命名为 `Layer 4: Heuristic`，并明确只能做 sizing 粗估
-- 新增 `Layer 1: Oracle`，承接当前仓库的精确实现
+- `C`：缓存容量
+- `W_total`：总工作集
+- `s`：Zipf 参数
+
+### 6.3 更合理的共享结构
+
+对 LLM 前缀复用，二项式的 `shared + private` 仍然过于粗糙。更有解释力的结构是分层共享：
+
+| 层次 | 典型来源 | 共享范围 |
+|------|----------|----------|
+| **global shared** | system prompt / common tools | 全局 |
+| **class shared** | agent template / domain scaffold | 某一类请求 |
+| **session shared** | 同一会话上下文 | 单会话 |
+| **tail private** | 最近窗口 / 用户特定上下文 | 单请求 |
+
+### 6.4 Layer 4 的定位
+
+能做：
+
+- 冷启动容量估算
+- 采购前的粗粒度 sizing
+- 为 Layer 1/2 提供初始实验点
+
+不能做：
+
+- 替代真实 trace 分析
+- 直接作为上线前容量结论
+- 直接解释 strict-prefix exact 结果
 
 ---
 
-## 总结
+## 7. 层间契约
 
-| 结论 | 判断 |
+一个可复用的通用框架，关键不是把所有东西塞进一个模拟器，而是定义清楚层间契约。
+
+### 7.1 Oracle -> Policy
+
+Oracle 提供：
+
+- 内容天花板
+- 容量天花板
+- 精确值或紧上界
+
+Policy 必须输出：
+
+- 自己离 Oracle 还有多远
+- 差距来自哪种策略约束
+
+### 7.2 Policy -> Economics
+
+Policy 提供：
+
+- 命中率
+- 介质分布
+- 每种命中的 prefill 节省结构
+
+Economics 再把它映射为：
+
+- TPS gain
+- machine saved
+- fixed-point load
+
+### 7.3 Heuristic -> Oracle / Policy
+
+Heuristic 只能提供：
+
+- 初始容量猜测
+- 参数先验
+- profile 缺失时的实验起点
+
+不能直接覆盖 Oracle / Policy 的结果。
+
+---
+
+## 8. 推荐实现顺序
+
+### 方案一：先做理论，再做真实系统 ⭐
+
+```mermaid
+flowchart LR
+    A["Layer 1\nOracle"] --> B["Layer 2\nPolicy"]
+    B --> C["Layer 3\nEconomics"]
+    C --> D["Layer 4\nHeuristic Calibration"]
+```
+
+优点：
+
+- ✅ 先拿到硬上界
+- ✅ 后续所有策略都有参照物
+- ✅ 收益评估不会失去边界感
+
+缺点：
+
+- ❌ 前期距离具体系统实现还有一层抽象
+
+### 方案二：先做策略模拟，再补理论上界
+
+优点：
+
+- ✅ 很快能得到策略曲线
+
+缺点：
+
+- ❌ 不知道离最优差多远
+- ❌ 容易把策略限制误当成工作负载本身的限制
+
+### 最终建议
+
+| 路线 | 可解释性 | 风险 | 建议 |
+|------|----------|------|------|
+| **先做 Oracle** | ✅ 高 | 低 | ⭐ 推荐 |
+| **先做 Policy** | 中 | 高 | 仅适合快速 baseline |
+
+---
+
+## 9. 对外展示建议
+
+如果这套框架用于对外说明，建议始终按下面顺序介绍：
+
+1. **先讲四层问题定义**
+2. **再讲 Layer 1 的严格语义和数学边界**
+3. **再讲 Layer 2 如何承接真实缓存系统**
+4. **再讲 Layer 3 如何把命中率转成资源收益**
+5. **最后讲 Layer 4 如何在缺少数据时快速估算**
+
+最忌讳的展示方式是：
+
+- 一上来就给一条“容量-命中率曲线”
+- 不说明它是上界、策略结果，还是 heuristic
+- 再用同一条曲线去解释 TPS 和机器收益
+
+这样会让读者误以为所有数字都来自同一个模型。
+
+---
+
+## 10. 总结
+
+| 结论 | 说明 |
 |------|------|
-| 当前实现和原始分析笔记是否完全同路？ | ❌ 不是完全同层 |
-| 当前实现是否错了？ | ❌ 没错，它是在做更底层的 Oracle |
-| 原始分析笔记是否需要重写？ | ✅ 需要，必须按四层切开 |
-| 当前仓库最准确的定位是什么？ | ✅ Layer 1 Oracle 求解器 |
+| KVCache 分析不是单层问题 | 至少应拆成 Oracle / Policy / Economics / Heuristic 四层 |
+| 上界必须独立存在 | 没有 Oracle，就无法判断真实系统离极限还有多远 |
+| 策略曲线不能替代理论上界 | Policy 只描述系统行为，不描述数学最优 |
+| 收益模型必须闭环 | 命中率会反过来影响负载与吞吐 |
+| 无 trace 估算只能做先验 | Heuristic 只能缩小搜索空间，不能替代真实分析 |
 
-最重要的一句结论是：
+这套四层框架的核心价值在于：
 
-> **当前仓库不是“线上缓存系统模拟器”，而是“四层框架里的 Layer 1：prefix-aware upper-bound oracle”。**
-
-只有先把这个位置钉死，后面的 LRU、收益评估、无 trace 估算，才不会互相污染。
+> **把“能做到多少”“会做到多少”“值不值得做”“没数据时怎么估”这四件事彻底切开，再用清晰的接口把它们重新接起来。**
