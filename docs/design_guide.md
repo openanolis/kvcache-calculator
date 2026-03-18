@@ -555,7 +555,7 @@ kvcache-upper-bound audit-buckets \
 - `M2`：content upper bound
 - `M3`：单层/扩展总容量下、允许 `no-admit` 的 Belady capacity upper bound
 - `M4`：真正的 strict-prefix capacity oracle，以及 request-level exact search
-- 面向通用结果输出的分桶报表：可直接产出 `分桶 / 机器数 / 规格 / 总 TPS / HBM / 极限命中率 / 实际命中率 / HBM relaxed upper bound / HBM strict-prefix replay / HBM strict-prefix / proof source`
+- 面向通用结果输出的分桶报表：可直接产出 `分桶 / 机器数 / 卡数 / 单机卡数 / 规格 / 总 TPS / TPS 输入口径 / HBM / 极限命中率 / HBM relaxed upper bound / HBM strict-prefix replay / HBM strict-prefix / proof source`
 
 尚未实现：
 

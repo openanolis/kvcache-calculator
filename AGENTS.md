@@ -84,7 +84,8 @@ kvcache-upper-bound-oracle/
 - 更外层的通用分析框架固定为：`Oracle -> Policy -> Economics -> Heuristic` 四层；不要把四层混成一个公式。
 - `hash_ids` 必须按前缀路径解释，不能退化成裸 block 频次统计。
 - `ModelProfile.kv_bytes_per_token()` 表示整套部署的总 KV 占用，不是单卡 shard 占用；预算字段必须和它保持同一口径。
-- 部署规模默认按“卡数”建模；只有提供 `cards_per_machine` 时，报表里的 `机器数` 才表示真实物理机数。
+- 部署配置必须显式提供 `accelerator_count` 与 `cards_per_machine`；`machine_count` 和 `8*h20` 这类隐式写法都不再接受。
+- 报表里的 `机器数` 始终由 `accelerator_count / cards_per_machine` 推导；`总 TPS` 始终归一成集群总 TPS，原始输入单位单独记录在 `TPS 输入口径`。
 - `ModelProfile.parameter_count` 只用于从显存反推理论 KV 预算；不提供时，就必须显式给出 `hbm_kv_gb_per_machine` 或利用率。
 - 混合注意力模型必须显式提供 `kv_cache_layer_count`；不能拿总层数硬套 KV 公式。
 - 纯计算逻辑放 `src/`，文件 IO 和命令行入口后置，避免副作用污染核心算法。
@@ -121,3 +122,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-18`：把 `prefill_savings_alpha` 接入分桶报表和 `metadata.json`，基于 exact strict-prefix 命中率新增 `TPS Gain / 估算总 TPS / 同负载估算机器数` 后处理。
 - `2026-03-18`：新增 `hit_summary.csv` 与 `planning_summary.csv` 输出，显式把核心 KV 命中估算和派生容量规划结果拆开，`summary.csv` 仅作兼容视图保留。
 - `2026-03-18`：把部署规模口径从含混的“机器数”修正为“卡数优先、机器数显式推导”；公开配置改成 `1` 机 `8` 卡，报表新增 `卡数 / 单机卡数 / 同负载估算卡数`。
+- `2026-03-18`：收紧部署配置 schema：`accelerator_count + cards_per_machine + machine_spec` 成为唯一合法机器描述；`total_tps_unit` 显式落盘并统一换算到集群总 TPS。

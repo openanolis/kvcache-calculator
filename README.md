@@ -56,19 +56,22 @@ kvcache-upper-bound audit-buckets \
 - `model_profile`：层数、KV heads、head dim、dtype、TP/PP
 - 混合注意力模型要额外提供 `kv_cache_layer_count`，例如 `Qwen/Qwen3.5-27B` 用 `64` 层总层数，但只有 `16` 层 full attention 进入 token-linear KV cache
 - `model_profile.parameter_count` + `weight_dtype_bytes`：可选；如果要从显存反推 KV 预算，就需要它们
-- `bucket_deployments[].accelerator_count`：总卡数；建议显式提供
-- `bucket_deployments[].cards_per_machine`：单机卡数；提供后报表会把 `机器数` 和 `卡数` 分开
-- `bucket_deployments[].hbm_kv_gb_per_machine`：兼容字段名，当前按“每张卡可分给 KV 的 HBM 容量”解释
-- `bucket_deployments[].gpu_memory_gb_per_machine`：兼容字段名，当前按“每张卡的显存大小”解释；项目会按 `单卡显存 - 模型权重分片 - runtime reserve` 推出理论 KV HBM 容量
-- `bucket_deployments[].runtime_reserve_gb_per_machine`：可选；默认 `0`
+- `bucket_deployments[].accelerator_count`：必填，总卡数
+- `bucket_deployments[].cards_per_machine`：必填，单机卡数；报表里的 `机器数 = accelerator_count / cards_per_machine`
+- `bucket_deployments[].machine_spec`：必填，纯规格标签，例如 `h20`；不要再把数量编码进 `machine_spec`
+- `bucket_deployments[].total_tps`：可选；原始 TPS 输入值
+- `bucket_deployments[].total_tps_unit`：可选，`cluster_total / per_machine / per_card` 三选一；报表里的 `总 TPS` 永远是换算后的集群总 TPS，同时保留 `TPS 输入口径`
+- `bucket_deployments[].hbm_kv_gb_per_machine`：当前按“单卡可分给 KV 的 HBM 容量”解释
+- `bucket_deployments[].gpu_memory_gb_per_machine`：当前按“单卡显存大小”解释；项目会按 `单卡显存 - 模型权重分片 - runtime reserve` 推出理论 KV HBM 容量
+- `bucket_deployments[].runtime_reserve_gb_per_machine`：可选；当前按“单卡 runtime 预留显存”解释，默认 `0`
 - `bucket_deployments[].extra_capacity_tiers`：每台机器可追加的 host/SSD 容量，例如 1T 或 10T
 - `prefill_savings_alpha`：命中后可节省的 prefill 比例，默认 `0.8`
 - `bucket_deployments[].actual_hit_rate`：实测命中率，可选
 
-兼容说明：
+约束：
 
-- 老配置里的 `machine_count` 仍然接受，但现在按“总卡数”解释
-- 如果要让报表里的 `机器数` 代表真实物理机，请同时提供 `cards_per_machine`
+- `machine_count` 不再接受；必须显式提供 `accelerator_count` 和 `cards_per_machine`
+- `machine_spec` 不再接受 `8*h20` 这类隐式写法；数量只能放在显式字段里
 
 公开配置 `configs/public_trace_qwen3_5_27b.json` 现在走的是推导路径：
 

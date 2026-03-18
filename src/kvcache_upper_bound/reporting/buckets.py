@@ -17,6 +17,7 @@ from kvcache_upper_bound.oracle.strict_prefix import (
 )
 
 BYTES_PER_GB = 1024**3
+VALID_TOTAL_TPS_UNITS = ("cluster_total", "per_machine", "per_card")
 
 
 @dataclass(frozen=True)
@@ -34,6 +35,7 @@ class BucketDeploymentConfig:
     cards_per_machine: int
     machine_spec: str
     total_tps: float | None
+    total_tps_unit: str = "cluster_total"
     hbm_kv_gb_per_machine: float | None = None
     gpu_memory_gb_per_machine: float | None = None
     hbm_kv_utilization: float | None = None
@@ -51,6 +53,19 @@ class BucketDeploymentConfig:
                 f"{self.label}: accelerator_count must be divisible by cards_per_machine"
             )
         return self.accelerator_count // self.cards_per_machine
+
+    def resolved_total_tps(self) -> float | None:
+        if self.total_tps is None:
+            return None
+        if self.total_tps_unit == "cluster_total":
+            return self.total_tps
+        if self.total_tps_unit == "per_machine":
+            return self.total_tps * self.node_count()
+        if self.total_tps_unit == "per_card":
+            return self.total_tps * self.accelerator_count
+        raise ValueError(
+            f"{self.label}: total_tps_unit must be one of {', '.join(VALID_TOTAL_TPS_UNITS)}"
+        )
 
     def contains(self, input_length: int) -> bool:
         if input_length < self.lower_tokens:
@@ -113,6 +128,7 @@ class BucketReportRow:
     cards_per_machine: int
     machine_spec: str
     total_tps: float | None
+    total_tps_input_unit: str | None
     prefill_savings_alpha: float
     hbm_kv_gb_per_machine: float
     hbm_kv_total_gb: float
@@ -211,6 +227,7 @@ def analyze_bucket_deployments(
             if model_weight_bytes_per_rank is None
             else model_weight_bytes_per_rank / BYTES_PER_GB
         )
+        resolved_total_tps = deployment.resolved_total_tps()
         hbm_budget_bytes = _gb_to_bytes(hbm_kv_total_gb)
         hbm_capacity_result = analyze_capacity_upper_bound(
             normalized.requests,
@@ -295,7 +312,7 @@ def analyze_bucket_deployments(
                 config.prefill_savings_alpha,
             )
             extra_tier_estimated_total_tps[tier.label] = _estimated_total_tps(
-                deployment.total_tps,
+                resolved_total_tps,
                 extra_tier_tps_gains[tier.label],
             )
             extra_tier_estimated_card_counts_for_same_load[tier.label] = _estimated_card_count(
@@ -320,7 +337,7 @@ def analyze_bucket_deployments(
             None if not has_bucket_records else hbm_strict_prefix_result.summary.proof_source
         )
         hbm_tps_gain = _tps_gain(hbm_strict_prefix_hit_rate, config.prefill_savings_alpha)
-        hbm_estimated_total_tps = _estimated_total_tps(deployment.total_tps, hbm_tps_gain)
+        hbm_estimated_total_tps = _estimated_total_tps(resolved_total_tps, hbm_tps_gain)
         hbm_estimated_card_count_for_same_load = _estimated_card_count(
             deployment.accelerator_count,
             hbm_tps_gain,
@@ -336,7 +353,8 @@ def analyze_bucket_deployments(
             card_count=deployment.accelerator_count,
             cards_per_machine=deployment.cards_per_machine,
             machine_spec=deployment.machine_spec,
-            total_tps=deployment.total_tps,
+            total_tps=resolved_total_tps,
+            total_tps_input_unit=None if deployment.total_tps is None else deployment.total_tps_unit,
             prefill_savings_alpha=config.prefill_savings_alpha,
             hbm_kv_gb_per_machine=hbm_kv_gb_per_machine,
             hbm_kv_total_gb=hbm_kv_total_gb,
@@ -506,6 +524,7 @@ def _combined_summary_fieldnames(
     fieldnames = ["分桶", "机器数", "卡数", "单机卡数", "规格"]
     if include_total_tps:
         fieldnames.append("总 TPS")
+        fieldnames.append("TPS 输入口径")
     fieldnames.extend(
         [
             "HBM KVCache 总大小 (GB)",
@@ -558,6 +577,7 @@ def _planning_summary_fieldnames(
     fieldnames = ["分桶", "机器数", "卡数", "单机卡数", "规格"]
     if include_total_tps:
         fieldnames.append("总 TPS")
+        fieldnames.append("TPS 输入口径")
     fieldnames.extend(
         [
             "HBM KVCache 总大小 (GB)",
@@ -592,6 +612,7 @@ def _base_hit_fieldnames(
     fieldnames = ["分桶", "机器数", "卡数", "单机卡数", "规格"]
     if include_total_tps:
         fieldnames.append("总 TPS")
+        fieldnames.append("TPS 输入口径")
     fieldnames.extend(
         [
             "HBM KVCache 总大小 (GB)",
@@ -714,6 +735,7 @@ def _common_row_payload(*, row: BucketReportRow, include_total_tps: bool) -> dic
     }
     if include_total_tps:
         payload["总 TPS"] = row.total_tps if row.total_tps is not None else ""
+        payload["TPS 输入口径"] = _format_text(row.total_tps_input_unit)
     return payload
 
 
@@ -911,6 +933,7 @@ def _load_model_profile(payload: dict[str, Any]) -> ModelProfile:
 
 def _load_bucket_deployment(payload: dict[str, Any]) -> BucketDeploymentConfig:
     accelerator_count, cards_per_machine, machine_spec = _parse_machine_fields(payload)
+    total_tps_unit = _parse_total_tps_unit(payload)
     extra_tiers = tuple(
         BucketCapacityTier(
             label=str(item["label"]),
@@ -929,6 +952,7 @@ def _load_bucket_deployment(payload: dict[str, Any]) -> BucketDeploymentConfig:
         cards_per_machine=cards_per_machine,
         machine_spec=machine_spec,
         total_tps=None if payload.get("total_tps") is None else float(payload["total_tps"]),
+        total_tps_unit=total_tps_unit,
         hbm_kv_gb_per_machine=None
         if payload.get("hbm_kv_gb_per_machine") is None
         else float(payload["hbm_kv_gb_per_machine"]),
@@ -972,24 +996,39 @@ def _parse_actual_hit_fields(payload: dict[str, Any]) -> tuple[float | None, str
 
 
 def _parse_machine_fields(payload: dict[str, Any]) -> tuple[int, int, str]:
-    cards_per_machine = int(
-        payload.get(
-            "cards_per_machine",
-            payload.get("accelerators_per_machine", 1),
+    if "machine_count" in payload and payload["machine_count"] is not None:
+        raise ValueError(
+            "machine_count is no longer accepted; use accelerator_count and cards_per_machine"
         )
-    )
+    if "accelerator_count" not in payload or payload["accelerator_count"] is None:
+        raise ValueError("accelerator_count is required")
+    if "cards_per_machine" not in payload or payload["cards_per_machine"] is None:
+        raise ValueError("cards_per_machine is required")
+    if "machine_spec" not in payload or payload["machine_spec"] is None:
+        raise ValueError("machine_spec is required")
+
+    accelerator_count = int(payload["accelerator_count"])
+    cards_per_machine = int(payload["cards_per_machine"])
+    machine_spec = str(payload["machine_spec"]).strip()
+
+    if accelerator_count <= 0:
+        raise ValueError("accelerator_count must be positive")
     if cards_per_machine <= 0:
         raise ValueError("cards_per_machine must be positive")
-
-    if "accelerator_count" in payload and payload["accelerator_count"] is not None:
-        return int(payload["accelerator_count"]), cards_per_machine, str(payload["machine_spec"])
-    if "machine_count" in payload and payload["machine_count"] is not None:
-        return int(payload["machine_count"]), cards_per_machine, str(payload["machine_spec"])
-
-    spec = str(payload["machine_spec"])
-    if "*" not in spec:
+    if not machine_spec:
+        raise ValueError("machine_spec must not be empty")
+    if "*" in machine_spec:
         raise ValueError(
-            "accelerator_count is missing and machine_spec does not follow '<count>*<spec>' format"
+            "machine_spec must be a plain spec label; move counts into accelerator_count and cards_per_machine"
         )
-    count_text, spec_name = spec.split("*", 1)
-    return int(count_text), cards_per_machine, spec_name
+    return accelerator_count, cards_per_machine, machine_spec
+
+
+def _parse_total_tps_unit(payload: dict[str, Any]) -> str:
+    raw_unit = payload.get("total_tps_unit", "cluster_total")
+    unit = str(raw_unit).strip()
+    if unit not in VALID_TOTAL_TPS_UNITS:
+        raise ValueError(
+            f"total_tps_unit must be one of {', '.join(VALID_TOTAL_TPS_UNITS)}"
+        )
+    return unit

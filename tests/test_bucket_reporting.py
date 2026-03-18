@@ -50,7 +50,8 @@ class BucketReportingTest(unittest.TestCase):
                     "label": "0-32K",
                     "lower_tokens": 0,
                     "upper_tokens": 32768,
-                    "machine_count": 2,
+                    "accelerator_count": 2,
+                    "cards_per_machine": 1,
                     "machine_spec": "h20",
                     "gpu_memory_gb_per_machine": 1.25,
                     "runtime_reserve_gb_per_machine": 0.25,
@@ -68,6 +69,138 @@ class BucketReportingTest(unittest.TestCase):
         self.assertAlmostEqual(config.prefill_savings_alpha, 0.8)
         self.assertEqual(result.rows[0].machine_count, 2)
         self.assertEqual(result.rows[0].card_count, 2)
+
+    def test_bucket_reporting_rejects_legacy_machine_fields(self) -> None:
+        base_payload = {
+            "model_profile": {
+                "n_layers": 1,
+                "n_kv_heads": 1,
+                "head_dim": 1,
+                "dtype_bytes": 1,
+                "block_size": 16,
+            },
+            "scope": "global",
+            "block_size": 16,
+        }
+        cases = [
+            (
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "machine_count": 8,
+                    "cards_per_machine": 8,
+                    "machine_spec": "h20",
+                    "hbm_kv_gb_per_machine": 1,
+                },
+                "machine_count is no longer accepted",
+            ),
+            (
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "accelerator_count": 8,
+                    "cards_per_machine": 8,
+                    "machine_spec": "8*h20",
+                    "hbm_kv_gb_per_machine": 1,
+                },
+                "machine_spec must be a plain spec label",
+            ),
+            (
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "accelerator_count": 8,
+                    "machine_spec": "h20",
+                    "hbm_kv_gb_per_machine": 1,
+                },
+                "cards_per_machine is required",
+            ),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            for deployment_payload, expected_message in cases:
+                payload = dict(base_payload)
+                payload["bucket_deployments"] = [deployment_payload]
+                config_path.write_text(json.dumps(payload), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, expected_message):
+                    load_bucket_analysis_config(config_path)
+
+    def test_bucket_reporting_resolves_total_tps_input_units(self) -> None:
+        records = [
+            RequestRecord(
+                request_id="r0",
+                source_index=0,
+                timestamp_ms=1000,
+                chat_id="c0",
+                parent_chat_id=None,
+                turn=1,
+                request_type="text",
+                input_length=16,
+                output_length=1,
+                hash_ids=("a",),
+            )
+        ]
+        base_config = {
+            "model_profile": {
+                "n_layers": 1,
+                "n_kv_heads": 1,
+                "head_dim": 1,
+                "dtype_bytes": 1,
+                "block_size": 16,
+            },
+            "scope": "global",
+            "block_size": 16,
+        }
+        cases = [
+            ("cluster_total", 120.0, 120.0),
+            ("per_machine", 120.0, 240.0),
+            ("per_card", 120.0, 960.0),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            for total_tps_unit, input_total_tps, expected_total_tps in cases:
+                payload = dict(base_config)
+                payload["bucket_deployments"] = [
+                    {
+                        "label": "0-32K",
+                        "lower_tokens": 0,
+                        "upper_tokens": 32768,
+                        "accelerator_count": 8,
+                        "cards_per_machine": 4,
+                        "machine_spec": "h20",
+                        "total_tps": input_total_tps,
+                        "total_tps_unit": total_tps_unit,
+                        "hbm_kv_gb_per_machine": 1,
+                    }
+                ]
+                config_path.write_text(json.dumps(payload), encoding="utf-8")
+                config = load_bucket_analysis_config(config_path)
+                result = analyze_bucket_deployments(records, config)
+                self.assertAlmostEqual(result.rows[0].total_tps or 0.0, expected_total_tps)
+                self.assertEqual(result.rows[0].total_tps_input_unit, total_tps_unit)
+
+            payload = dict(base_config)
+            payload["bucket_deployments"] = [
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "accelerator_count": 8,
+                    "cards_per_machine": 4,
+                    "machine_spec": "h20",
+                    "total_tps": 120,
+                    "total_tps_unit": "per_rack",
+                    "hbm_kv_gb_per_machine": 1,
+                }
+            ]
+            config_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "total_tps_unit must be one of"):
+                load_bucket_analysis_config(config_path)
 
     def test_bucket_reporting_can_distinguish_machine_count_from_card_count(self) -> None:
         records = [
@@ -244,8 +377,11 @@ class BucketReportingTest(unittest.TestCase):
                     "label": "0-32K",
                     "lower_tokens": 0,
                     "upper_tokens": 32768,
-                    "machine_spec": "8*h20",
-                    "total_tps": 1000,
+                    "accelerator_count": 8,
+                    "cards_per_machine": 4,
+                    "machine_spec": "h20",
+                    "total_tps": 500,
+                    "total_tps_unit": "per_machine",
                     "hbm_kv_gb_per_machine": 0.00000001,
                     "actual_hit_rate": "69%(2 个部署)",
                     "extra_capacity_tiers": [
@@ -287,9 +423,11 @@ class BucketReportingTest(unittest.TestCase):
         self.assertIn("HBM+单机 1T 同负载估算机器数", summary_csv)
         self.assertIn("HBM+单机 10T 命中率", summary_csv)
         self.assertIn("HBM Relaxed Upper Bound 命中率", hit_summary_csv)
+        self.assertIn("TPS 输入口径", hit_summary_csv)
         self.assertNotIn("HBM TPS Gain", hit_summary_csv)
         self.assertNotIn("HBM 估算总 TPS", hit_summary_csv)
         self.assertIn("Prefill 节省系数 alpha", planning_summary_csv)
+        self.assertIn("TPS 输入口径", planning_summary_csv)
         self.assertIn("HBM TPS Gain", planning_summary_csv)
         self.assertIn("HBM 同负载估算卡数", planning_summary_csv)
         self.assertIn("HBM 估算总 TPS", planning_summary_csv)
@@ -299,9 +437,11 @@ class BucketReportingTest(unittest.TestCase):
         self.assertNotIn("HBM Strict-Prefix Replay 命中率", planning_summary_csv)
         self.assertEqual(details_json["rows"][0]["bucket_label"], "0-32K")
         self.assertEqual(details_json["rows"][0]["machine_spec"], "h20")
-        self.assertEqual(details_json["rows"][0]["machine_count"], 8)
+        self.assertEqual(details_json["rows"][0]["machine_count"], 2)
         self.assertEqual(details_json["rows"][0]["card_count"], 8)
-        self.assertEqual(details_json["rows"][0]["cards_per_machine"], 1)
+        self.assertEqual(details_json["rows"][0]["cards_per_machine"], 4)
+        self.assertEqual(details_json["rows"][0]["total_tps_input_unit"], "per_machine")
+        self.assertAlmostEqual(details_json["rows"][0]["total_tps"], 1000.0)
         self.assertAlmostEqual(details_json["rows"][0]["prefill_savings_alpha"], 0.5)
         self.assertAlmostEqual(details_json["rows"][0]["actual_hit_rate"], 0.69)
         self.assertIn("hbm_strict_prefix_replay_hit_rate", details_json["rows"][0])
@@ -418,7 +558,8 @@ class BucketReportingTest(unittest.TestCase):
                     "label": "0-32K",
                     "lower_tokens": 0,
                     "upper_tokens": 32768,
-                    "machine_count": 8,
+                    "accelerator_count": 8,
+                    "cards_per_machine": 8,
                     "machine_spec": "h20",
                     "hbm_kv_gb_per_machine": 1
                 }
