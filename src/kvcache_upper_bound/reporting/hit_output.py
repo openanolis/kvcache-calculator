@@ -4,17 +4,16 @@ from typing import TYPE_CHECKING, Any
 
 from .planning_output import strict_prefix_metrics_columns, strict_prefix_metrics_payload
 from .table_common import (
+    bottleneck_label,
     common_row_payload,
+    format_flag,
     format_rate,
     hit_prefix_fieldnames,
     hit_prefix_payload,
-    lru_column,
-    relaxed_upper_bound_column,
     row_range_fieldnames,
     row_range_payload,
-    strict_prefix_column,
-    strict_prefix_proof_column,
-    strict_prefix_replay_column,
+    lru_reaches_strict_prefix,
+    strict_prefix_reaches_content_ceiling,
 )
 
 if TYPE_CHECKING:
@@ -96,6 +95,7 @@ def hit_summary_payload(
 
 
 def _hit_columns(*, tier_labels: list[str], include_actual_hit_rate: bool) -> list[str]:
+    _ = tier_labels
     columns: list[str] = []
     if include_actual_hit_rate:
         columns.append("实际命中率")
@@ -106,18 +106,11 @@ def _hit_columns(*, tier_labels: list[str], include_actual_hit_rate: bool) -> li
             "HBM Strict-Prefix Replay 命中率",
             "HBM Strict-Prefix 命中率",
             "HBM Strict-Prefix 求解路径",
+            "HBM Strict-Prefix 达到内容上界",
+            "HBM LRU 达到 Strict-Prefix",
+            "HBM 当前主要瓶颈",
         ]
     )
-    for label in tier_labels:
-        columns.extend(
-            [
-                strict_prefix_column(label),
-                relaxed_upper_bound_column(label),
-                lru_column(label),
-                strict_prefix_replay_column(label),
-                strict_prefix_proof_column(label),
-            ]
-        )
     return columns
 
 
@@ -127,6 +120,7 @@ def _hit_payload_columns(
     tier_labels: list[str],
     include_actual_hit_rate: bool,
 ) -> dict[str, Any]:
+    _ = tier_labels
     payload: dict[str, Any] = {}
     if include_actual_hit_rate:
         payload["实际命中率"] = format_rate(row.actual_hit_rate)
@@ -135,16 +129,21 @@ def _hit_payload_columns(
     payload["HBM Strict-Prefix Replay 命中率"] = format_rate(row.hbm_strict_prefix_replay_hit_rate)
     payload["HBM Strict-Prefix 命中率"] = format_rate(row.hbm_strict_prefix_hit_rate)
     payload["HBM Strict-Prefix 求解路径"] = row.hbm_strict_prefix_proof_source or ""
-    for label in tier_labels:
-        payload[strict_prefix_column(label)] = format_rate(row.extra_tier_strict_prefix_hit_rates.get(label))
-        payload[relaxed_upper_bound_column(label)] = format_rate(
-            row.extra_tier_relaxed_upper_bound_hit_rates.get(label)
+    payload["HBM Strict-Prefix 达到内容上界"] = format_flag(
+        strict_prefix_reaches_content_ceiling(
+            row.hbm_strict_prefix_hit_rate,
+            row.extreme_hit_rate,
         )
-        payload[lru_column(label)] = format_rate(row.extra_tier_lru_hit_rates.get(label))
-        payload[strict_prefix_replay_column(label)] = format_rate(
-            row.extra_tier_strict_prefix_replay_hit_rates.get(label)
+    )
+    payload["HBM LRU 达到 Strict-Prefix"] = format_flag(
+        lru_reaches_strict_prefix(
+            row.hbm_lru_hit_rate,
+            row.hbm_strict_prefix_hit_rate,
         )
-        payload[strict_prefix_proof_column(label)] = (
-            row.extra_tier_strict_prefix_proof_sources.get(label) or ""
-        )
+    )
+    payload["HBM 当前主要瓶颈"] = bottleneck_label(
+        content_hit_rate=row.extreme_hit_rate,
+        strict_prefix_hit_rate=row.hbm_strict_prefix_hit_rate,
+        lru_hit_rate=row.hbm_lru_hit_rate,
+    )
     return payload

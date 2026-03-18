@@ -69,7 +69,7 @@ kvcache-upper-bound-oracle/
 
 ## 文件职责
 
-- `README.md`：项目入口，只讲目标、范围、启动顺序，以及为什么要把 `hit_summary.csv`、`planning_strict_prefix.csv`、`planning_lru.csv` 分开。
+- `README.md`：项目入口，只讲目标、范围、启动顺序，以及为什么主表要收敛到 HBM 当前层、额外容量层要改看 `tier_summary.csv` 长表。
 - `pyproject.toml`：本地可安装入口；保证 `kvcache-upper-bound` 命令可直接运行。
 - `docs/design_guide.md`：需求、口径、算法、阶段计划的单一事实来源。
 - `docs/correctness_guide.md`：解释哪些结果已被 reference 证明，哪些指标只是解释 exact strict-prefix 的辅助证据。
@@ -85,11 +85,11 @@ kvcache-upper-bound-oracle/
 - `src/kvcache_upper_bound/reporting/buckets.py`：按长度分桶做核心分析；这里只保留分桶执行、命中率汇总和 target-TPS 规划求值，不再混入配置解析细节。
 - `src/kvcache_upper_bound/reporting/config_loader.py`：分桶配置解析与语义校验；这里负责把“机器/卡/TPS/预算/规划锚点”口径钉死。
 - `src/kvcache_upper_bound/reporting/inputs.py`：输入归一化摘要；从分桶结果提炼 `metadata.json` 和 correctness report 需要的稳定输入口径。
-- `src/kvcache_upper_bound/reporting/table_common.py`：报表公共列名、格式化和行范围工具；统一 `Strict-Prefix / LRU` 列命名，避免多处手写漂移。
-- `src/kvcache_upper_bound/reporting/hit_output.py`：命中结果视图；负责 `summary.csv` 和 `hit_summary.csv` 里的命中列拼装。
+- `src/kvcache_upper_bound/reporting/table_common.py`：报表公共列名、格式化、诊断判定和行范围工具；统一 `Strict-Prefix / LRU` 列命名，避免多处手写漂移。
+- `src/kvcache_upper_bound/reporting/hit_output.py`：命中结果视图；负责 `summary.csv` 和 `hit_summary.csv` 里的 HBM 主列与“容量/策略瓶颈”诊断列拼装。
 - `src/kvcache_upper_bound/reporting/planning_output.py`：规划结果视图；负责 exact strict-prefix 上界规划和 LRU 策略规划的字段与载荷生成。
 - `src/kvcache_upper_bound/reporting/planning_search.py`：target-TPS 规划搜索与 TPS 数学；把 `TPS Gain`、局部等效值和“最小整数部署”搜索从分析主循环里抽出来。
-- `src/kvcache_upper_bound/reporting/output.py`：输出编排与落盘；只负责把各视图写成 `summary.csv / hit_summary.csv / planning_strict_prefix.csv / planning_lru.csv / details.json`。
+- `src/kvcache_upper_bound/reporting/output.py`：输出编排与落盘；负责把各视图写成 `summary.csv / hit_summary.csv / planning_strict_prefix.csv / planning_lru.csv / tier_summary.csv / details.json`，并把扩容层结果展开成长表。
 - `src/kvcache_upper_bound/cli/main.py`：命令行入口；负责把 trace、配置、输出目录串成完整离线分析流程，并让 `metadata.json` 同时输出报表行镜像和输入归一化摘要。
 - `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器、strict-prefix 精确 oracle 对账器，以及 `relaxed == replay == exact` 的穷举等价校验器。
 - `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账、relaxed/replay/exact strict-prefix 诊断、proof source 写成 correctness report，并同时输出中英文 Markdown 报告。
@@ -129,9 +129,11 @@ kvcache-upper-bound-oracle/
 - `reporting/` 负责把算法结果翻译成汇总表和结果文件；不要反向污染 oracle 的数据结构。
 - `reporting/` 内允许做命中率到 `TPS / 机器数` 的纯后处理，但不能把机器数、调度和带宽反向混进 oracle 定义。
 - `reporting/` 输出要坚持主次分离：命中估算是主结果，`TPS / 机器数` 是派生结果；不要把派生列淹没主口径。
+- 主 CSV 优先服务“当前 HBM 怎么看”；额外容量层不要再横向展开成超宽表，而要放进 `tier_summary.csv` 这种长表里做层间比较。
 - 上界规划和策略规划必须显式分开：`planning_strict_prefix.csv` 代表 exact strict-prefix，`planning_lru.csv` 代表 LRU；不要再使用含混的 `HBM TPS Gain` 之类列名。
 - 绝对规划必须显式提供锚点：`baseline_per_card_tps` 给出无命中单卡基线吞吐，`planning_target_total_tps` 给出目标总 TPS；只有这两个量到位，`最小卡数 / 最小机器数` 才有可比性。
 - `同负载估算卡数 / 机器数` 只能当固定命中率下的算力等效值；它们留在 `details.json` 做诊断，不要再放进主 CSV 干扰部署规划阅读。
+- 命中表必须显式回答“是容量瓶颈还是策略瓶颈”；不要让读者自己拿三列数字脑补。
 - `LRU` 既是命中基线，也是策略规划输入；但它不能替代 exact strict-prefix 的上界地位。
 
 ## 开发规范
@@ -166,3 +168,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-18`：把 strict-prefix 规划文件显式改名为 `planning_strict_prefix.csv`，并新增公开 `1` 机 `1` 卡 `h20` 配置，专门暴露单卡显存约束下的命中率下降。
 - `2026-03-18`：新增 `reporting/config_loader.py` 与 `reporting/planning_search.py`；把配置解析/校验和 target-TPS 规划搜索从 `buckets.py` 拆开，同时新增 `baseline_per_card_tps + planning_target_total_tps -> 最小卡数 / 最小机器数` 的闭环规划结果。
 - `2026-03-18`：精简主 CSV 规划列：移除 `同负载估算卡数 / 机器数`，只保留 `TPS Gain / 估算总 TPS / 当前配置可承载总 TPS / 目标总 TPS 最小卡数 / 最小机器数`；同时新增两份归一化 planning 样例配置，方便直接比较 `1x8` 与 `1x1` 部署。
+- `2026-03-18`：主表继续窄化：`hit_summary.csv / planning_*.csv` 只保留 HBM 当前层主列；新增 `tier_summary.csv` 长表统一承接 `HBM / 1T / 10T` 层间比较，并新增“达到上界 / 达到 strict / 当前主要瓶颈 / 相对上一层增益”诊断列。

@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .buckets import BucketReportRow
 
+COMPARISON_EPSILON = 1e-9
+
 
 def hit_prefix_fieldnames(*, include_total_tps: bool) -> list[str]:
     fieldnames = ["分桶", "机器数", "卡数", "单机卡数", "规格"]
@@ -110,10 +112,72 @@ def format_integer(value: int | None) -> str:
     return str(value)
 
 
+def format_flag(value: bool | None) -> str:
+    if value is None:
+        return ""
+    return "是" if value else "否"
+
+
+def format_delta_pp(value: float | None) -> str:
+    if value is None:
+        return ""
+    return f"{value * 100:+.2f}pp"
+
+
 def format_text(value: str | None) -> str:
     if value is None:
         return ""
     return value
+
+
+def strict_prefix_reaches_content_ceiling(
+    strict_prefix_hit_rate: float | None,
+    content_hit_rate: float | None,
+) -> bool | None:
+    if strict_prefix_hit_rate is None or content_hit_rate is None:
+        return None
+    return strict_prefix_hit_rate + COMPARISON_EPSILON >= content_hit_rate
+
+
+def lru_reaches_strict_prefix(
+    lru_hit_rate: float | None,
+    strict_prefix_hit_rate: float | None,
+) -> bool | None:
+    if lru_hit_rate is None or strict_prefix_hit_rate is None:
+        return None
+    return lru_hit_rate + COMPARISON_EPSILON >= strict_prefix_hit_rate
+
+
+def bottleneck_label(
+    *,
+    content_hit_rate: float | None,
+    strict_prefix_hit_rate: float | None,
+    lru_hit_rate: float | None,
+) -> str:
+    strict_hits_content = strict_prefix_reaches_content_ceiling(
+        strict_prefix_hit_rate,
+        content_hit_rate,
+    )
+    lru_hits_strict = lru_reaches_strict_prefix(
+        lru_hit_rate,
+        strict_prefix_hit_rate,
+    )
+    if strict_hits_content is None or lru_hits_strict is None:
+        return ""
+    if not strict_hits_content:
+        return "容量"
+    if not lru_hits_strict:
+        return "策略"
+    return "无明显瓶颈"
+
+
+def rate_delta(
+    current_hit_rate: float | None,
+    previous_hit_rate: float | None,
+) -> float | None:
+    if current_hit_rate is None or previous_hit_rate is None:
+        return None
+    return current_hit_rate - previous_hit_rate
 
 
 def relaxed_upper_bound_column(label: str) -> str:

@@ -116,16 +116,18 @@ machine/card count
 1. 看 `极限命中率`，先判断内容天花板高不高。
 2. 看 `HBM Strict-Prefix 命中率`，判断当前 HBM 下真正能保住多少复用。
 3. 看 `HBM LRU 命中率`，判断简单在线策略和最优值差多远。
-4. 看额外容量层的 `Strict-Prefix 命中率`，判断扩容值不值得。
-5. 最后看规划表：优先读 `目标总 TPS 最小卡数 / 最小机器数`；如果还想看“固定命中率不回代容量变化”的局部等效值，再去查 `details.json`。
+4. 看 `HBM Strict-Prefix 达到内容上界 / HBM LRU 达到 Strict-Prefix / HBM 当前主要瓶颈` 这三列，先把“容量瓶颈”和“策略瓶颈”分开。
+5. 如果还要比较 `HBM / 1T / 10T` 这些扩容层，直接看 `tier_summary.csv`，重点读 `相对上一层 Strict-Prefix 增益 / 相对上一层 LRU 增益`。
+6. 最后看规划表：优先读 `目标总 TPS 最小卡数 / 最小机器数`；如果还想看“固定命中率不回代容量变化”的局部等效值，再去查 `details.json`。
 
 各文件职责固定如下：
 
 | 文件 | 只回答什么问题 |
 |------|----------------|
-| `hit_summary.csv` | 命中率本身是多少 |
+| `hit_summary.csv` | 当前 HBM 的命中率本身是多少，主要瓶颈是容量还是策略 |
 | `planning_strict_prefix.csv` | exact strict-prefix 上界下，当前配置可承载多少 TPS；若给了目标 TPS，再回答最小卡数 / 机器数 |
 | `planning_lru.csv` | LRU 策略下，当前配置可承载多少 TPS；若给了目标 TPS，再回答最小卡数 / 机器数 |
+| `tier_summary.csv` | 不同容量层之间，命中率、TPS 和诊断到底差多少 |
 | `details.json` | 每个桶的详细摘要和中间统计 |
 | `correctness_report.zh.md` / `correctness_report.en.md` | 当前结果的证明范围和侧证 |
 

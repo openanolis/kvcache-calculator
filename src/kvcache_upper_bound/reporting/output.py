@@ -18,7 +18,21 @@ from .planning_output import (
     strict_prefix_planning_fieldnames,
     strict_prefix_planning_payload,
 )
-from .table_common import collect_tier_labels
+from .table_common import (
+    bottleneck_label,
+    collect_tier_labels,
+    common_row_payload,
+    format_delta_pp,
+    format_flag,
+    format_integer,
+    format_number,
+    format_rate,
+    lru_reaches_strict_prefix,
+    row_range_fieldnames,
+    row_range_payload,
+    strict_prefix_column_base,
+    strict_prefix_reaches_content_ceiling,
+)
 
 if TYPE_CHECKING:
     from .buckets import BucketAnalysisResult, BucketReportRow
@@ -37,6 +51,7 @@ def write_bucket_outputs(result: BucketAnalysisResult, output_dir: str | Path) -
         tier_labels,
     )
     _write_lru_planning_csv(output_path / "planning_lru.csv", result.rows, tier_labels)
+    _write_tier_summary_csv(output_path / "tier_summary.csv", result)
     _write_details_json(output_path / "details.json", result)
 
 
@@ -148,6 +163,225 @@ def _write_lru_planning_csv(
             for row in rows
         ],
     )
+
+
+def _write_tier_summary_csv(path: Path, result: BucketAnalysisResult) -> None:
+    rows = result.rows
+    include_total_tps = any(row.total_tps is not None for row in rows)
+    include_target_tps_fields = any(
+        row.planning_target_total_tps is not None and row.baseline_per_card_tps is not None
+        for row in rows
+    )
+    payloads: list[dict[str, Any]] = []
+    for row in rows:
+        detail = result.details[row.bucket_label]
+        previous_strict_hit_rate: float | None = None
+        previous_lru_hit_rate: float | None = None
+        payloads.append(
+            _tier_summary_payload(
+                row=row,
+                tier_label="HBM",
+                total_kv_gb=row.hbm_kv_total_gb,
+                strict_prefix_hit_rate=row.hbm_strict_prefix_hit_rate,
+                lru_hit_rate=row.hbm_lru_hit_rate,
+                strict_prefix_proof_source=row.hbm_strict_prefix_proof_source,
+                strict_prefix_tps_gain=row.hbm_strict_prefix_tps_gain,
+                lru_tps_gain=row.hbm_lru_tps_gain,
+                strict_prefix_estimated_total_tps=row.hbm_strict_prefix_estimated_total_tps,
+                lru_estimated_total_tps=row.hbm_lru_estimated_total_tps,
+                strict_prefix_current_cluster_capacity_tps=row.hbm_strict_prefix_current_cluster_capacity_tps,
+                strict_prefix_min_card_count=row.hbm_strict_prefix_min_card_count_for_target_total_tps,
+                strict_prefix_min_machine_count=row.hbm_strict_prefix_min_machine_count_for_target_total_tps,
+                lru_current_cluster_capacity_tps=row.hbm_lru_current_cluster_capacity_tps,
+                lru_min_card_count=row.hbm_lru_min_card_count_for_target_total_tps,
+                lru_min_machine_count=row.hbm_lru_min_machine_count_for_target_total_tps,
+                previous_strict_hit_rate=previous_strict_hit_rate,
+                previous_lru_hit_rate=previous_lru_hit_rate,
+                include_total_tps=include_total_tps,
+                include_target_tps_fields=include_target_tps_fields,
+            )
+        )
+        previous_strict_hit_rate = row.hbm_strict_prefix_hit_rate
+        previous_lru_hit_rate = row.hbm_lru_hit_rate
+        for tier in detail.config.extra_capacity_tiers:
+            tier_label = strict_prefix_column_base(tier.label)
+            total_kv_gb = row.hbm_kv_total_gb + row.machine_count * tier.kv_gb_per_machine
+            strict_prefix_hit_rate = row.extra_tier_strict_prefix_hit_rates.get(tier.label)
+            lru_hit_rate = row.extra_tier_lru_hit_rates.get(tier.label)
+            payloads.append(
+                _tier_summary_payload(
+                    row=row,
+                    tier_label=tier_label,
+                    total_kv_gb=total_kv_gb,
+                    strict_prefix_hit_rate=strict_prefix_hit_rate,
+                    lru_hit_rate=lru_hit_rate,
+                    strict_prefix_proof_source=row.extra_tier_strict_prefix_proof_sources.get(tier.label),
+                    strict_prefix_tps_gain=row.extra_tier_strict_prefix_tps_gains.get(tier.label),
+                    lru_tps_gain=row.extra_tier_lru_tps_gains.get(tier.label),
+                    strict_prefix_estimated_total_tps=row.extra_tier_strict_prefix_estimated_total_tps.get(
+                        tier.label
+                    ),
+                    lru_estimated_total_tps=row.extra_tier_lru_estimated_total_tps.get(tier.label),
+                    strict_prefix_current_cluster_capacity_tps=row.extra_tier_strict_prefix_current_cluster_capacity_tps.get(
+                        tier.label
+                    ),
+                    strict_prefix_min_card_count=row.extra_tier_strict_prefix_min_card_counts_for_target_total_tps.get(
+                        tier.label
+                    ),
+                    strict_prefix_min_machine_count=row.extra_tier_strict_prefix_min_machine_counts_for_target_total_tps.get(
+                        tier.label
+                    ),
+                    lru_current_cluster_capacity_tps=row.extra_tier_lru_current_cluster_capacity_tps.get(
+                        tier.label
+                    ),
+                    lru_min_card_count=row.extra_tier_lru_min_card_counts_for_target_total_tps.get(
+                        tier.label
+                    ),
+                    lru_min_machine_count=row.extra_tier_lru_min_machine_counts_for_target_total_tps.get(
+                        tier.label
+                    ),
+                    previous_strict_hit_rate=previous_strict_hit_rate,
+                    previous_lru_hit_rate=previous_lru_hit_rate,
+                    include_total_tps=include_total_tps,
+                    include_target_tps_fields=include_target_tps_fields,
+                )
+            )
+            previous_strict_hit_rate = strict_prefix_hit_rate
+            previous_lru_hit_rate = lru_hit_rate
+
+    _write_csv(
+        path,
+        _tier_summary_fieldnames(
+            include_total_tps=include_total_tps,
+            include_target_tps_fields=include_target_tps_fields,
+        ),
+        payloads,
+    )
+
+
+def _tier_summary_fieldnames(
+    *,
+    include_total_tps: bool,
+    include_target_tps_fields: bool,
+) -> list[str]:
+    fieldnames = ["分桶", "容量层", "机器数", "卡数", "单机卡数", "规格"]
+    if include_total_tps:
+        fieldnames.extend(["总 TPS", "TPS 输入口径"])
+    if include_target_tps_fields:
+        fieldnames.extend(["目标总 TPS", "单卡基线 TPS (无命中)"])
+    fieldnames.extend(
+        [
+            "KVCache 总大小 (GB)",
+            "Prefill 节省系数 alpha",
+            "极限命中率",
+            "Strict-Prefix 命中率",
+            "LRU 命中率",
+            "Strict-Prefix 求解路径",
+            "Strict-Prefix 达到内容上界",
+            "LRU 达到 Strict-Prefix",
+            "当前主要瓶颈",
+            "相对上一层 Strict-Prefix 增益",
+            "相对上一层 LRU 增益",
+            "Strict-Prefix TPS Gain",
+            "LRU TPS Gain",
+        ]
+    )
+    if include_total_tps:
+        fieldnames.extend(["Strict-Prefix 估算总 TPS", "LRU 估算总 TPS"])
+    if include_target_tps_fields:
+        fieldnames.extend(
+            [
+                "Strict-Prefix 当前配置可承载总 TPS",
+                "Strict-Prefix 目标总 TPS 最小卡数",
+                "Strict-Prefix 目标总 TPS 最小机器数",
+                "LRU 当前配置可承载总 TPS",
+                "LRU 目标总 TPS 最小卡数",
+                "LRU 目标总 TPS 最小机器数",
+            ]
+        )
+    fieldnames.extend(row_range_fieldnames())
+    return fieldnames
+
+
+def _tier_summary_payload(
+    *,
+    row: BucketReportRow,
+    tier_label: str,
+    total_kv_gb: float,
+    strict_prefix_hit_rate: float | None,
+    lru_hit_rate: float | None,
+    strict_prefix_proof_source: str | None,
+    strict_prefix_tps_gain: float | None,
+    lru_tps_gain: float | None,
+    strict_prefix_estimated_total_tps: float | None,
+    lru_estimated_total_tps: float | None,
+    strict_prefix_current_cluster_capacity_tps: float | None,
+    strict_prefix_min_card_count: int | None,
+    strict_prefix_min_machine_count: int | None,
+    lru_current_cluster_capacity_tps: float | None,
+    lru_min_card_count: int | None,
+    lru_min_machine_count: int | None,
+    previous_strict_hit_rate: float | None,
+    previous_lru_hit_rate: float | None,
+    include_total_tps: bool,
+    include_target_tps_fields: bool,
+) -> dict[str, Any]:
+    payload = common_row_payload(row=row, include_total_tps=include_total_tps)
+    payload["容量层"] = tier_label
+    if include_target_tps_fields:
+        payload["目标总 TPS"] = format_number(row.planning_target_total_tps)
+        payload["单卡基线 TPS (无命中)"] = format_number(row.baseline_per_card_tps)
+    payload["KVCache 总大小 (GB)"] = f"{total_kv_gb:.2f}"
+    payload["Prefill 节省系数 alpha"] = format_number(row.prefill_savings_alpha)
+    payload["极限命中率"] = format_rate(row.extreme_hit_rate)
+    payload["Strict-Prefix 命中率"] = format_rate(strict_prefix_hit_rate)
+    payload["LRU 命中率"] = format_rate(lru_hit_rate)
+    payload["Strict-Prefix 求解路径"] = strict_prefix_proof_source or ""
+    payload["Strict-Prefix 达到内容上界"] = format_flag(
+        strict_prefix_reaches_content_ceiling(
+            strict_prefix_hit_rate,
+            row.extreme_hit_rate,
+        )
+    )
+    payload["LRU 达到 Strict-Prefix"] = format_flag(
+        lru_reaches_strict_prefix(
+            lru_hit_rate,
+            strict_prefix_hit_rate,
+        )
+    )
+    payload["当前主要瓶颈"] = bottleneck_label(
+        content_hit_rate=row.extreme_hit_rate,
+        strict_prefix_hit_rate=strict_prefix_hit_rate,
+        lru_hit_rate=lru_hit_rate,
+    )
+    payload["相对上一层 Strict-Prefix 增益"] = format_delta_pp(
+        strict_prefix_hit_rate - previous_strict_hit_rate
+        if strict_prefix_hit_rate is not None and previous_strict_hit_rate is not None
+        else None
+    )
+    payload["相对上一层 LRU 增益"] = format_delta_pp(
+        lru_hit_rate - previous_lru_hit_rate
+        if lru_hit_rate is not None and previous_lru_hit_rate is not None
+        else None
+    )
+    payload["Strict-Prefix TPS Gain"] = format_number(strict_prefix_tps_gain)
+    payload["LRU TPS Gain"] = format_number(lru_tps_gain)
+    if include_total_tps:
+        payload["Strict-Prefix 估算总 TPS"] = format_number(strict_prefix_estimated_total_tps)
+        payload["LRU 估算总 TPS"] = format_number(lru_estimated_total_tps)
+    if include_target_tps_fields:
+        payload["Strict-Prefix 当前配置可承载总 TPS"] = format_number(
+            strict_prefix_current_cluster_capacity_tps
+        )
+        payload["Strict-Prefix 目标总 TPS 最小卡数"] = format_integer(strict_prefix_min_card_count)
+        payload["Strict-Prefix 目标总 TPS 最小机器数"] = format_integer(
+            strict_prefix_min_machine_count
+        )
+        payload["LRU 当前配置可承载总 TPS"] = format_number(lru_current_cluster_capacity_tps)
+        payload["LRU 目标总 TPS 最小卡数"] = format_integer(lru_min_card_count)
+        payload["LRU 目标总 TPS 最小机器数"] = format_integer(lru_min_machine_count)
+    payload.update(row_range_payload(row))
+    return payload
 
 
 def _write_details_json(path: Path, result: BucketAnalysisResult) -> None:

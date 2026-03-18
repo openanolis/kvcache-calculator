@@ -71,10 +71,11 @@ kvcache-upper-bound audit-buckets \
 
 | 文件 | 内容 | 什么时候看 |
 |------|------|------------|
-| `summary.csv` | 兼容总表，混合展示命中结果和规划结果 | 想快速扫一眼全部结果 |
-| `hit_summary.csv` | 只放命中相关列：content / relaxed / LRU / strict-prefix | 只关心 KV 命中估算 |
+| `summary.csv` | 兼容总表，混合展示 HBM 主结果和主规划列 | 想快速扫一眼全部结果 |
+| `hit_summary.csv` | HBM 主命中表；只放 `content / relaxed / LRU / strict-prefix` 以及“容量/策略瓶颈”诊断列 | 先判断当前 HBM 到底是被容量卡住，还是被策略卡住 |
 | `planning_strict_prefix.csv` | 上界规划表；统一基于 exact strict-prefix 命中率，只保留 `TPS Gain / 估算总 TPS / 当前配置可承载总 TPS / 目标总 TPS 最小卡数 / 最小机器数` 这些主列 | 想看理论最优下的资源规划 |
 | `planning_lru.csv` | 策略规划表；统一基于 LRU 命中率，只保留同一组主规划列 | 想看如果实际采用 LRU，需要多少机器 |
+| `tier_summary.csv` | 容量层长表；把 `HBM / HBM+1T / HBM+10T ...` 展成多行，统一给出 `Strict-Prefix / LRU / 增益 / 诊断 / 规划` | 想比较扩容层之间到底差多少，不想看超宽表 |
 | `details.json` | 每个桶的详细统计摘要 | 想查具体数字和中间结果 |
 | `metadata.json` | 输入参数、加载统计、归一化后的桶配置 | 想确认这次运行到底按什么口径算的 |
 | `correctness_report.zh.md` | 中文正确性报告 | 想确认结果边界和证明路径 |
@@ -111,6 +112,15 @@ LRU baseline <= exact strict-prefix <= relaxed upper bound <= content upper boun
 这组列是自洽的绝对规划结果：搜索时会把“卡数变化 -> HBM/扩展容量变化 -> 命中率变化 -> 集群总 TPS 变化”放进同一个闭环。
 
 `同负载估算卡数 / 机器数` 仍然保留在 `details.json`，但不再放进主 CSV。它只是“固定当前命中率不变时的算力等效值”，不能替代目标 TPS 下的真实部署规划。
+
+主 CSV 现在默认只保留 HBM 当前层的核心结果；额外容量层改放到 `tier_summary.csv` 这张长表里。这样主表不再横向膨胀，而 `tier_summary.csv` 会额外给出：
+
+- `Strict-Prefix 达到内容上界`
+- `LRU 达到 Strict-Prefix`
+- `当前主要瓶颈`
+- `相对上一层 Strict-Prefix / LRU 增益`
+
+所以如果你想回答“为什么 HBM 已经够了，LRU 加 1T 还能继续涨”，直接看 `tier_summary.csv` 就行。
 
 ## 文档入口
 
