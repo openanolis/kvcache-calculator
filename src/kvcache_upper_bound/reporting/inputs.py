@@ -25,6 +25,8 @@ class BucketInputSummary:
     total_tps_input: float | None
     total_tps_input_unit: str | None
     total_tps_cluster_total: float | None
+    planning_target_total_tps: float | None
+    baseline_per_card_tps: float | None
     hbm_kv_gb_per_card: float
     hbm_kv_total_gb: float
     model_weight_gb_per_card: float | None
@@ -56,6 +58,8 @@ def build_bucket_input_summaries(result: BucketAnalysisResult) -> list[BucketInp
                 total_tps_input=detail.config.total_tps,
                 total_tps_input_unit=row.total_tps_input_unit,
                 total_tps_cluster_total=row.total_tps,
+                planning_target_total_tps=row.planning_target_total_tps,
+                baseline_per_card_tps=row.baseline_per_card_tps,
                 hbm_kv_gb_per_card=row.hbm_kv_gb_per_card,
                 hbm_kv_total_gb=row.hbm_kv_total_gb,
                 model_weight_gb_per_card=row.model_weight_gb_per_card,

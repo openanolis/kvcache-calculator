@@ -12,7 +12,7 @@
 | `relaxed upper bound` | 固定容量下，允许离线最优调度时的 event-level 上界 | 判断空间约束压掉了多少内容天花板 |
 | `LRU baseline` | 固定容量下，标准 LRU 在线策略能做到多少 strict-prefix 命中 | 给出一个简单、可实现的策略基线 |
 | `exact strict-prefix` | 固定容量下，strict-prefix 语义的真正最优值 | 核心结果；后续规划统一基于它 |
-| `planning metrics` | 把 `exact strict-prefix` 和 `LRU` 命中率分别换算成 `TPS Gain / 估算总 TPS / 同负载估算卡数 / 机器数` | 分开看理论上界和策略落地成本 |
+| `planning metrics` | 把 `exact strict-prefix` 和 `LRU` 命中率分别换算成 `TPS Gain`，并在提供目标 TPS 锚点后求最小卡数 / 机器数 | 分开看理论上界、策略落地成本和目标吞吐下的资源需求 |
 
 ## 快速开始
 
@@ -50,6 +50,8 @@ kvcache-upper-bound audit-buckets \
 | `bucket_deployments[].runtime_reserve_gb_per_card` | 否 | 单卡 runtime 预留显存 |
 | `bucket_deployments[].total_tps` | 否 | 原始吞吐输入 |
 | `bucket_deployments[].total_tps_unit` | 否 | `cluster_total / per_machine / per_card` |
+| `bucket_deployments[].baseline_per_card_tps` | 否 | 绝对规划锚点；表示无命中收益时的单卡基线 TPS |
+| `bucket_deployments[].planning_target_total_tps` | 否 | 目标总 TPS；提供后会输出“最小卡数 / 最小机器数” |
 | `bucket_deployments[].extra_capacity_tiers` | 否 | 每台机器追加的 host/SSD KV 空间 |
 | `prefill_savings_alpha` | 否 | 命中收益兑现成吞吐收益的比例，默认 `0.8` |
 
@@ -93,6 +95,16 @@ LRU baseline <= exact strict-prefix <= relaxed upper bound <= content upper boun
 
 - `planning_strict_prefix.csv`：`h = exact strict-prefix hit rate`
 - `planning_lru.csv`：`h = lru hit rate`
+
+如果同时提供 `baseline_per_card_tps` 和 `planning_target_total_tps`，规划表还会额外输出：
+
+- `当前配置可承载总 TPS`
+- `目标总 TPS 最小卡数`
+- `目标总 TPS 最小机器数`
+
+这组列是自洽的绝对规划结果：搜索时会把“卡数变化 -> HBM/扩展容量变化 -> 命中率变化 -> 集群总 TPS 变化”放进同一个闭环。
+
+`同负载估算卡数 / 机器数` 仍然保留，但它只是“固定当前命中率不变时的算力等效值”，不能替代目标 TPS 下的真实部署规划。
 
 ## 文档入口
 

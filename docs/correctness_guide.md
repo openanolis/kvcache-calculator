@@ -62,7 +62,11 @@ LRU 现在已经接进主报表，但它的身份很明确：
 
 `alpha` 是 `Prefill 节省系数`。它表示命中收益能有多大比例兑现成吞吐收益。
 
-当前项目使用的后处理公式固定为：
+当前项目有两套规划后处理：
+
+### 1. 固定命中率的算力等效值
+
+这组列是辅助解释值，公式固定为：
 
 ```text
 TPS Gain = 1 / (1 - alpha * h)
@@ -78,6 +82,33 @@ Estimated Machine Count For Same Load = Estimated Card Count / Cards Per Machine
 - `planning_strict_prefix.csv` 用 `exact strict-prefix` 命中率代入。
 - `planning_lru.csv` 用 `LRU` 命中率代入。
 
+这组列不会回代“缩容后容量变小、命中率也会变”这件事，所以它只能当局部算力等效值，不能直接当最终部署答案。
+
+### 2. 目标总 TPS 下的自洽规划
+
+如果配置里提供：
+
+- `baseline_per_card_tps`
+- `planning_target_total_tps`
+
+报表还会输出真正可横向比较的规划列：
+
+- `当前配置可承载总 TPS`
+- `目标总 TPS 最小卡数`
+- `目标总 TPS 最小机器数`
+
+这组列的计算是闭环的：
+
+```text
+machine/card count
+-> total KV budget
+-> hit rate
+-> cluster total TPS
+-> whether target_total_tps is satisfied
+```
+
+所以这里的“最小卡数 / 最小机器数”不是简单做除法，而是在候选部署规模上做单调搜索，直到找到第一个满足目标总 TPS 的整数部署。
+
 ## 报表怎么读
 
 推荐按这个顺序读：
@@ -86,15 +117,15 @@ Estimated Machine Count For Same Load = Estimated Card Count / Cards Per Machine
 2. 看 `HBM Strict-Prefix 命中率`，判断当前 HBM 下真正能保住多少复用。
 3. 看 `HBM LRU 命中率`，判断简单在线策略和最优值差多远。
 4. 看额外容量层的 `Strict-Prefix 命中率`，判断扩容值不值得。
-5. 最后看规划表：`planning_strict_prefix.csv` 回答理论上界，`planning_lru.csv` 回答 LRU 策略下的机器需求。
+5. 最后看规划表：优先读 `目标总 TPS 最小卡数 / 最小机器数`；只有在没有目标 TPS 锚点时，才把 `同负载估算卡数 / 机器数` 当辅助解释。
 
 各文件职责固定如下：
 
 | 文件 | 只回答什么问题 |
 |------|----------------|
 | `hit_summary.csv` | 命中率本身是多少 |
-| `planning_strict_prefix.csv` | exact strict-prefix 上界能换成多少 TPS、多少卡、多少机器 |
-| `planning_lru.csv` | LRU 策略能换成多少 TPS、多少卡、多少机器 |
+| `planning_strict_prefix.csv` | exact strict-prefix 上界下，当前配置可承载多少 TPS；若给了目标 TPS，再回答最小卡数 / 机器数 |
+| `planning_lru.csv` | LRU 策略下，当前配置可承载多少 TPS；若给了目标 TPS，再回答最小卡数 / 机器数 |
 | `details.json` | 每个桶的详细摘要和中间统计 |
 | `correctness_report.zh.md` / `correctness_report.en.md` | 当前结果的证明范围和侧证 |
 
@@ -131,6 +162,7 @@ Estimated Machine Count For Same Load = Estimated Card Count / Cards Per Machine
 
 - `alpha` 的取值是否贴合某个线上系统。
 - `TPS Gain / 估算总 TPS / 同负载估算卡数 / 同负载估算机器数` 是否等于真实线上收益。
+- `baseline_per_card_tps` 是否等于真实线上单卡基线吞吐。
 - 带宽、搬运时延、跨层存储命中开销是否已经被完整建模。
 
 所以项目当前最稳的主线是：

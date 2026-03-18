@@ -289,6 +289,77 @@ class BucketReportingTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "total_tps_unit must be one of"):
                 load_bucket_analysis_config(config_path)
 
+    def test_target_tps_planning_finds_self_consistent_min_card_count(self) -> None:
+        records = [
+            RequestRecord(
+                request_id="r0",
+                source_index=0,
+                timestamp_ms=1000,
+                chat_id="c0",
+                parent_chat_id=None,
+                turn=1,
+                request_type="text",
+                input_length=3,
+                output_length=1,
+                hash_ids=("a", "b", "c"),
+            ),
+            RequestRecord(
+                request_id="r1",
+                source_index=1,
+                timestamp_ms=2000,
+                chat_id="c1",
+                parent_chat_id=None,
+                turn=1,
+                request_type="text",
+                input_length=3,
+                output_length=1,
+                hash_ids=("a", "b", "c"),
+            ),
+        ]
+        one_block_gb = 2 / (1024**3)
+        config_payload = {
+            "prefill_savings_alpha": 1.0,
+            "model_profile": {
+                "n_layers": 1,
+                "n_kv_heads": 1,
+                "head_dim": 1,
+                "dtype_bytes": 2,
+                "block_size": 1,
+            },
+            "scope": "global",
+            "block_size": 1,
+            "bucket_deployments": [
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "accelerator_count": 1,
+                    "cards_per_machine": 1,
+                    "machine_spec": "h20",
+                    "hbm_kv_gb_per_card": 2 * one_block_gb,
+                    "planning_target_total_tps": 2.5,
+                    "baseline_per_card_tps": 1.0,
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+            config = load_bucket_analysis_config(config_path)
+            result = analyze_bucket_deployments(records, config)
+
+        self.assertAlmostEqual(result.rows[0].hbm_strict_prefix_hit_rate or 0.0, 1.0 / 6.0)
+        self.assertAlmostEqual(
+            result.rows[0].hbm_strict_prefix_current_cluster_capacity_tps or 0.0,
+            1.2,
+        )
+        self.assertEqual(result.rows[0].hbm_strict_prefix_min_card_count_for_target_total_tps, 2)
+        self.assertEqual(result.rows[0].hbm_strict_prefix_min_machine_count_for_target_total_tps, 2)
+        self.assertAlmostEqual(result.rows[0].hbm_lru_current_cluster_capacity_tps or 0.0, 1.0)
+        self.assertEqual(result.rows[0].hbm_lru_min_card_count_for_target_total_tps, 3)
+        self.assertEqual(result.rows[0].hbm_lru_min_machine_count_for_target_total_tps, 3)
+
     def test_bucket_reporting_rejects_ambiguous_budget_config(self) -> None:
         payload = {
             "model_profile": {
@@ -320,6 +391,40 @@ class BucketReportingTest(unittest.TestCase):
             with self.assertRaisesRegex(
                 ValueError,
                 "provide either hbm_kv_gb_per_card or gpu_memory_gb_per_card, not both",
+            ):
+                load_bucket_analysis_config(config_path)
+
+    def test_target_tps_planning_requires_baseline_per_card_tps(self) -> None:
+        payload = {
+            "model_profile": {
+                "n_layers": 1,
+                "n_kv_heads": 1,
+                "head_dim": 1,
+                "dtype_bytes": 1,
+                "block_size": 16,
+            },
+            "scope": "global",
+            "block_size": 16,
+            "bucket_deployments": [
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "accelerator_count": 8,
+                    "cards_per_machine": 8,
+                    "machine_spec": "h20",
+                    "hbm_kv_gb_per_card": 1,
+                    "planning_target_total_tps": 1000,
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_path.write_text(json.dumps(payload), encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError,
+                "planning_target_total_tps requires baseline_per_card_tps",
             ):
                 load_bucket_analysis_config(config_path)
 
@@ -401,6 +506,8 @@ class BucketReportingTest(unittest.TestCase):
                     "machine_spec": "h20",
                     "total_tps": 500,
                     "total_tps_unit": "per_machine",
+                    "planning_target_total_tps": 1000,
+                    "baseline_per_card_tps": 100,
                     "hbm_kv_gb_per_card": 2,
                     "extra_capacity_tiers": [
                         {"label": "HBM+单机 1T 命中率", "kv_gb_per_machine": 1024}
@@ -422,6 +529,8 @@ class BucketReportingTest(unittest.TestCase):
         self.assertEqual(summaries[0].total_tps_input_unit, "per_machine")
         self.assertAlmostEqual(summaries[0].total_tps_input or 0.0, 500.0)
         self.assertAlmostEqual(summaries[0].total_tps_cluster_total or 0.0, 1000.0)
+        self.assertAlmostEqual(summaries[0].planning_target_total_tps or 0.0, 1000.0)
+        self.assertAlmostEqual(summaries[0].baseline_per_card_tps or 0.0, 100.0)
         self.assertAlmostEqual(summaries[0].hbm_kv_gb_per_card, 2.0)
         self.assertAlmostEqual(summaries[0].hbm_kv_total_gb, 16.0)
         self.assertEqual(len(summaries[0].extra_capacity_tiers), 1)
@@ -446,6 +555,8 @@ class BucketReportingTest(unittest.TestCase):
         self.assertIn("normalized_bucket_inputs", metadata)
         self.assertEqual(metadata["normalized_bucket_inputs"][0]["machine_count"], 2)
         self.assertEqual(metadata["normalized_bucket_inputs"][0]["card_count"], 8)
+        self.assertEqual(metadata["normalized_bucket_inputs"][0]["planning_target_total_tps"], 1000.0)
+        self.assertEqual(metadata["normalized_bucket_inputs"][0]["baseline_per_card_tps"], 100.0)
         self.assertEqual(
             metadata["normalized_bucket_inputs"][0]["extra_capacity_tiers"][0]["total_kv_gb"],
             2064.0,

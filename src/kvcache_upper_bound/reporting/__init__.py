@@ -7,8 +7,8 @@ from .buckets import (
     BucketDeploymentConfig,
     BucketReportRow,
     analyze_bucket_deployments,
-    load_bucket_analysis_config,
 )
+from .config_loader import load_bucket_analysis_config
 from .inputs import BucketInputSummary, BucketTierInputSummary, build_bucket_input_summaries
 from .output import write_bucket_outputs
 

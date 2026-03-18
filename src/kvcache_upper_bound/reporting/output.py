@@ -98,17 +98,23 @@ def _write_strict_prefix_planning_csv(
     tier_labels: list[str],
 ) -> None:
     include_total_tps = any(row.total_tps is not None for row in rows)
+    include_target_tps_fields = any(
+        row.planning_target_total_tps is not None and row.baseline_per_card_tps is not None
+        for row in rows
+    )
     _write_csv(
         path,
         strict_prefix_planning_fieldnames(
             tier_labels=tier_labels,
             include_total_tps=include_total_tps,
+            include_target_tps_fields=include_target_tps_fields,
         ),
         [
             strict_prefix_planning_payload(
                 row=row,
                 tier_labels=tier_labels,
                 include_total_tps=include_total_tps,
+                include_target_tps_fields=include_target_tps_fields,
             )
             for row in rows
         ],
@@ -121,17 +127,23 @@ def _write_lru_planning_csv(
     tier_labels: list[str],
 ) -> None:
     include_total_tps = any(row.total_tps is not None for row in rows)
+    include_target_tps_fields = any(
+        row.planning_target_total_tps is not None and row.baseline_per_card_tps is not None
+        for row in rows
+    )
     _write_csv(
         path,
         lru_planning_fieldnames(
             tier_labels=tier_labels,
             include_total_tps=include_total_tps,
+            include_target_tps_fields=include_target_tps_fields,
         ),
         [
             lru_planning_payload(
                 row=row,
                 tier_labels=tier_labels,
                 include_total_tps=include_total_tps,
+                include_target_tps_fields=include_target_tps_fields,
             )
             for row in rows
         ],

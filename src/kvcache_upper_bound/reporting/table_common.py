@@ -15,10 +15,16 @@ def hit_prefix_fieldnames(*, include_total_tps: bool) -> list[str]:
     return fieldnames
 
 
-def planning_prefix_fieldnames(*, include_total_tps: bool) -> list[str]:
+def planning_prefix_fieldnames(
+    *,
+    include_total_tps: bool,
+    include_target_tps_fields: bool,
+) -> list[str]:
     fieldnames = ["分桶", "机器数", "卡数", "单机卡数", "规格"]
     if include_total_tps:
         fieldnames.extend(["总 TPS", "TPS 输入口径"])
+    if include_target_tps_fields:
+        fieldnames.extend(["目标总 TPS", "单卡基线 TPS (无命中)"])
     fieldnames.extend(["HBM KVCache 总大小 (GB)", "Prefill 节省系数 alpha"])
     return fieldnames
 
@@ -48,11 +54,19 @@ def hit_prefix_payload(row: BucketReportRow) -> dict[str, Any]:
     }
 
 
-def planning_prefix_payload(row: BucketReportRow) -> dict[str, Any]:
-    return {
+def planning_prefix_payload(
+    row: BucketReportRow,
+    *,
+    include_target_tps_fields: bool,
+) -> dict[str, Any]:
+    payload = {
         "HBM KVCache 总大小 (GB)": f"{row.hbm_kv_total_gb:.2f}",
         "Prefill 节省系数 alpha": format_number(row.prefill_savings_alpha),
     }
+    if include_target_tps_fields:
+        payload["目标总 TPS"] = format_number(row.planning_target_total_tps)
+        payload["单卡基线 TPS (无命中)"] = format_number(row.baseline_per_card_tps)
+    return payload
 
 
 def row_range_payload(row: BucketReportRow) -> dict[str, Any]:
@@ -88,6 +102,12 @@ def format_number(value: float | None) -> str:
     if math.isinf(value):
         return "inf"
     return f"{value:.2f}"
+
+
+def format_integer(value: int | None) -> str:
+    if value is None:
+        return ""
+    return str(value)
 
 
 def format_text(value: str | None) -> str:
@@ -132,6 +152,18 @@ def strict_prefix_estimated_machine_count_column(label: str) -> str:
     return f"{strict_prefix_column_base(label)} Strict-Prefix 同负载估算机器数"
 
 
+def strict_prefix_current_cluster_capacity_tps_column(label: str) -> str:
+    return f"{strict_prefix_column_base(label)} Strict-Prefix 当前配置可承载总 TPS"
+
+
+def strict_prefix_min_card_count_for_target_total_tps_column(label: str) -> str:
+    return f"{strict_prefix_column_base(label)} Strict-Prefix 目标总 TPS 最小卡数"
+
+
+def strict_prefix_min_machine_count_for_target_total_tps_column(label: str) -> str:
+    return f"{strict_prefix_column_base(label)} Strict-Prefix 目标总 TPS 最小机器数"
+
+
 def lru_tps_gain_column(label: str) -> str:
     return f"{strict_prefix_column_base(label)} LRU TPS Gain"
 
@@ -146,6 +178,18 @@ def lru_estimated_card_count_column(label: str) -> str:
 
 def lru_estimated_machine_count_column(label: str) -> str:
     return f"{strict_prefix_column_base(label)} LRU 同负载估算机器数"
+
+
+def lru_current_cluster_capacity_tps_column(label: str) -> str:
+    return f"{strict_prefix_column_base(label)} LRU 当前配置可承载总 TPS"
+
+
+def lru_min_card_count_for_target_total_tps_column(label: str) -> str:
+    return f"{strict_prefix_column_base(label)} LRU 目标总 TPS 最小卡数"
+
+
+def lru_min_machine_count_for_target_total_tps_column(label: str) -> str:
+    return f"{strict_prefix_column_base(label)} LRU 目标总 TPS 最小机器数"
 
 
 def strict_prefix_column_base(label: str) -> str:

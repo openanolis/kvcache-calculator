@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import json
-import math
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Iterable
+from typing import Iterable
 
 from kvcache_upper_bound.core.models import ModelProfile, RequestRecord, Scope
 from kvcache_upper_bound.ingest.normalizer import build_effective_requests
@@ -15,15 +12,17 @@ from kvcache_upper_bound.oracle.strict_prefix import (
     StrictPrefixAnalysisResult,
     analyze_strict_prefix_capacity_upper_bound,
 )
-from kvcache_upper_bound.reporting.output import write_bucket_outputs
+from kvcache_upper_bound.reporting.planning_search import (
+    build_target_tps_plan,
+    cluster_capacity_tps,
+    estimated_card_count,
+    estimated_machine_count,
+    estimated_total_tps,
+    tps_gain,
+)
 
 BYTES_PER_GB = 1024**3
 VALID_TOTAL_TPS_UNITS = ("cluster_total", "per_machine", "per_card")
-LEGACY_PER_MACHINE_BUDGET_FIELDS = (
-    "hbm_kv_gb_per_machine",
-    "gpu_memory_gb_per_machine",
-    "runtime_reserve_gb_per_machine",
-)
 
 
 @dataclass(frozen=True)
@@ -41,6 +40,8 @@ class BucketDeploymentConfig:
     machine_spec: str
     total_tps: float | None
     total_tps_unit: str = "cluster_total"
+    planning_target_total_tps: float | None = None
+    baseline_per_card_tps: float | None = None
     hbm_kv_gb_per_card: float | None = None
     gpu_memory_gb_per_card: float | None = None
     hbm_kv_utilization: float | None = None
@@ -71,6 +72,13 @@ class BucketDeploymentConfig:
         raise ValueError(
             f"{self.label}: total_tps_unit must be one of {', '.join(VALID_TOTAL_TPS_UNITS)}"
         )
+
+    def resolved_planning_target_total_tps(self) -> float | None:
+        if self.planning_target_total_tps is not None:
+            return self.planning_target_total_tps
+        if self.baseline_per_card_tps is None:
+            return None
+        return self.resolved_total_tps()
 
     def contains(self, input_length: int) -> bool:
         if input_length < self.lower_tokens:
@@ -134,6 +142,8 @@ class BucketReportRow:
     machine_spec: str
     total_tps: float | None
     total_tps_input_unit: str | None
+    planning_target_total_tps: float | None
+    baseline_per_card_tps: float | None
     prefill_savings_alpha: float
     hbm_kv_gb_per_card: float
     hbm_kv_total_gb: float
@@ -154,6 +164,12 @@ class BucketReportRow:
     hbm_lru_estimated_total_tps: float | None
     hbm_lru_estimated_card_count_for_same_load: float | None
     hbm_lru_estimated_machine_count_for_same_load: float | None
+    hbm_strict_prefix_current_cluster_capacity_tps: float | None
+    hbm_strict_prefix_min_card_count_for_target_total_tps: int | None
+    hbm_strict_prefix_min_machine_count_for_target_total_tps: int | None
+    hbm_lru_current_cluster_capacity_tps: float | None
+    hbm_lru_min_card_count_for_target_total_tps: int | None
+    hbm_lru_min_machine_count_for_target_total_tps: int | None
     extra_tier_relaxed_upper_bound_hit_rates: dict[str, float | None]
     extra_tier_lru_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None]
@@ -167,6 +183,12 @@ class BucketReportRow:
     extra_tier_lru_estimated_total_tps: dict[str, float | None]
     extra_tier_lru_estimated_card_counts_for_same_load: dict[str, float | None]
     extra_tier_lru_estimated_machine_counts_for_same_load: dict[str, float | None]
+    extra_tier_strict_prefix_current_cluster_capacity_tps: dict[str, float | None]
+    extra_tier_strict_prefix_min_card_counts_for_target_total_tps: dict[str, int | None]
+    extra_tier_strict_prefix_min_machine_counts_for_target_total_tps: dict[str, int | None]
+    extra_tier_lru_current_cluster_capacity_tps: dict[str, float | None]
+    extra_tier_lru_min_card_counts_for_target_total_tps: dict[str, int | None]
+    extra_tier_lru_min_machine_counts_for_target_total_tps: dict[str, int | None]
     request_count: int
     window_tokens: int | None
     input_lower_tokens: int
@@ -189,29 +211,6 @@ class BucketDetail:
 class BucketAnalysisResult:
     rows: list[BucketReportRow]
     details: dict[str, BucketDetail]
-
-
-def load_bucket_analysis_config(path: str | Path) -> BucketAnalysisConfig:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    model_profile = _load_model_profile(payload.get("model_profile", {}))
-    scope = Scope(str(payload.get("scope", Scope.GLOBAL.value)))
-    block_size = int(payload.get("block_size", model_profile.block_size))
-    prefill_savings_alpha = _load_prefill_savings_alpha(payload)
-    bucket_deployments = tuple(
-        _load_bucket_deployment(item) for item in payload.get("bucket_deployments", [])
-    )
-    if not bucket_deployments:
-        raise ValueError("bucket_deployments must not be empty")
-    _validate_bucket_deployments(bucket_deployments)
-    return BucketAnalysisConfig(
-        model_profile=model_profile,
-        scope=scope,
-        block_size=block_size,
-        bucket_deployments=bucket_deployments,
-        prefill_savings_alpha=prefill_savings_alpha,
-    )
-
-
 def analyze_bucket_deployments(
     records: Iterable[RequestRecord],
     config: BucketAnalysisConfig,
@@ -246,6 +245,8 @@ def analyze_bucket_deployments(
             else model_weight_bytes_per_rank / BYTES_PER_GB
         )
         resolved_total_tps = deployment.resolved_total_tps()
+        planning_target_total_tps = deployment.resolved_planning_target_total_tps()
+        baseline_per_card_tps = deployment.baseline_per_card_tps
         hbm_budget_bytes = _gb_to_bytes(hbm_kv_total_gb)
         hbm_capacity_result = analyze_capacity_upper_bound(
             normalized.requests,
@@ -282,6 +283,12 @@ def analyze_bucket_deployments(
         extra_tier_lru_estimated_total_tps: dict[str, float | None] = {}
         extra_tier_lru_estimated_card_counts_for_same_load: dict[str, float | None] = {}
         extra_tier_lru_estimated_machine_counts_for_same_load: dict[str, float | None] = {}
+        extra_tier_strict_prefix_current_cluster_capacity_tps: dict[str, float | None] = {}
+        extra_tier_strict_prefix_min_card_counts_for_target_total_tps: dict[str, int | None] = {}
+        extra_tier_strict_prefix_min_machine_counts_for_target_total_tps: dict[str, int | None] = {}
+        extra_tier_lru_current_cluster_capacity_tps: dict[str, float | None] = {}
+        extra_tier_lru_min_card_counts_for_target_total_tps: dict[str, int | None] = {}
+        extra_tier_lru_min_machine_counts_for_target_total_tps: dict[str, int | None] = {}
         ceiling_capacity_result = hbm_capacity_result if (
             hbm_capacity_result.summary.hit_blocks == content_result.summary.hit_blocks
             and hbm_capacity_result.summary.total_blocks == content_result.summary.total_blocks
@@ -348,37 +355,121 @@ def analyze_bucket_deployments(
             extra_tier_strict_prefix_proof_sources[tier.label] = (
                 None if not has_bucket_records else strict_prefix_result.summary.proof_source
             )
-            extra_tier_strict_prefix_tps_gains[tier.label] = _tps_gain(
+            extra_tier_strict_prefix_tps_gains[tier.label] = tps_gain(
                 extra_tier_strict_prefix_hit_rates[tier.label],
                 config.prefill_savings_alpha,
             )
-            extra_tier_strict_prefix_estimated_total_tps[tier.label] = _estimated_total_tps(
+            extra_tier_strict_prefix_estimated_total_tps[tier.label] = estimated_total_tps(
                 resolved_total_tps,
                 extra_tier_strict_prefix_tps_gains[tier.label],
             )
-            extra_tier_strict_prefix_estimated_card_counts_for_same_load[tier.label] = _estimated_card_count(
+            extra_tier_strict_prefix_estimated_card_counts_for_same_load[tier.label] = estimated_card_count(
                 deployment.accelerator_count,
                 extra_tier_strict_prefix_tps_gains[tier.label],
             )
-            extra_tier_strict_prefix_estimated_machine_counts_for_same_load[tier.label] = _estimated_machine_count(
+            extra_tier_strict_prefix_estimated_machine_counts_for_same_load[tier.label] = estimated_machine_count(
                 extra_tier_strict_prefix_estimated_card_counts_for_same_load[tier.label],
                 deployment.cards_per_machine,
             )
-            extra_tier_lru_tps_gains[tier.label] = _tps_gain(
+            extra_tier_lru_tps_gains[tier.label] = tps_gain(
                 extra_tier_lru_hit_rates[tier.label],
                 config.prefill_savings_alpha,
             )
-            extra_tier_lru_estimated_total_tps[tier.label] = _estimated_total_tps(
+            extra_tier_lru_estimated_total_tps[tier.label] = estimated_total_tps(
                 resolved_total_tps,
                 extra_tier_lru_tps_gains[tier.label],
             )
-            extra_tier_lru_estimated_card_counts_for_same_load[tier.label] = _estimated_card_count(
+            extra_tier_lru_estimated_card_counts_for_same_load[tier.label] = estimated_card_count(
                 deployment.accelerator_count,
                 extra_tier_lru_tps_gains[tier.label],
             )
-            extra_tier_lru_estimated_machine_counts_for_same_load[tier.label] = _estimated_machine_count(
+            extra_tier_lru_estimated_machine_counts_for_same_load[tier.label] = estimated_machine_count(
                 extra_tier_lru_estimated_card_counts_for_same_load[tier.label],
                 deployment.cards_per_machine,
+            )
+            tier_hit_rate_cache: dict[int, tuple[float | None, float | None]] = {
+                node_count: (
+                    extra_tier_strict_prefix_hit_rates[tier.label],
+                    extra_tier_lru_hit_rates[tier.label],
+                )
+            }
+
+            def _tier_cluster_capacity_tps(
+                machine_count: int,
+                *,
+                policy: str,
+            ) -> float | None:
+                strict_hit_rate, lru_hit_rate = tier_hit_rate_cache.get(machine_count, (None, None))
+                if machine_count not in tier_hit_rate_cache:
+                    if not has_bucket_records:
+                        tier_hit_rate_cache[machine_count] = (None, None)
+                        strict_hit_rate, lru_hit_rate = tier_hit_rate_cache[machine_count]
+                    else:
+                        candidate_card_count = machine_count * deployment.cards_per_machine
+                        candidate_total_budget_gb = (
+                            candidate_card_count * hbm_kv_gb_per_card
+                            + machine_count * tier.kv_gb_per_machine
+                        )
+                        strict_result = analyze_strict_prefix_capacity_upper_bound(
+                            normalized.requests,
+                            model_profile=config.model_profile,
+                            budget_bytes=_gb_to_bytes(candidate_total_budget_gb),
+                            block_size=config.block_size,
+                        )
+                        lru_result = analyze_lru_baseline(
+                            normalized.requests,
+                            model_profile=config.model_profile,
+                            budget_bytes=_gb_to_bytes(candidate_total_budget_gb),
+                            block_size=config.block_size,
+                        )
+                        strict_hit_rate = strict_result.summary.block_hit_rate
+                        lru_hit_rate = lru_result.summary.strict_prefix_block_hit_rate
+                        tier_hit_rate_cache[machine_count] = (strict_hit_rate, lru_hit_rate)
+                hit_rate = strict_hit_rate if policy == "strict_prefix" else lru_hit_rate
+                return cluster_capacity_tps(
+                    card_count=machine_count * deployment.cards_per_machine,
+                    baseline_per_card_tps=baseline_per_card_tps,
+                    hit_rate=hit_rate,
+                    alpha=config.prefill_savings_alpha,
+                )
+
+            strict_prefix_target_plan = build_target_tps_plan(
+                target_total_tps=planning_target_total_tps,
+                baseline_per_card_tps=baseline_per_card_tps,
+                current_machine_count=node_count,
+                cards_per_machine=deployment.cards_per_machine,
+                cluster_tps_at_machine_count=lambda machine_count: _tier_cluster_capacity_tps(
+                    machine_count,
+                    policy="strict_prefix",
+                ),
+            )
+            lru_target_plan = build_target_tps_plan(
+                target_total_tps=planning_target_total_tps,
+                baseline_per_card_tps=baseline_per_card_tps,
+                current_machine_count=node_count,
+                cards_per_machine=deployment.cards_per_machine,
+                cluster_tps_at_machine_count=lambda machine_count: _tier_cluster_capacity_tps(
+                    machine_count,
+                    policy="lru",
+                ),
+            )
+            extra_tier_strict_prefix_current_cluster_capacity_tps[tier.label] = (
+                strict_prefix_target_plan.current_cluster_capacity_tps
+            )
+            extra_tier_strict_prefix_min_card_counts_for_target_total_tps[tier.label] = (
+                strict_prefix_target_plan.min_card_count
+            )
+            extra_tier_strict_prefix_min_machine_counts_for_target_total_tps[tier.label] = (
+                strict_prefix_target_plan.min_machine_count
+            )
+            extra_tier_lru_current_cluster_capacity_tps[tier.label] = (
+                lru_target_plan.current_cluster_capacity_tps
+            )
+            extra_tier_lru_min_card_counts_for_target_total_tps[tier.label] = (
+                lru_target_plan.min_card_count
+            )
+            extra_tier_lru_min_machine_counts_for_target_total_tps[tier.label] = (
+                lru_target_plan.min_machine_count
             )
 
         hbm_relaxed_upper_bound_hit_rate = (
@@ -396,31 +487,94 @@ def analyze_bucket_deployments(
         hbm_strict_prefix_proof_source = (
             None if not has_bucket_records else hbm_strict_prefix_result.summary.proof_source
         )
-        hbm_strict_prefix_tps_gain = _tps_gain(
+        hbm_strict_prefix_tps_gain = tps_gain(
             hbm_strict_prefix_hit_rate,
             config.prefill_savings_alpha,
         )
-        hbm_strict_prefix_estimated_total_tps = _estimated_total_tps(
+        hbm_strict_prefix_estimated_total_tps = estimated_total_tps(
             resolved_total_tps,
             hbm_strict_prefix_tps_gain,
         )
-        hbm_strict_prefix_estimated_card_count_for_same_load = _estimated_card_count(
+        hbm_strict_prefix_estimated_card_count_for_same_load = estimated_card_count(
             deployment.accelerator_count,
             hbm_strict_prefix_tps_gain,
         )
-        hbm_strict_prefix_estimated_machine_count_for_same_load = _estimated_machine_count(
+        hbm_strict_prefix_estimated_machine_count_for_same_load = estimated_machine_count(
             hbm_strict_prefix_estimated_card_count_for_same_load,
             deployment.cards_per_machine,
         )
-        hbm_lru_tps_gain = _tps_gain(hbm_lru_hit_rate, config.prefill_savings_alpha)
-        hbm_lru_estimated_total_tps = _estimated_total_tps(resolved_total_tps, hbm_lru_tps_gain)
-        hbm_lru_estimated_card_count_for_same_load = _estimated_card_count(
+        hbm_lru_tps_gain = tps_gain(hbm_lru_hit_rate, config.prefill_savings_alpha)
+        hbm_lru_estimated_total_tps = estimated_total_tps(resolved_total_tps, hbm_lru_tps_gain)
+        hbm_lru_estimated_card_count_for_same_load = estimated_card_count(
             deployment.accelerator_count,
             hbm_lru_tps_gain,
         )
-        hbm_lru_estimated_machine_count_for_same_load = _estimated_machine_count(
+        hbm_lru_estimated_machine_count_for_same_load = estimated_machine_count(
             hbm_lru_estimated_card_count_for_same_load,
             deployment.cards_per_machine,
+        )
+        hbm_hit_rate_cache: dict[int, tuple[float | None, float | None]] = {
+            node_count: (
+                hbm_strict_prefix_hit_rate,
+                hbm_lru_hit_rate,
+            )
+        }
+
+        def _hbm_cluster_capacity_tps(
+            machine_count: int,
+            *,
+            policy: str,
+        ) -> float | None:
+            strict_hit_rate, lru_hit_rate = hbm_hit_rate_cache.get(machine_count, (None, None))
+            if machine_count not in hbm_hit_rate_cache:
+                if not has_bucket_records:
+                    hbm_hit_rate_cache[machine_count] = (None, None)
+                    strict_hit_rate, lru_hit_rate = hbm_hit_rate_cache[machine_count]
+                else:
+                    candidate_card_count = machine_count * deployment.cards_per_machine
+                    candidate_total_budget_gb = candidate_card_count * hbm_kv_gb_per_card
+                    strict_result = analyze_strict_prefix_capacity_upper_bound(
+                        normalized.requests,
+                        model_profile=config.model_profile,
+                        budget_bytes=_gb_to_bytes(candidate_total_budget_gb),
+                        block_size=config.block_size,
+                    )
+                    lru_result = analyze_lru_baseline(
+                        normalized.requests,
+                        model_profile=config.model_profile,
+                        budget_bytes=_gb_to_bytes(candidate_total_budget_gb),
+                        block_size=config.block_size,
+                    )
+                    strict_hit_rate = strict_result.summary.block_hit_rate
+                    lru_hit_rate = lru_result.summary.strict_prefix_block_hit_rate
+                    hbm_hit_rate_cache[machine_count] = (strict_hit_rate, lru_hit_rate)
+            hit_rate = strict_hit_rate if policy == "strict_prefix" else lru_hit_rate
+            return cluster_capacity_tps(
+                card_count=machine_count * deployment.cards_per_machine,
+                baseline_per_card_tps=baseline_per_card_tps,
+                hit_rate=hit_rate,
+                alpha=config.prefill_savings_alpha,
+            )
+
+        hbm_strict_prefix_target_plan = build_target_tps_plan(
+            target_total_tps=planning_target_total_tps,
+            baseline_per_card_tps=baseline_per_card_tps,
+            current_machine_count=node_count,
+            cards_per_machine=deployment.cards_per_machine,
+            cluster_tps_at_machine_count=lambda machine_count: _hbm_cluster_capacity_tps(
+                machine_count,
+                policy="strict_prefix",
+            ),
+        )
+        hbm_lru_target_plan = build_target_tps_plan(
+            target_total_tps=planning_target_total_tps,
+            baseline_per_card_tps=baseline_per_card_tps,
+            current_machine_count=node_count,
+            cards_per_machine=deployment.cards_per_machine,
+            cluster_tps_at_machine_count=lambda machine_count: _hbm_cluster_capacity_tps(
+                machine_count,
+                policy="lru",
+            ),
         )
 
         row = BucketReportRow(
@@ -431,6 +585,8 @@ def analyze_bucket_deployments(
             machine_spec=deployment.machine_spec,
             total_tps=resolved_total_tps,
             total_tps_input_unit=None if deployment.total_tps is None else deployment.total_tps_unit,
+            planning_target_total_tps=planning_target_total_tps,
+            baseline_per_card_tps=baseline_per_card_tps,
             prefill_savings_alpha=config.prefill_savings_alpha,
             hbm_kv_gb_per_card=hbm_kv_gb_per_card,
             hbm_kv_total_gb=hbm_kv_total_gb,
@@ -451,6 +607,12 @@ def analyze_bucket_deployments(
             hbm_lru_estimated_total_tps=hbm_lru_estimated_total_tps,
             hbm_lru_estimated_card_count_for_same_load=hbm_lru_estimated_card_count_for_same_load,
             hbm_lru_estimated_machine_count_for_same_load=hbm_lru_estimated_machine_count_for_same_load,
+            hbm_strict_prefix_current_cluster_capacity_tps=hbm_strict_prefix_target_plan.current_cluster_capacity_tps,
+            hbm_strict_prefix_min_card_count_for_target_total_tps=hbm_strict_prefix_target_plan.min_card_count,
+            hbm_strict_prefix_min_machine_count_for_target_total_tps=hbm_strict_prefix_target_plan.min_machine_count,
+            hbm_lru_current_cluster_capacity_tps=hbm_lru_target_plan.current_cluster_capacity_tps,
+            hbm_lru_min_card_count_for_target_total_tps=hbm_lru_target_plan.min_card_count,
+            hbm_lru_min_machine_count_for_target_total_tps=hbm_lru_target_plan.min_machine_count,
             extra_tier_relaxed_upper_bound_hit_rates=extra_tier_relaxed_upper_bound_hit_rates,
             extra_tier_lru_hit_rates=extra_tier_lru_hit_rates,
             extra_tier_strict_prefix_replay_hit_rates=extra_tier_strict_prefix_replay_hit_rates,
@@ -464,6 +626,12 @@ def analyze_bucket_deployments(
             extra_tier_lru_estimated_total_tps=extra_tier_lru_estimated_total_tps,
             extra_tier_lru_estimated_card_counts_for_same_load=extra_tier_lru_estimated_card_counts_for_same_load,
             extra_tier_lru_estimated_machine_counts_for_same_load=extra_tier_lru_estimated_machine_counts_for_same_load,
+            extra_tier_strict_prefix_current_cluster_capacity_tps=extra_tier_strict_prefix_current_cluster_capacity_tps,
+            extra_tier_strict_prefix_min_card_counts_for_target_total_tps=extra_tier_strict_prefix_min_card_counts_for_target_total_tps,
+            extra_tier_strict_prefix_min_machine_counts_for_target_total_tps=extra_tier_strict_prefix_min_machine_counts_for_target_total_tps,
+            extra_tier_lru_current_cluster_capacity_tps=extra_tier_lru_current_cluster_capacity_tps,
+            extra_tier_lru_min_card_counts_for_target_total_tps=extra_tier_lru_min_card_counts_for_target_total_tps,
+            extra_tier_lru_min_machine_counts_for_target_total_tps=extra_tier_lru_min_machine_counts_for_target_total_tps,
             request_count=len(bucket_records),
             window_tokens=None if not has_bucket_records else window_tokens,
             input_lower_tokens=deployment.lower_tokens,
@@ -482,288 +650,7 @@ def analyze_bucket_deployments(
         )
 
     return BucketAnalysisResult(rows=rows, details=details)
+
+
 def _gb_to_bytes(value_gb: float) -> int:
     return int(value_gb * BYTES_PER_GB)
-
-
-def _load_prefill_savings_alpha(payload: dict[str, Any]) -> float:
-    alpha = _normalize_rate(payload.get("prefill_savings_alpha", 0.8))
-    if alpha is None:
-        return 0.8
-    if not 0.0 <= alpha <= 1.0:
-        raise ValueError("prefill_savings_alpha must be within [0, 1]")
-    return alpha
-
-
-def _tps_gain(hit_rate: float | None, alpha: float) -> float | None:
-    if hit_rate is None:
-        return None
-    denominator = 1.0 - alpha * hit_rate
-    if denominator <= 0.0:
-        return math.inf
-    return 1.0 / denominator
-
-
-def _estimated_total_tps(base_tps: float | None, gain: float | None) -> float | None:
-    if base_tps is None or gain is None:
-        return None
-    return base_tps * gain
-
-
-def _estimated_card_count(card_count: int, gain: float | None) -> float | None:
-    if gain is None:
-        return None
-    if math.isinf(gain):
-        return 0.0
-    return card_count / gain
-
-
-def _estimated_machine_count(
-    estimated_card_count: float | None,
-    cards_per_machine: int,
-) -> float | None:
-    if estimated_card_count is None:
-        return None
-    if cards_per_machine <= 0:
-        raise ValueError("cards_per_machine must be positive")
-    return estimated_card_count / cards_per_machine
-
-
-def _load_model_profile(payload: dict[str, Any]) -> ModelProfile:
-    required = ["n_layers", "n_kv_heads", "head_dim", "dtype_bytes"]
-    for key in required:
-        if key not in payload:
-            raise ValueError(f"model_profile missing required field: {key}")
-    return ModelProfile(
-        n_layers=int(payload["n_layers"]),
-        n_kv_heads=int(payload["n_kv_heads"]),
-        head_dim=int(payload["head_dim"]),
-        dtype_bytes=int(payload["dtype_bytes"]),
-        kv_cache_layer_count=None
-        if payload.get("kv_cache_layer_count") is None
-        else int(payload["kv_cache_layer_count"]),
-        tp_size=int(payload.get("tp_size", 1)),
-        pp_size=int(payload.get("pp_size", 1)),
-        block_size=int(payload.get("block_size", 16)),
-        parameter_count=None
-        if payload.get("parameter_count") is None
-        else int(payload["parameter_count"]),
-        weight_dtype_bytes=None
-        if payload.get("weight_dtype_bytes") is None
-        else int(payload["weight_dtype_bytes"]),
-    )
-
-
-def _load_bucket_deployment(payload: dict[str, Any]) -> BucketDeploymentConfig:
-    accelerator_count, cards_per_machine, machine_spec = _parse_machine_fields(payload)
-    total_tps_unit = _parse_total_tps_unit(payload)
-    _reject_legacy_per_machine_budget_fields(payload)
-    extra_tiers = tuple(
-        BucketCapacityTier(
-            label=str(item["label"]),
-            kv_gb_per_machine=float(item["kv_gb_per_machine"]),
-        )
-        for item in payload.get("extra_capacity_tiers", [])
-    )
-    actual_hit_rate, actual_hit_rate_note = _parse_actual_hit_fields(payload)
-    return BucketDeploymentConfig(
-        label=str(payload["label"]),
-        lower_tokens=int(payload["lower_tokens"]),
-        upper_tokens=None
-        if payload.get("upper_tokens") is None
-        else int(payload["upper_tokens"]),
-        accelerator_count=accelerator_count,
-        cards_per_machine=cards_per_machine,
-        machine_spec=machine_spec,
-        total_tps=None if payload.get("total_tps") is None else float(payload["total_tps"]),
-        total_tps_unit=total_tps_unit,
-        hbm_kv_gb_per_card=None
-        if payload.get("hbm_kv_gb_per_card") is None
-        else float(payload["hbm_kv_gb_per_card"]),
-        gpu_memory_gb_per_card=None
-        if payload.get("gpu_memory_gb_per_card") is None
-        else float(payload["gpu_memory_gb_per_card"]),
-        hbm_kv_utilization=None
-        if payload.get("hbm_kv_utilization") is None
-        else float(payload["hbm_kv_utilization"]),
-        runtime_reserve_gb_per_card=float(payload.get("runtime_reserve_gb_per_card", 0.0)),
-        window_tokens=None if payload.get("window_tokens") is None else int(payload["window_tokens"]),
-        actual_hit_rate=actual_hit_rate,
-        actual_hit_rate_note=actual_hit_rate_note,
-        extra_capacity_tiers=extra_tiers,
-    )
-
-
-def _validate_bucket_deployments(
-    bucket_deployments: tuple[BucketDeploymentConfig, ...],
-) -> None:
-    seen_labels: set[str] = set()
-    previous_upper: int | None = None
-    previous_label: str | None = None
-    saw_open_ended = False
-
-    for deployment in bucket_deployments:
-        if deployment.label in seen_labels:
-            raise ValueError(f"duplicate bucket label: {deployment.label}")
-        seen_labels.add(deployment.label)
-        deployment.node_count()
-        deployment.resolved_total_tps()
-        _validate_bucket_bounds(deployment)
-        _validate_budget_fields(deployment)
-        _validate_extra_capacity_tiers(deployment)
-        if saw_open_ended:
-            raise ValueError("open-ended bucket must be the last bucket_deployment")
-        if previous_upper is not None and deployment.lower_tokens < previous_upper:
-            raise ValueError(
-                "bucket_deployments must be sorted by lower_tokens without overlap; "
-                f"{deployment.label} starts at {deployment.lower_tokens} before {previous_label} ends at {previous_upper}"
-            )
-        previous_upper = deployment.upper_tokens
-        previous_label = deployment.label
-        if deployment.upper_tokens is None:
-            saw_open_ended = True
-
-
-def _validate_bucket_bounds(deployment: BucketDeploymentConfig) -> None:
-    if deployment.lower_tokens < 0:
-        raise ValueError(f"{deployment.label}: lower_tokens must be non-negative")
-    if deployment.upper_tokens is not None and deployment.upper_tokens <= deployment.lower_tokens:
-        raise ValueError(f"{deployment.label}: upper_tokens must be greater than lower_tokens")
-    if deployment.window_tokens is not None and deployment.window_tokens < 0:
-        raise ValueError(f"{deployment.label}: window_tokens must be non-negative")
-    if deployment.total_tps is not None and deployment.total_tps < 0:
-        raise ValueError(f"{deployment.label}: total_tps must be non-negative")
-    if deployment.actual_hit_rate is not None and not 0.0 <= deployment.actual_hit_rate <= 1.0:
-        raise ValueError(f"{deployment.label}: actual_hit_rate must be within [0, 1]")
-
-
-def _validate_budget_fields(deployment: BucketDeploymentConfig) -> None:
-    if deployment.hbm_kv_gb_per_card is not None and deployment.hbm_kv_gb_per_card < 0:
-        raise ValueError(f"{deployment.label}: hbm_kv_gb_per_card must be non-negative")
-    if deployment.gpu_memory_gb_per_card is not None and deployment.gpu_memory_gb_per_card <= 0:
-        raise ValueError(f"{deployment.label}: gpu_memory_gb_per_card must be positive")
-    if deployment.runtime_reserve_gb_per_card < 0:
-        raise ValueError(f"{deployment.label}: runtime_reserve_gb_per_card must be non-negative")
-    if deployment.hbm_kv_utilization is not None and not 0.0 <= deployment.hbm_kv_utilization <= 1.0:
-        raise ValueError(f"{deployment.label}: hbm_kv_utilization must be within [0, 1]")
-    if (
-        deployment.hbm_kv_gb_per_card is not None
-        and deployment.gpu_memory_gb_per_card is not None
-    ):
-        raise ValueError(
-            f"{deployment.label}: provide either hbm_kv_gb_per_card or gpu_memory_gb_per_card, not both"
-        )
-    if (
-        deployment.hbm_kv_utilization is not None
-        and deployment.gpu_memory_gb_per_card is None
-    ):
-        raise ValueError(
-            f"{deployment.label}: hbm_kv_utilization requires gpu_memory_gb_per_card"
-        )
-    if (
-        deployment.hbm_kv_utilization is not None
-        and deployment.hbm_kv_gb_per_card is not None
-    ):
-        raise ValueError(
-            f"{deployment.label}: hbm_kv_utilization cannot be combined with hbm_kv_gb_per_card"
-        )
-    if (
-        deployment.hbm_kv_gb_per_card is None
-        and deployment.gpu_memory_gb_per_card is None
-    ):
-        raise ValueError(
-            f"{deployment.label}: either hbm_kv_gb_per_card or gpu_memory_gb_per_card must be provided"
-        )
-
-
-def _validate_extra_capacity_tiers(deployment: BucketDeploymentConfig) -> None:
-    seen_tier_labels: set[str] = set()
-    for tier in deployment.extra_capacity_tiers:
-        if not tier.label:
-            raise ValueError(f"{deployment.label}: extra_capacity_tiers label must not be empty")
-        if tier.label in seen_tier_labels:
-            raise ValueError(f"{deployment.label}: duplicate extra_capacity_tier label: {tier.label}")
-        if tier.kv_gb_per_machine < 0:
-            raise ValueError(
-                f"{deployment.label}: extra_capacity_tier {tier.label} must be non-negative"
-            )
-        seen_tier_labels.add(tier.label)
-
-
-def _normalize_rate(value: Any) -> float | None:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        text = value.strip().replace("%", "")
-        rate = float(text)
-    else:
-        rate = float(value)
-    if rate > 1.0:
-        rate /= 100.0
-    return rate
-
-
-def _parse_actual_hit_fields(payload: dict[str, Any]) -> tuple[float | None, str | None]:
-    note = payload.get("actual_hit_rate_note")
-    raw_value = payload.get("actual_hit_rate")
-    if isinstance(raw_value, str):
-        text = raw_value.strip()
-        if "(" in text and ")" in text and note is None:
-            prefix, suffix = text.split("(", 1)
-            raw_value = prefix.strip()
-            note = suffix.rsplit(")", 1)[0].strip()
-    return _normalize_rate(raw_value), note
-
-
-def _parse_machine_fields(payload: dict[str, Any]) -> tuple[int, int, str]:
-    if "machine_count" in payload and payload["machine_count"] is not None:
-        raise ValueError(
-            "machine_count is no longer accepted; use accelerator_count and cards_per_machine"
-        )
-    if "accelerator_count" not in payload or payload["accelerator_count"] is None:
-        raise ValueError("accelerator_count is required")
-    if "cards_per_machine" not in payload or payload["cards_per_machine"] is None:
-        raise ValueError("cards_per_machine is required")
-    if "machine_spec" not in payload or payload["machine_spec"] is None:
-        raise ValueError("machine_spec is required")
-
-    accelerator_count = int(payload["accelerator_count"])
-    cards_per_machine = int(payload["cards_per_machine"])
-    machine_spec = str(payload["machine_spec"]).strip()
-
-    if accelerator_count <= 0:
-        raise ValueError("accelerator_count must be positive")
-    if cards_per_machine <= 0:
-        raise ValueError("cards_per_machine must be positive")
-    if not machine_spec:
-        raise ValueError("machine_spec must not be empty")
-    if "*" in machine_spec:
-        raise ValueError(
-            "machine_spec must be a plain spec label; move counts into accelerator_count and cards_per_machine"
-        )
-    return accelerator_count, cards_per_machine, machine_spec
-
-
-def _parse_total_tps_unit(payload: dict[str, Any]) -> str:
-    raw_unit = payload.get("total_tps_unit", "cluster_total")
-    unit = str(raw_unit).strip()
-    if unit not in VALID_TOTAL_TPS_UNITS:
-        raise ValueError(
-            f"total_tps_unit must be one of {', '.join(VALID_TOTAL_TPS_UNITS)}"
-        )
-    return unit
-
-
-def _reject_legacy_per_machine_budget_fields(payload: dict[str, Any]) -> None:
-    legacy_fields = [
-        field_name
-        for field_name in LEGACY_PER_MACHINE_BUDGET_FIELDS
-        if field_name in payload and payload[field_name] is not None
-    ]
-    if not legacy_fields:
-        return
-    formatted = ", ".join(legacy_fields)
-    raise ValueError(
-        f"legacy per-machine budget fields are no longer accepted: {formatted}; "
-        "use hbm_kv_gb_per_card, gpu_memory_gb_per_card, runtime_reserve_gb_per_card"
-    )
