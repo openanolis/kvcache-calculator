@@ -1,6 +1,6 @@
 # 结果正确性说明
 
-这份文档只讲三件事：每个结果代表什么、规划结果怎么来的、当前到底证明了什么。
+这份文档只讲四件事：每个结果代表什么、规划结果怎么来的、当前到底证明了什么，以及无 trace heuristic 的边界在哪里。
 
 ## 结果分层
 
@@ -166,6 +166,42 @@ machine/card count
 - `TPS Gain / 估算总 TPS / details.json` 里的同负载等效值是否等于真实线上收益。
 - `baseline_per_card_tps` 是否等于真实线上单卡基线吞吐。
 - 带宽、搬运时延、跨层存储命中开销是否已经被完整建模。
+- `heuristic_summary.csv / heuristic_tier_summary.csv` 里的无 trace 命中率估计是否等于真实 workload 的 exact strict-prefix 或真实 LRU。
+
+## 无 trace heuristic 的定位
+
+项目现在额外支持一条冷启动路径：
+
+```text
+shared prefix + private working set + curve shape -> 命中率估计 -> TPS 估计 -> 机器数估计
+```
+
+这条路径的定位必须说清楚：
+
+- 它是 `heuristic`，不是 `oracle`。
+- 它不依赖 trace，因此不能输出 `proof source`。
+- 它适合在“还没有 profile，但需要先估一版资源规模”时使用。
+
+当前 heuristic 层里有三件事：
+
+1. 用 `shared_prefix_tokens + avg_new_tokens_per_turn + avg_turns_per_session + private_window_tokens + concurrent_agents` 先构造工作集。
+2. 用 `linear / power_law_fit / zipf_harmonic` 三种曲线形状把容量映射到私有工作集覆盖比例。
+3. 用 `policy_efficiency.lru_like` 把在线策略损失压缩成一个有效容量折损系数。
+
+这里最重要的边界是：
+
+- `power_law_fit` 只是把常见的 Zipf 简化公式吸收到估计器里。
+- `zipf_harmonic` 只是比幂律拟合更接近离散 Zipf 累积质量。
+- `LRU-like` 只是策略近似，不能等同于 trace 驱动的真实 LRU 模拟。
+
+因此你应该这样理解它们：
+
+| 结果 | 定位 |
+|------|------|
+| `exact strict-prefix` | 有 trace 时的精确 oracle |
+| `LRU baseline` | 有 trace 时的真实策略模拟 |
+| `multi-agent heuristic strict-prefix` | 无 trace 时的冷启动上界估计 |
+| `multi-agent heuristic lru-like` | 无 trace 时的冷启动策略估计 |
 
 所以项目当前最稳的主线是：
 
@@ -174,4 +210,11 @@ trace + model + capacity -> 命中率结果
 命中率结果 + alpha -> 规划估算
 ```
 
-前半段是 oracle，后半段是基于假设的后处理。
+如果没有 trace，则退化成：
+
+```text
+heuristic assumptions + model + deployment -> 命中率估计
+命中率估计 + alpha -> 规划估算
+```
+
+前半段是 oracle 时，我们会给证明或证书；前半段是 heuristic 时，我们只给假设、参数和结果，不给伪证明。

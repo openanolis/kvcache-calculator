@@ -5,6 +5,14 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
+from kvcache_upper_bound.heuristic import (
+    HeuristicAnalysisConfig,
+    HeuristicAnalysisResult,
+    analyze_multi_agent_heuristic,
+    build_multi_agent_input_summaries,
+    load_multi_agent_heuristic_config,
+    write_multi_agent_outputs,
+)
 from kvcache_upper_bound.ingest import load_request_records
 from kvcache_upper_bound.reporting import (
     analyze_bucket_deployments,
@@ -35,6 +43,20 @@ def main() -> int:
         default=None,
         help="Optional cap for quick iteration",
     )
+    heuristic_parser = subparsers.add_parser(
+        "estimate-multi-agent",
+        help="Estimate KVCache hit ceilings without trace using a multi-agent heuristic model",
+    )
+    heuristic_parser.add_argument(
+        "--config",
+        required=True,
+        help="Trace-free multi-agent heuristic JSON config",
+    )
+    heuristic_parser.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory for CSV/JSON outputs",
+    )
     audit_parser = subparsers.add_parser(
         "audit-buckets",
         help="Generate correctness and trace-shape audits for a bucket analysis config",
@@ -58,6 +80,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.command == "analyze-buckets":
         return _run_analyze_buckets(args)
+    if args.command == "estimate-multi-agent":
+        return _run_estimate_multi_agent(args)
     if args.command == "audit-buckets":
         return _run_audit_buckets(args)
     raise ValueError(f"unsupported command: {args.command}")
@@ -79,6 +103,23 @@ def _run_analyze_buckets(args: argparse.Namespace) -> int:
     )
     _write_metadata_file(output_dir, summary_payload)
     print(json.dumps(summary_payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _run_estimate_multi_agent(args: argparse.Namespace) -> int:
+    config = load_multi_agent_heuristic_config(args.config)
+    analysis_result = analyze_multi_agent_heuristic(config)
+    output_dir = Path(args.output_dir)
+    write_multi_agent_outputs(config, analysis_result, output_dir)
+
+    payload = _build_heuristic_metadata_payload(
+        config_path=args.config,
+        output_dir=output_dir,
+        config=config,
+        analysis_result=analysis_result,
+    )
+    _write_metadata_file(output_dir, payload)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -162,6 +203,27 @@ def _build_analysis_metadata_payload(
         else analysis_result.rows[0].prefill_savings_alpha,
         "normalized_bucket_inputs": [asdict(item) for item in normalized_bucket_inputs],
         "rows": [asdict(row) for row in analysis_result.rows],
+    }
+
+
+def _build_heuristic_metadata_payload(
+    *,
+    config_path: str,
+    output_dir: Path,
+    config: HeuristicAnalysisConfig,
+    analysis_result: HeuristicAnalysisResult,
+) -> dict[str, object]:
+    normalized_inputs = build_multi_agent_input_summaries(config, analysis_result)
+    return {
+        "mode": "multi_agent_heuristic",
+        "config": str(Path(config_path).resolve()),
+        "output_dir": str(output_dir.resolve()),
+        "prefill_savings_alpha": config.prefill_savings_alpha,
+        "model_profile": asdict(config.model_profile),
+        "heuristic_multi_agent": asdict(config.heuristic),
+        "normalized_heuristic_inputs": [asdict(item) for item in normalized_inputs],
+        "scenario_summaries": [asdict(row) for row in analysis_result.scenario_summaries],
+        "tier_rows": [asdict(row) for row in analysis_result.tier_rows],
     }
 
 

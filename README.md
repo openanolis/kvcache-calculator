@@ -1,6 +1,6 @@
 # KVCache Upper Bound Oracle
 
-一个离线分析框架：输入 trace、模型信息和机器约束，输出 KVCache 的内容天花板、容量上界、LRU 基线，以及分别基于 `exact strict-prefix` 和 `LRU` 的规划结果。
+一个离线分析框架：既支持基于 trace 的精确上界分析，也支持不依赖 trace 的多 Agent heuristic 估计。输入模型信息和机器约束后，可以输出 KVCache 的内容天花板、容量上界、LRU 基线、规划结果，以及冷启动场景下的命中率估计。
 
 ## 项目产出
 
@@ -13,6 +13,7 @@
 | `LRU baseline` | 固定容量下，标准 LRU 在线策略能做到多少 strict-prefix 命中 | 给出一个简单、可实现的策略基线 |
 | `exact strict-prefix` | 固定容量下，strict-prefix 语义的真正最优值 | 核心结果；后续规划统一基于它 |
 | `planning metrics` | 把 `exact strict-prefix` 和 `LRU` 命中率分别换算成 `TPS Gain`，并在提供目标 TPS 锚点后求最小卡数 / 机器数 | 分开看理论上界、策略落地成本和目标吞吐下的资源需求 |
+| `multi-agent heuristic` | 无 trace 时，基于 `shared prefix + private working set + curve shape` 的冷启动估计 | 在没有 profile 的时候先粗估“容量 -> 命中 -> TPS -> 机器需求” |
 
 ## 快速开始
 
@@ -29,6 +30,10 @@ kvcache-upper-bound audit-buckets \
   --trace https://media.githubusercontent.com/media/alibaba-edu/qwen-bailian-usagetraces-anon/main/qwen_traceA_blksz_16.jsonl \
   --config configs/public_trace_qwen3_5_27b.json \
   --output-dir outputs/run_traceA_audit
+
+kvcache-upper-bound estimate-multi-agent \
+  --config configs/public_multi_agent_qwen3_5_27b.json \
+  --output-dir outputs/heuristic_qwen_1x8
 ```
 
 ## 最少要配什么
@@ -43,6 +48,13 @@ kvcache-upper-bound audit-buckets \
 `configs/public_trace_qwen3_5_27b_1x1_h20_planning_norm.json`。
 这两个样例把 `baseline_per_card_tps = 1.0`、`planning_target_total_tps = 8.0`
 写死成归一化规划锚点，方便直接比较部署形态；它们是演示口径，不代表真实线上 TPS。
+
+如果没有 trace、只想先做冷启动估计，可以直接用：
+
+- `configs/public_multi_agent_qwen3_5_27b.json`
+- `configs/public_multi_agent_qwen3_5_27b_1x1_h20.json`
+
+这两份样例基于 `Qwen/Qwen3.5-27B` 的公开模型参数，分别演示 `1x8 h20` 和 `1x1 h20` 下的无 trace multi-agent heuristic 估计。
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
@@ -61,6 +73,20 @@ kvcache-upper-bound audit-buckets \
 | `bucket_deployments[].extra_capacity_tiers` | 否 | 每台机器追加的 host/SSD KV 空间 |
 | `prefill_savings_alpha` | 否 | 命中收益兑现成吞吐收益的比例，默认 `0.8` |
 
+无 trace heuristic 配置示例见 `configs/public_multi_agent_qwen3_5_27b.json`，额外字段如下：
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `heuristic_multi_agent.concurrent_agents` | 是 | 并发 Agent 数 |
+| `heuristic_multi_agent.shared_prefix_tokens` | 是 | 所有 Agent 共享前缀的 token 数 |
+| `heuristic_multi_agent.avg_new_tokens_per_turn` | 是 | 每轮新增 token 数 |
+| `heuristic_multi_agent.avg_turns_per_session` | 是 | 单会话平均轮数 |
+| `heuristic_multi_agent.private_window_tokens` | 是 | 单 Agent 私有上下文窗口 |
+| `heuristic_multi_agent.curve_mode` | 否 | `linear / power_law_fit / zipf_harmonic` |
+| `heuristic_multi_agent.zipf_s` | 否 | Zipf 形状参数；`power_law_fit` 和 `zipf_harmonic` 都会用到 |
+| `heuristic_multi_agent.policy_efficiency.lru_like` | 否 | 用一个效率系数近似在线策略损失；必须不超过 `1.0` |
+| `deployments` | 是 | 无 trace 模式下的部署列表；字段与 trace 模式一致 |
+
 约束固定如下：
 
 - 不再接受 `machine_count`。
@@ -76,6 +102,8 @@ kvcache-upper-bound audit-buckets \
 | `planning_strict_prefix.csv` | 上界规划表；统一基于 exact strict-prefix 命中率，只保留 `TPS Gain / 估算总 TPS / 当前配置可承载总 TPS / 目标总 TPS 最小卡数 / 最小机器数` 这些主列 | 想看理论最优下的资源规划 |
 | `planning_lru.csv` | 策略规划表；统一基于 LRU 命中率，只保留同一组主规划列 | 想看如果实际采用 LRU，需要多少机器 |
 | `tier_summary.csv` | 容量层长表；把 `HBM / HBM+1T / HBM+10T ...` 展成多行，统一给出 `Strict-Prefix / LRU / 增益 / 诊断 / 规划` | 想比较扩容层之间到底差多少，不想看超宽表 |
+| `heuristic_summary.csv` | 无 trace 主表；只保留 HBM 当前层的 heuristic 估计和主规划列 | 想快速看冷启动场景下当前部署的大致上限 |
+| `heuristic_tier_summary.csv` | 无 trace 容量层长表；把 `HBM / HBM+1T / HBM+10T ...` 展成多行 | 想比较冷启动估计里不同容量层的变化 |
 | `details.json` | 每个桶的详细统计摘要 | 想查具体数字和中间结果 |
 | `metadata.json` | 输入参数、加载统计、归一化后的桶配置 | 想确认这次运行到底按什么口径算的 |
 | `correctness_report.zh.md` | 中文正确性报告 | 想确认结果边界和证明路径 |
@@ -91,6 +119,7 @@ kvcache-upper-bound audit-buckets \
 | `strict-prefix replay` | 把 relaxed 调度按 strict-prefix 语义重计后的可实现结果 |
 | `exact strict-prefix` | strict-prefix 语义下的真正最优值 |
 | `alpha` | 命中收益换算成吞吐收益的兑现系数 |
+| `multi-agent heuristic` | 没有 trace 时，用 `shared/private` 工作集结构和曲线形状做的冷启动估计 |
 
 结果关系可以直接记成：
 
@@ -126,4 +155,4 @@ LRU baseline <= exact strict-prefix <= relaxed upper bound <= content upper boun
 
 - `docs/design_guide.md`：实现口径和阶段边界。
 - `docs/correctness_guide.md`：结果定义、证明范围和如何读表。
-- `docs/four_layer_model.md`：对外展示用的四层框架说明。
+- `docs/four_layer_model.md`：对外展示用的四层框架说明，包含无 profile 时的 multi-agent heuristic 入口。

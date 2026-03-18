@@ -15,7 +15,9 @@ kvcache-upper-bound-oracle/
 │   ├── public_trace_qwen3_5_27b.json
 │   ├── public_trace_qwen3_5_27b_1x1_h20.json
 │   ├── public_trace_qwen3_5_27b_1x1_h20_planning_norm.json
-│   └── public_trace_qwen3_5_27b_planning_norm.json
+│   ├── public_trace_qwen3_5_27b_planning_norm.json
+│   ├── public_multi_agent_qwen3_5_27b.json
+│   └── public_multi_agent_qwen3_5_27b_1x1_h20.json
 ├── outputs/
 ├── src/
 │   └── kvcache_upper_bound/
@@ -23,6 +25,11 @@ kvcache-upper-bound-oracle/
 │       ├── core/
 │       │   ├── __init__.py
 │       │   └── models.py
+│       ├── heuristic/
+│       │   ├── __init__.py
+│       │   ├── config_loader.py
+│       │   ├── multi_agent.py
+│       │   └── output.py
 │       ├── ingest/
 │       │   ├── __init__.py
 │       │   ├── normalizer.py
@@ -61,6 +68,7 @@ kvcache-upper-bound-oracle/
     ├── test_capacity_oracle.py
     ├── test_content_oracle.py
     ├── test_lru_oracle.py
+    ├── test_multi_agent_heuristic.py
     ├── test_normalizer.py
     ├── test_strict_prefix_oracle.py
     ├── test_trace_loader.py
@@ -75,6 +83,9 @@ kvcache-upper-bound-oracle/
 - `docs/correctness_guide.md`：解释哪些结果已被 reference 证明，哪些指标只是解释 exact strict-prefix 的辅助证据。
 - `docs/four_layer_model.md`：对外展示文档；主线只讲 `容量 -> 命中 -> TPS -> 机器需求` 与无 profile 估计。
 - `src/kvcache_upper_bound/core/models.py`：稳定数据模型；这里定义请求、窗口化请求、模型配置，以及从模型参数量推导权重占用所需的核心对象。
+- `src/kvcache_upper_bound/heuristic/multi_agent.py`：无 trace 多 Agent 冷启动估计器；用 `shared/private` 工作集分解、曲线形状函数和 `policy_efficiency` 输出 `strict-prefix` 上界估计与 `LRU-like` 估计。
+- `src/kvcache_upper_bound/heuristic/config_loader.py`：无 trace heuristic 配置解析与校验；负责把 `curve_mode / zipf_s / policy_efficiency / deployment budgets` 的口径钉死。
+- `src/kvcache_upper_bound/heuristic/output.py`：无 trace heuristic 输出层；负责写 `heuristic_summary.csv / heuristic_tier_summary.csv / details.json`，并生成归一化输入摘要。
 - `src/kvcache_upper_bound/ingest/trace_loader.py`：读取 JSONL trace，做字段解析、时间标准化和稳定排序。
 - `src/kvcache_upper_bound/ingest/normalizer.py`：把原始请求转成 window-aware 的 `EffectiveRequest`，并解析 session root。
 - `src/kvcache_upper_bound/oracle/prefix_trie.py`：前缀路径状态机；只负责匹配和插入，不混入聚合逻辑。
@@ -96,11 +107,14 @@ kvcache-upper-bound-oracle/
 - `src/kvcache_upper_bound/`：分析器实现根目录；后续继续扩展 `oracle/`, `reporting/`, `cli/`。
 - `tests/test_bucket_output_files.py`：报表文件和 `details.json` 的结构测试；专门承接输出层断言，避免 `test_bucket_reporting.py` 继续膨胀。
 - `tests/test_lru_oracle.py`：LRU 策略基线测试；覆盖“容量足够可复用”和“不能像 relaxed 一样 skip-admit”两类关键边界。
+- `tests/test_multi_agent_heuristic.py`：无 trace 多 Agent heuristic 测试；覆盖私有工作集平均值、Zipf 派生参数、单调性、`LRU-like <= strict-prefix` 和 CLI 输出文件。
 - `tests/`：面向口径和边界条件的测试，不写和实现细节强绑定的脆弱测试。
 - `configs/public_trace_qwen3_5_27b.json`：公开 `1` 机 `8` 卡 `h20` 样例；适合看“容量基本不构成约束”时的上界结果。
 - `configs/public_trace_qwen3_5_27b_1x1_h20.json`：公开 `1` 机 `1` 卡 `h20` 样例；专门用来放大单卡显存约束，观察 HBM 上限如何压低命中率。
 - `configs/public_trace_qwen3_5_27b_planning_norm.json`：公开 `1` 机 `8` 卡归一化规划样例；固定 `baseline_per_card_tps = 1`、`planning_target_total_tps = 8`，用于直接演示目标 TPS 规划。
 - `configs/public_trace_qwen3_5_27b_1x1_h20_planning_norm.json`：公开 `1` 机 `1` 卡归一化规划样例；和 `1x8` 版本共享同一目标 TPS，专门用来横向比较部署形态。
+- `configs/public_multi_agent_qwen3_5_27b.json`：公开 `1` 机 `8` 卡 `h20` 无 trace heuristic 样例；基于 `Qwen/Qwen3.5-27B` 公共模型参数演示冷启动估计。
+- `configs/public_multi_agent_qwen3_5_27b_1x1_h20.json`：公开 `1` 机 `1` 卡 `h20` 无 trace heuristic 样例；专门用来放大单卡显存约束在冷启动估计里的影响。
 - `configs/`：样例机器配置、模型配置、实验矩阵。
 - `outputs/`：本地产出目录，只放实验结果，不承载源码语义。
 
@@ -108,7 +122,7 @@ kvcache-upper-bound-oracle/
 
 - 第一版先做离线 oracle，不做在线 serving runtime。
 - 统一以 block 为主粒度，默认 block size 为 16；token 粒度只做换算层。
-- 核心口径固定为：`strict_prefix_window`、`prefill only`、`content -> capacity -> system` 三级上限。
+- 核心口径固定为：`strict_prefix_window`、`prefill only`、`content -> capacity -> policy -> heuristic` 四层框架；前 3 层可由 trace 驱动，第四层只做无 trace 冷启动估计。
 - 更外层的通用分析框架固定为：`Oracle -> Policy -> Economics -> Heuristic` 四层；不要把四层混成一个公式。
 - `hash_ids` 必须按前缀路径解释，不能退化成裸 block 频次统计。
 - `ModelProfile.kv_bytes_per_token()` 表示整套部署的总 KV 占用，不是单卡 shard 占用；预算字段必须和它保持同一口径。
@@ -131,6 +145,7 @@ kvcache-upper-bound-oracle/
 - `reporting/` 输出要坚持主次分离：命中估算是主结果，`TPS / 机器数` 是派生结果；不要把派生列淹没主口径。
 - 主 CSV 优先服务“当前 HBM 怎么看”；额外容量层不要再横向展开成超宽表，而要放进 `tier_summary.csv` 这种长表里做层间比较。
 - 上界规划和策略规划必须显式分开：`planning_strict_prefix.csv` 代表 exact strict-prefix，`planning_lru.csv` 代表 LRU；不要再使用含混的 `HBM TPS Gain` 之类列名。
+- `heuristic/` 是第四层冷启动引擎，不是 oracle；它只能输出 `估计`，不能输出 `proof source`，也不能和 exact strict-prefix/LRU 主表混成一张表。
 - 绝对规划必须显式提供锚点：`baseline_per_card_tps` 给出无命中单卡基线吞吐，`planning_target_total_tps` 给出目标总 TPS；只有这两个量到位，`最小卡数 / 最小机器数` 才有可比性。
 - `同负载估算卡数 / 机器数` 只能当固定命中率下的算力等效值；它们留在 `details.json` 做诊断，不要再放进主 CSV 干扰部署规划阅读。
 - 命中表必须显式回答“是容量瓶颈还是策略瓶颈”；不要让读者自己拿三列数字脑补。
@@ -169,3 +184,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-18`：新增 `reporting/config_loader.py` 与 `reporting/planning_search.py`；把配置解析/校验和 target-TPS 规划搜索从 `buckets.py` 拆开，同时新增 `baseline_per_card_tps + planning_target_total_tps -> 最小卡数 / 最小机器数` 的闭环规划结果。
 - `2026-03-18`：精简主 CSV 规划列：移除 `同负载估算卡数 / 机器数`，只保留 `TPS Gain / 估算总 TPS / 当前配置可承载总 TPS / 目标总 TPS 最小卡数 / 最小机器数`；同时新增两份归一化 planning 样例配置，方便直接比较 `1x8` 与 `1x1` 部署。
 - `2026-03-18`：主表继续窄化：`hit_summary.csv / planning_*.csv` 只保留 HBM 当前层主列；新增 `tier_summary.csv` 长表统一承接 `HBM / 1T / 10T` 层间比较，并新增“达到上界 / 达到 strict / 当前主要瓶颈 / 相对上一层增益”诊断列。
+- `2026-03-18`：新增 `heuristic/` 包和 `estimate-multi-agent` CLI；现在项目支持不依赖 trace 的多 Agent 冷启动估计，并额外输出 `heuristic_summary.csv / heuristic_tier_summary.csv / metadata.json`。

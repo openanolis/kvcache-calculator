@@ -12,15 +12,20 @@
 **在给定 window size、模型结构和机器资源的前提下，一个 workload 理论上最多能复用多少 KVCache？**
 
 对外展示时，主线可以收缩成 `容量 -> 命中 -> TPS -> 机器需求` 的简化模型，见 `docs/four_layer_model.md`。内部实现则继续保持更细的分层与正确性约束。
-当前这份文档聚焦内部实现口径。在内部实现里，问题再拆成三层：
+当前这份文档聚焦内部实现口径。在内部实现里，框架固定拆成四层：
 
 | 层级 | 要回答的问题 | 依赖输入 |
 |------|--------------|----------|
 | **内容上限** | 请求本身有多少前缀内容可复用？ | trace |
 | **容量上限** | 有限 GPU/CPU KV 预算下还能保住多少复用？ | trace + model + kv budget |
-| **系统上限** | 带宽和时间窗口是否允许把可复用 KV 搬到位？ | trace + model + machine |
+| **策略基线** | 如果采用简单在线策略，例如 LRU，和上界差多远？ | trace + model + kv budget |
+| **冷启动估计** | 没有 trace 时，怎样先粗估 `容量 -> 命中 -> TPS`？ | model + deployment + heuristic assumptions |
 
-**决策**：当前阶段先做 `Oracle` 内的 `content` 和 `capacity`；对外需要的 `TPS / 机器数` 先作为报表层后处理，从 exact strict-prefix 命中率推导，不把它伪装成 `system oracle`。`Policy / Economics / Heuristic` 仍然作为更外层模块保留扩展位。当前代码额外内置 `LRU baseline` 作为策略基线，用来和 exact strict-prefix 对比，但不参与上界定义。
+**决策**：
+
+- `content / exact strict-prefix / LRU baseline` 都属于 trace 驱动的结果。
+- `TPS / 机器数` 仍然是报表层后处理，不伪装成系统级 oracle。
+- `multi-agent heuristic` 是第四层冷启动估计，只在缺少 trace 时使用，必须明确标注为 heuristic，不得和 oracle 结果混用。
 
 ---
 
@@ -29,9 +34,10 @@
 ### 目标
 
 - 输入 Bailian trace、模型信息、机器信息和 window size 列表。
-- 输出不同 window 下的 `content/capacity/system` 三级命中率上限。
+- 输出不同 window 下的 `content / relaxed / exact strict-prefix / LRU` 主层结果。
 - 输出可复用 KV bytes、工作集大小、预算敏感性曲线。
 - 支持按 `type/turn/input bucket/session scope` 做切片分析。
+- 在没有 trace 的场景下，支持基于 `shared prefix + private working set + curve shape` 的多 Agent 冷启动估计。
 
 ### 非目标
 
@@ -59,6 +65,98 @@
 这套策略的目的不是粉饰结果，而是把“已经被证明的部分”“用证书直接夹出的部分”“仍然需要搜索的部分”切开。
 
 详细说明见 `docs/correctness_guide.md`。
+
+---
+
+## 无 trace heuristic：第四层冷启动引擎
+
+第四层不追求证明“真实线上一定如此”，而是给出一个结构清晰、参数少于完整 replay、又比单条经验曲线更可解释的冷启动估计。
+
+### 结构假设
+
+定义：
+
+- `n`：并发 Agent 数
+- `S`：所有 Agent 共享前缀 token 数
+- `Delta`：每轮新增 token 数
+- `T`：平均会话轮数
+- `W`：单 Agent 私有窗口
+
+在 append-only 会话假设下，单 Agent 平均可复用私有前缀：
+
+```text
+P = (1 / T) * sum_{i=0}^{T-1} min(W, i * Delta)
+```
+
+于是总私有工作集与总工作集为：
+
+```text
+W_private_total = n * P
+W_total = S + n * P
+```
+
+单请求平均长度与内容天花板为：
+
+```text
+L_request = S + Delta + P
+h_content = (S + P) / L_request
+```
+
+### 容量到命中率的估计
+
+当总容量为 `C` 时：
+
+1. 先假设共享前缀 `S` 优先被覆盖。
+2. 其余容量用来覆盖私有工作集。
+3. 私有部分不直接假设线性增长，而交给一个形状函数 `g(r)`，其中：
+
+```text
+r = clip((C - S) / (n * P), 0, 1)
+```
+
+于是 strict-prefix 上界估计写成：
+
+```text
+h_strict_est(C) = min(h_content, (S + g(r) * P) / L_request)
+```
+
+当前代码支持三种 `g(r)`：
+
+| 模式 | 公式 | 作用 |
+|------|------|------|
+| `linear` | `g(r) = r` | 最简单的线性近似 |
+| `power_law_fit` | `g(r) = r^(1 - 1/s)` | 直接吸收 Zipf-inspired 简化公式 |
+| `zipf_harmonic` | `g(r) = H_{floor(rN), s} / H_{N, s}` | 用离散 Zipf 累积质量做更稳的形状函数 |
+
+这里的 `power_law_fit` 就是把外部常见的：
+
+```text
+h(C) ~= (C / W_total)^(1 - 1/s)
+```
+
+吸收到私有工作集覆盖阶段里。它有用，但只能叫 Zipf-inspired heuristic，不能当严格证明。
+
+### 在线策略近似
+
+无 trace 时没法精确 replay LRU，因此第四层只输出 `LRU-like` 近似：
+
+```text
+r_lru = clip(eta * (C - S) / (n * P), 0, 1)
+```
+
+其中 `eta in (0, 1]` 是 `policy_efficiency.lru_like`。它表示在线策略因为淘汰顺序、局部冲突和 admission 不完美而损失掉的有效容量比例。
+
+于是：
+
+```text
+h_lru_like_est(C) = min(h_content, (S + g(r_lru) * P) / L_request)
+```
+
+**硬约束**：
+
+- `LRU-like` 只能是估计，不能叫 `LRU oracle`。
+- `LRU-like` 的效率系数必须不超过 `strict-prefix upper bound`。
+- 任何 heuristic 结果都必须和 trace oracle 分开输出。
 
 ---
 
@@ -411,7 +509,9 @@ graph LR
 | `oracle/prefix_trie.py` | 前缀路径插入和匹配 |
 | `oracle/content.py` | 内容上限计算 |
 | `oracle/capacity.py` | Belady 容量上限计算 |
-| `reporting/aggregate.py` | 汇总指标和切片 |
+| `oracle/lru.py` | 在线 LRU 策略基线 |
+| `heuristic/multi_agent.py` | 无 trace 多 Agent 冷启动估计 |
+| `heuristic/output.py` | 无 trace heuristic 输出层 |
 | `reporting/buckets.py` | 输出按长度分桶聚合后的部署表 |
 | `cli/main.py` | 命令行入口 |
 
@@ -421,11 +521,13 @@ graph LR
 graph LR
     A["ingest"] --> B["core"]
     C["oracle"] --> B
+    F["heuristic"] --> B
     D["reporting"] --> B
     D --> C
     E["cli"] --> A
     E --> C
     E --> D
+    E --> F
 
     style B fill:#c8e6c9
 ```
@@ -440,7 +542,7 @@ graph LR
 
 ## CLI 设计建议
 
-当前 CLI 保持两个命令：
+当前 CLI 保持三条主命令：
 
 ```bash
 kvcache-upper-bound analyze-buckets \
@@ -452,6 +554,10 @@ kvcache-upper-bound audit-buckets \
   --trace /path/to/trace.jsonl \
   --config configs/public_trace_qwen3_5_27b.json \
   --output-dir outputs/run_001_audit
+
+kvcache-upper-bound estimate-multi-agent \
+  --config configs/public_multi_agent_qwen3_5_27b.json \
+  --output-dir outputs/heuristic_run_001
 ```
 
 输出最少包含：
@@ -466,12 +572,15 @@ kvcache-upper-bound audit-buckets \
 | `details.json` | 每个桶的 content / relaxed / exact strict-prefix 详细摘要 |
 | `metadata.json` | 输入参数、加载统计、报表行镜像 |
 | `correctness_report.{json,md,zh.md,en.md}` | reference 校验、trace 采样对账、strict-prefix 求解路径说明 |
+| `heuristic_summary.csv` | 无 trace 主表；只保留 HBM 当前层的 cold-start 估计与主规划列 |
+| `heuristic_tier_summary.csv` | 无 trace 容量层长表；统一比较 `HBM / HBM+1T / HBM+10T` 等层级 |
 
 其中：
 
 - `同负载估算卡数 / 机器数` 只保留在 `details.json`，用于解释局部算力等效值。
 - `目标总 TPS 最小卡数 / 机器数` 才是闭环回代容量约束后的绝对规划结果。
 - `tier_summary.csv` 的 `相对上一层 Strict-Prefix / LRU 增益` 用来回答“加这一层容量到底值不值”。
+- `heuristic_summary.csv / heuristic_tier_summary.csv` 只能代表冷启动估计，不得和 oracle 主表混读成“已证明结果”。
 
 ---
 
@@ -517,6 +626,7 @@ kvcache-upper-bound audit-buckets \
 | window 语义不统一 | 曲线无法解释 | 第一版只保留一个默认语义 |
 | 把相同 block 当同一节点 | 系统性高估 | 强制使用 prefix trie |
 | 直接用总显存估算 KV 预算 | 容量结论失真 | 显式输入 `gpu_kv_budget_bytes` |
+| 把 heuristic 当 oracle | 决策被伪精度误导 | 报表、列名、文档都显式标 `估计` |
 | 过早接 HiSim | 问题域混乱 | 先做离线 oracle |
 
 ---
