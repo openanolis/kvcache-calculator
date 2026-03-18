@@ -67,7 +67,7 @@ kvcache-upper-bound-oracle/
 - `src/kvcache_upper_bound/oracle/content.py`：内容上限分析；对每请求输出 hit/miss，并汇总 block/token/byte 指标。
 - `src/kvcache_upper_bound/oracle/capacity.py`：空间上限分析；基于允许 `no-admit` 的离线 Belady，对 HBM 或扩展空间预算做 event-level 最优命中上界估计。
 - `src/kvcache_upper_bound/oracle/strict_prefix.py`：严格前缀容量 oracle；先走 `content` / `relaxed==replay` 证书快路，证书不够时再做请求边界 DP 精确搜索。
-- `src/kvcache_upper_bound/reporting/buckets.py`：按长度分桶和部署规格生成汇总表；兼容输出 `summary.csv`，并额外拆出 `hit_summary.csv` 与 `planning_summary.csv`，把核心命中估算和派生规划结果分开。
+- `src/kvcache_upper_bound/reporting/buckets.py`：按长度分桶和部署规格生成汇总表；兼容输出 `summary.csv`，并额外拆出 `hit_summary.csv` 与 `planning_summary.csv`，把核心命中估算和派生规划结果分开，同时显式区分物理机数与卡数。
 - `src/kvcache_upper_bound/cli/main.py`：命令行入口；负责把 trace、配置、输出目录串成完整离线分析流程，并让 `metadata.json` 直接镜像报表行结构。
 - `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器、strict-prefix 精确 oracle 对账器，以及 `relaxed == replay == exact` 的穷举等价校验器。
 - `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账、relaxed/replay/exact strict-prefix 诊断、proof source 写成 correctness report，并同时输出中英文 Markdown 报告。
@@ -84,6 +84,7 @@ kvcache-upper-bound-oracle/
 - 更外层的通用分析框架固定为：`Oracle -> Policy -> Economics -> Heuristic` 四层；不要把四层混成一个公式。
 - `hash_ids` 必须按前缀路径解释，不能退化成裸 block 频次统计。
 - `ModelProfile.kv_bytes_per_token()` 表示整套部署的总 KV 占用，不是单卡 shard 占用；预算字段必须和它保持同一口径。
+- 部署规模默认按“卡数”建模；只有提供 `cards_per_machine` 时，报表里的 `机器数` 才表示真实物理机数。
 - `ModelProfile.parameter_count` 只用于从显存反推理论 KV 预算；不提供时，就必须显式给出 `hbm_kv_gb_per_machine` 或利用率。
 - 混合注意力模型必须显式提供 `kv_cache_layer_count`；不能拿总层数硬套 KV 公式。
 - 纯计算逻辑放 `src/`，文件 IO 和命令行入口后置，避免副作用污染核心算法。
@@ -119,3 +120,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-18`：新增 `docs/four_layer_model.md`，定义对外展示用的 `容量 -> 命中 -> TPS -> 机器需求` 简化模型，并保留无 profile 估计入口。
 - `2026-03-18`：把 `prefill_savings_alpha` 接入分桶报表和 `metadata.json`，基于 exact strict-prefix 命中率新增 `TPS Gain / 估算总 TPS / 同负载估算机器数` 后处理。
 - `2026-03-18`：新增 `hit_summary.csv` 与 `planning_summary.csv` 输出，显式把核心 KV 命中估算和派生容量规划结果拆开，`summary.csv` 仅作兼容视图保留。
+- `2026-03-18`：把部署规模口径从含混的“机器数”修正为“卡数优先、机器数显式推导”；公开配置改成 `1` 机 `8` 卡，报表新增 `卡数 / 单机卡数 / 同负载估算卡数`。

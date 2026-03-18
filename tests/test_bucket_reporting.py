@@ -66,6 +66,128 @@ class BucketReportingTest(unittest.TestCase):
 
         self.assertAlmostEqual(result.rows[0].hbm_kv_total_gb, 1.0, places=6)
         self.assertAlmostEqual(config.prefill_savings_alpha, 0.8)
+        self.assertEqual(result.rows[0].machine_count, 2)
+        self.assertEqual(result.rows[0].card_count, 2)
+
+    def test_bucket_reporting_can_distinguish_machine_count_from_card_count(self) -> None:
+        records = [
+            RequestRecord(
+                request_id="r0",
+                source_index=0,
+                timestamp_ms=1000,
+                chat_id="c0",
+                parent_chat_id=None,
+                turn=1,
+                request_type="text",
+                input_length=16,
+                output_length=1,
+                hash_ids=("a",),
+            )
+        ]
+        config_payload = {
+            "model_profile": {
+                "n_layers": 1,
+                "n_kv_heads": 1,
+                "head_dim": 1,
+                "dtype_bytes": 1,
+                "block_size": 16,
+            },
+            "scope": "global",
+            "block_size": 16,
+            "bucket_deployments": [
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "accelerator_count": 8,
+                    "cards_per_machine": 8,
+                    "machine_spec": "h20",
+                    "hbm_kv_gb_per_machine": 1,
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            output_dir = Path(tmpdir) / "out"
+            config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+            config = load_bucket_analysis_config(config_path)
+            result = analyze_bucket_deployments(records, config)
+            write_bucket_outputs(result, output_dir)
+            planning_summary_csv = (output_dir / "planning_summary.csv").read_text(encoding="utf-8")
+
+        self.assertEqual(result.rows[0].machine_count, 1)
+        self.assertEqual(result.rows[0].card_count, 8)
+        self.assertEqual(result.rows[0].cards_per_machine, 8)
+        self.assertIn("机器数,卡数,单机卡数,规格", planning_summary_csv)
+
+    def test_extra_capacity_tier_scales_by_machine_count_not_card_count(self) -> None:
+        records = [
+            RequestRecord(
+                request_id="r0",
+                source_index=0,
+                timestamp_ms=1000,
+                chat_id="c0",
+                parent_chat_id=None,
+                turn=1,
+                request_type="text",
+                input_length=3,
+                output_length=1,
+                hash_ids=("a", "b", "c"),
+            ),
+            RequestRecord(
+                request_id="r1",
+                source_index=1,
+                timestamp_ms=2000,
+                chat_id="c1",
+                parent_chat_id=None,
+                turn=1,
+                request_type="text",
+                input_length=3,
+                output_length=1,
+                hash_ids=("a", "b", "c"),
+            ),
+        ]
+        one_block_gb = 2 / (1024**3)
+        config_payload = {
+            "model_profile": {
+                "n_layers": 1,
+                "n_kv_heads": 1,
+                "head_dim": 1,
+                "dtype_bytes": 1,
+                "block_size": 1,
+            },
+            "scope": "global",
+            "block_size": 1,
+            "bucket_deployments": [
+                {
+                    "label": "0-32K",
+                    "lower_tokens": 0,
+                    "upper_tokens": 32768,
+                    "accelerator_count": 8,
+                    "cards_per_machine": 8,
+                    "machine_spec": "h20",
+                    "hbm_kv_gb_per_machine": 0.0,
+                    "extra_capacity_tiers": [
+                        {"label": "HBM+单机 1 block 命中率", "kv_gb_per_machine": one_block_gb}
+                    ],
+                }
+            ],
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_path.write_text(json.dumps(config_payload), encoding="utf-8")
+            config = load_bucket_analysis_config(config_path)
+            result = analyze_bucket_deployments(records, config)
+
+        self.assertEqual(result.rows[0].machine_count, 1)
+        self.assertEqual(result.rows[0].card_count, 8)
+        self.assertAlmostEqual(result.rows[0].hbm_strict_prefix_hit_rate or 0.0, 0.0)
+        self.assertAlmostEqual(
+            result.rows[0].extra_tier_strict_prefix_hit_rates["HBM+单机 1 block 命中率"],
+            1.0 / 6.0,
+        )
 
     def test_bucket_reporting_outputs_requested_columns(self) -> None:
         records = [
@@ -152,6 +274,7 @@ class BucketReportingTest(unittest.TestCase):
         self.assertIn("HBM Strict-Prefix 命中率", summary_csv)
         self.assertIn("HBM Strict-Prefix 求解路径", summary_csv)
         self.assertIn("HBM TPS Gain", summary_csv)
+        self.assertIn("HBM 同负载估算卡数", summary_csv)
         self.assertIn("HBM 估算总 TPS", summary_csv)
         self.assertIn("HBM 同负载估算机器数", summary_csv)
         self.assertIn("HBM+单机 1T 命中率", summary_csv)
@@ -159,6 +282,7 @@ class BucketReportingTest(unittest.TestCase):
         self.assertIn("HBM+单机 1T Strict-Prefix Replay 命中率", summary_csv)
         self.assertIn("HBM+单机 1T Strict-Prefix 求解路径", summary_csv)
         self.assertIn("HBM+单机 1T TPS Gain", summary_csv)
+        self.assertIn("HBM+单机 1T 同负载估算卡数", summary_csv)
         self.assertIn("HBM+单机 1T 估算总 TPS", summary_csv)
         self.assertIn("HBM+单机 1T 同负载估算机器数", summary_csv)
         self.assertIn("HBM+单机 10T 命中率", summary_csv)
@@ -167,13 +291,17 @@ class BucketReportingTest(unittest.TestCase):
         self.assertNotIn("HBM 估算总 TPS", hit_summary_csv)
         self.assertIn("Prefill 节省系数 alpha", planning_summary_csv)
         self.assertIn("HBM TPS Gain", planning_summary_csv)
+        self.assertIn("HBM 同负载估算卡数", planning_summary_csv)
         self.assertIn("HBM 估算总 TPS", planning_summary_csv)
         self.assertIn("HBM+单机 1T TPS Gain", planning_summary_csv)
+        self.assertIn("HBM+单机 1T 同负载估算卡数", planning_summary_csv)
         self.assertNotIn("HBM Relaxed Upper Bound 命中率", planning_summary_csv)
         self.assertNotIn("HBM Strict-Prefix Replay 命中率", planning_summary_csv)
         self.assertEqual(details_json["rows"][0]["bucket_label"], "0-32K")
         self.assertEqual(details_json["rows"][0]["machine_spec"], "h20")
         self.assertEqual(details_json["rows"][0]["machine_count"], 8)
+        self.assertEqual(details_json["rows"][0]["card_count"], 8)
+        self.assertEqual(details_json["rows"][0]["cards_per_machine"], 1)
         self.assertAlmostEqual(details_json["rows"][0]["prefill_savings_alpha"], 0.5)
         self.assertAlmostEqual(details_json["rows"][0]["actual_hit_rate"], 0.69)
         self.assertIn("hbm_strict_prefix_replay_hit_rate", details_json["rows"][0])
@@ -181,6 +309,7 @@ class BucketReportingTest(unittest.TestCase):
         self.assertIn("hbm_strict_prefix_proof_source", details_json["rows"][0])
         self.assertIn("hbm_tps_gain", details_json["rows"][0])
         self.assertIn("hbm_estimated_total_tps", details_json["rows"][0])
+        self.assertIn("hbm_estimated_card_count_for_same_load", details_json["rows"][0])
         self.assertIn("hbm_estimated_machine_count_for_same_load", details_json["rows"][0])
         self.assertIn("extra_tier_relaxed_upper_bound_hit_rates", details_json["rows"][0])
         self.assertIn("extra_tier_strict_prefix_replay_hit_rates", details_json["rows"][0])
@@ -188,6 +317,7 @@ class BucketReportingTest(unittest.TestCase):
         self.assertIn("extra_tier_strict_prefix_proof_sources", details_json["rows"][0])
         self.assertIn("extra_tier_tps_gains", details_json["rows"][0])
         self.assertIn("extra_tier_estimated_total_tps", details_json["rows"][0])
+        self.assertIn("extra_tier_estimated_card_counts_for_same_load", details_json["rows"][0])
         self.assertIn(
             "extra_tier_estimated_machine_counts_for_same_load",
             details_json["rows"][0],
@@ -225,6 +355,10 @@ class BucketReportingTest(unittest.TestCase):
             details_json["rows"][0]["total_tps"] * expected_hbm_tps_gain,
         )
         self.assertAlmostEqual(
+            details_json["rows"][0]["hbm_estimated_card_count_for_same_load"],
+            details_json["rows"][0]["card_count"] / expected_hbm_tps_gain,
+        )
+        self.assertAlmostEqual(
             details_json["rows"][0]["hbm_estimated_machine_count_for_same_load"],
             details_json["rows"][0]["machine_count"] / expected_hbm_tps_gain,
         )
@@ -240,6 +374,12 @@ class BucketReportingTest(unittest.TestCase):
         self.assertAlmostEqual(
             details_json["rows"][0]["extra_tier_estimated_total_tps"]["HBM+单机 1T 命中率"],
             details_json["rows"][0]["total_tps"] * expected_extra_tier_gain,
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["extra_tier_estimated_card_counts_for_same_load"][
+                "HBM+单机 1T 命中率"
+            ],
+            details_json["rows"][0]["card_count"] / expected_extra_tier_gain,
         )
         self.assertAlmostEqual(
             details_json["rows"][0]["extra_tier_estimated_machine_counts_for_same_load"][
@@ -300,9 +440,11 @@ class BucketReportingTest(unittest.TestCase):
         self.assertNotIn("总 TPS", summary_csv)
         self.assertNotIn("HBM 估算总 TPS", summary_csv)
         self.assertIn("HBM TPS Gain", summary_csv)
+        self.assertIn("HBM 同负载估算卡数", summary_csv)
         self.assertIn("HBM 同负载估算机器数", summary_csv)
         self.assertNotIn("HBM TPS Gain", hit_summary_csv)
         self.assertIn("HBM TPS Gain", planning_summary_csv)
+        self.assertIn("HBM 同负载估算卡数", planning_summary_csv)
         self.assertNotIn("HBM 估算总 TPS", planning_summary_csv)
 
 

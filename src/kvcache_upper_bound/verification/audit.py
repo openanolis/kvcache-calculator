@@ -333,7 +333,7 @@ def _render_bucket_audit_markdown(report: BucketAuditReport, language: str) -> s
                 f"### {row.bucket_label}",
                 "",
                 f"- {'窗口 token 上限' if is_zh else 'window tokens'}: `{row.window_tokens}`",
-                f"- {'单机 HBM KV 预算 (GiB)' if is_zh else 'hbm kv budget per machine (GiB)'}: `{row.hbm_kv_gb_per_machine:.2f}`",
+                f"- {'单卡 HBM KV 预算 (GiB)' if is_zh else 'hbm kv budget per accelerator (GiB)'}: `{row.hbm_kv_gb_per_machine:.2f}`",
                 f"- {'HBM KV 总容量 (GB)' if is_zh else 'hbm kv total gb'}: `{row.hbm_kv_total_gb:.2f}`",
                 f"- {'常驻 block 容量' if is_zh else 'resident block capacity'}: `floor({row.hbm_kv_total_gb:.2f} * 1024^3 / {report.model_kv_bytes_per_block}) = {row.resident_block_capacity}`",
                 f"- {'总 blocks' if is_zh else 'total blocks'}: `{row.total_blocks}`",

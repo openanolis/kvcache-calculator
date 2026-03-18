@@ -19,7 +19,8 @@
       "label": "0-32K",
       "lower_tokens": 0,
       "upper_tokens": 32768,
-      "machine_count": 8,
+      "accelerator_count": 8,
+      "cards_per_machine": 8,
       "machine_spec": "h20",
       "gpu_memory_gb_per_machine": 96,
       "extra_capacity_tiers": [
@@ -37,7 +38,8 @@
       "label": "32-64K",
       "lower_tokens": 32768,
       "upper_tokens": 65536,
-      "machine_count": 8,
+      "accelerator_count": 8,
+      "cards_per_machine": 8,
       "machine_spec": "h20",
       "gpu_memory_gb_per_machine": 96,
       "extra_capacity_tiers": [
@@ -55,7 +57,8 @@
       "label": "64-128K",
       "lower_tokens": 65536,
       "upper_tokens": 131072,
-      "machine_count": 8,
+      "accelerator_count": 8,
+      "cards_per_machine": 8,
       "machine_spec": "h20",
       "gpu_memory_gb_per_machine": 96,
       "extra_capacity_tiers": [
@@ -73,7 +76,8 @@
       "label": "128K-176K",
       "lower_tokens": 131072,
       "upper_tokens": 180224,
-      "machine_count": 8,
+      "accelerator_count": 8,
+      "cards_per_machine": 8,
       "machine_spec": "h20",
       "gpu_memory_gb_per_machine": 96,
       "extra_capacity_tiers": [
@@ -91,7 +95,8 @@
       "label": "176K+",
       "lower_tokens": 180224,
       "upper_tokens": null,
-      "machine_count": 8,
+      "accelerator_count": 8,
+      "cards_per_machine": 8,
       "machine_spec": "h20",
       "gpu_memory_gb_per_machine": 96,
       "extra_capacity_tiers": [

@@ -30,7 +30,8 @@ class BucketDeploymentConfig:
     label: str
     lower_tokens: int
     upper_tokens: int | None
-    machine_count: int
+    accelerator_count: int
+    cards_per_machine: int
     machine_spec: str
     total_tps: float | None
     hbm_kv_gb_per_machine: float | None = None
@@ -41,6 +42,15 @@ class BucketDeploymentConfig:
     actual_hit_rate: float | None = None
     actual_hit_rate_note: str | None = None
     extra_capacity_tiers: tuple[BucketCapacityTier, ...] = field(default_factory=tuple)
+
+    def node_count(self) -> int:
+        if self.cards_per_machine <= 0:
+            raise ValueError(f"{self.label}: cards_per_machine must be positive")
+        if self.accelerator_count % self.cards_per_machine != 0:
+            raise ValueError(
+                f"{self.label}: accelerator_count must be divisible by cards_per_machine"
+            )
+        return self.accelerator_count // self.cards_per_machine
 
     def contains(self, input_length: int) -> bool:
         if input_length < self.lower_tokens:
@@ -99,6 +109,8 @@ class BucketAnalysisConfig:
 class BucketReportRow:
     bucket_label: str
     machine_count: int
+    card_count: int
+    cards_per_machine: int
     machine_spec: str
     total_tps: float | None
     prefill_savings_alpha: float
@@ -114,6 +126,7 @@ class BucketReportRow:
     hbm_strict_prefix_proof_source: str | None
     hbm_tps_gain: float | None
     hbm_estimated_total_tps: float | None
+    hbm_estimated_card_count_for_same_load: float | None
     hbm_estimated_machine_count_for_same_load: float | None
     extra_tier_relaxed_upper_bound_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None]
@@ -121,6 +134,7 @@ class BucketReportRow:
     extra_tier_strict_prefix_proof_sources: dict[str, str | None]
     extra_tier_tps_gains: dict[str, float | None]
     extra_tier_estimated_total_tps: dict[str, float | None]
+    extra_tier_estimated_card_counts_for_same_load: dict[str, float | None]
     extra_tier_estimated_machine_counts_for_same_load: dict[str, float | None]
     request_count: int
     window_tokens: int | None
@@ -175,6 +189,7 @@ def analyze_bucket_deployments(
     for deployment in config.bucket_deployments:
         bucket_records = [record for record in record_list if deployment.contains(record.input_length)]
         has_bucket_records = bool(bucket_records)
+        node_count = deployment.node_count()
         window_tokens = deployment.resolved_window_tokens(bucket_records)
         normalized = build_effective_requests(
             bucket_records,
@@ -189,7 +204,7 @@ def analyze_bucket_deployments(
         )
 
         hbm_kv_gb_per_machine = deployment.resolved_hbm_kv_gb_per_machine(config.model_profile)
-        hbm_kv_total_gb = deployment.machine_count * hbm_kv_gb_per_machine
+        hbm_kv_total_gb = deployment.accelerator_count * hbm_kv_gb_per_machine
         model_weight_bytes_per_rank = config.model_profile.weight_bytes_per_rank()
         model_weight_gb_per_machine = (
             None
@@ -218,6 +233,7 @@ def analyze_bucket_deployments(
         extra_tier_strict_prefix_proof_sources: dict[str, str | None] = {}
         extra_tier_tps_gains: dict[str, float | None] = {}
         extra_tier_estimated_total_tps: dict[str, float | None] = {}
+        extra_tier_estimated_card_counts_for_same_load: dict[str, float | None] = {}
         extra_tier_estimated_machine_counts_for_same_load: dict[str, float | None] = {}
         ceiling_capacity_result = hbm_capacity_result if (
             hbm_capacity_result.summary.hit_blocks == content_result.summary.hit_blocks
@@ -231,7 +247,7 @@ def analyze_bucket_deployments(
             if ceiling_capacity_result is not None:
                 capacity_result = ceiling_capacity_result
             else:
-                total_budget_gb = hbm_kv_total_gb + deployment.machine_count * tier.kv_gb_per_machine
+                total_budget_gb = hbm_kv_total_gb + node_count * tier.kv_gb_per_machine
                 capacity_result = analyze_capacity_upper_bound(
                     normalized.requests,
                     model_profile=config.model_profile,
@@ -247,7 +263,7 @@ def analyze_bucket_deployments(
             if ceiling_strict_prefix_result is not None:
                 strict_prefix_result = ceiling_strict_prefix_result
             else:
-                total_budget_gb = hbm_kv_total_gb + deployment.machine_count * tier.kv_gb_per_machine
+                total_budget_gb = hbm_kv_total_gb + node_count * tier.kv_gb_per_machine
                 strict_prefix_result = analyze_strict_prefix_capacity_upper_bound(
                     normalized.requests,
                     model_profile=config.model_profile,
@@ -282,9 +298,13 @@ def analyze_bucket_deployments(
                 deployment.total_tps,
                 extra_tier_tps_gains[tier.label],
             )
-            extra_tier_estimated_machine_counts_for_same_load[tier.label] = _estimated_machine_count(
-                deployment.machine_count,
+            extra_tier_estimated_card_counts_for_same_load[tier.label] = _estimated_card_count(
+                deployment.accelerator_count,
                 extra_tier_tps_gains[tier.label],
+            )
+            extra_tier_estimated_machine_counts_for_same_load[tier.label] = _estimated_machine_count(
+                extra_tier_estimated_card_counts_for_same_load[tier.label],
+                deployment.cards_per_machine,
             )
 
         hbm_relaxed_upper_bound_hit_rate = (
@@ -301,14 +321,20 @@ def analyze_bucket_deployments(
         )
         hbm_tps_gain = _tps_gain(hbm_strict_prefix_hit_rate, config.prefill_savings_alpha)
         hbm_estimated_total_tps = _estimated_total_tps(deployment.total_tps, hbm_tps_gain)
-        hbm_estimated_machine_count_for_same_load = _estimated_machine_count(
-            deployment.machine_count,
+        hbm_estimated_card_count_for_same_load = _estimated_card_count(
+            deployment.accelerator_count,
             hbm_tps_gain,
+        )
+        hbm_estimated_machine_count_for_same_load = _estimated_machine_count(
+            hbm_estimated_card_count_for_same_load,
+            deployment.cards_per_machine,
         )
 
         row = BucketReportRow(
             bucket_label=deployment.label,
-            machine_count=deployment.machine_count,
+            machine_count=node_count,
+            card_count=deployment.accelerator_count,
+            cards_per_machine=deployment.cards_per_machine,
             machine_spec=deployment.machine_spec,
             total_tps=deployment.total_tps,
             prefill_savings_alpha=config.prefill_savings_alpha,
@@ -324,6 +350,7 @@ def analyze_bucket_deployments(
             hbm_strict_prefix_proof_source=hbm_strict_prefix_proof_source,
             hbm_tps_gain=hbm_tps_gain,
             hbm_estimated_total_tps=hbm_estimated_total_tps,
+            hbm_estimated_card_count_for_same_load=hbm_estimated_card_count_for_same_load,
             hbm_estimated_machine_count_for_same_load=hbm_estimated_machine_count_for_same_load,
             extra_tier_relaxed_upper_bound_hit_rates=extra_tier_relaxed_upper_bound_hit_rates,
             extra_tier_strict_prefix_replay_hit_rates=extra_tier_strict_prefix_replay_hit_rates,
@@ -331,6 +358,7 @@ def analyze_bucket_deployments(
             extra_tier_strict_prefix_proof_sources=extra_tier_strict_prefix_proof_sources,
             extra_tier_tps_gains=extra_tier_tps_gains,
             extra_tier_estimated_total_tps=extra_tier_estimated_total_tps,
+            extra_tier_estimated_card_counts_for_same_load=extra_tier_estimated_card_counts_for_same_load,
             extra_tier_estimated_machine_counts_for_same_load=extra_tier_estimated_machine_counts_for_same_load,
             request_count=len(bucket_records),
             window_tokens=None if not has_bucket_records else window_tokens,
@@ -475,7 +503,7 @@ def _combined_summary_fieldnames(
     include_total_tps: bool,
     include_actual_hit_rate: bool,
 ) -> list[str]:
-    fieldnames = ["分桶", "机器数", "规格"]
+    fieldnames = ["分桶", "机器数", "卡数", "单机卡数", "规格"]
     if include_total_tps:
         fieldnames.append("总 TPS")
     fieldnames.extend(
@@ -527,7 +555,7 @@ def _planning_summary_fieldnames(
     tier_labels: list[str],
     include_total_tps: bool,
 ) -> list[str]:
-    fieldnames = ["分桶", "机器数", "规格"]
+    fieldnames = ["分桶", "机器数", "卡数", "单机卡数", "规格"]
     if include_total_tps:
         fieldnames.append("总 TPS")
     fieldnames.extend(
@@ -545,6 +573,7 @@ def _planning_summary_fieldnames(
                 label,
                 _strict_prefix_proof_column(label),
                 _tps_gain_column(label),
+                _estimated_card_count_column(label),
                 _estimated_machine_count_column(label),
             ]
         )
@@ -560,7 +589,7 @@ def _base_hit_fieldnames(
     include_total_tps: bool,
     include_actual_hit_rate: bool,
 ) -> list[str]:
-    fieldnames = ["分桶", "机器数", "规格"]
+    fieldnames = ["分桶", "机器数", "卡数", "单机卡数", "规格"]
     if include_total_tps:
         fieldnames.append("总 TPS")
     fieldnames.extend(
@@ -595,6 +624,7 @@ def _base_hit_fieldnames(
 def _base_planning_metric_fieldnames(*, include_total_tps: bool) -> list[str]:
     fieldnames = [
         "HBM TPS Gain",
+        "HBM 同负载估算卡数",
         "HBM 同负载估算机器数",
     ]
     if include_total_tps:
@@ -678,6 +708,8 @@ def _common_row_payload(*, row: BucketReportRow, include_total_tps: bool) -> dic
     payload: dict[str, Any] = {
         "分桶": row.bucket_label,
         "机器数": row.machine_count,
+        "卡数": row.card_count,
+        "单机卡数": row.cards_per_machine,
         "规格": row.machine_spec,
     }
     if include_total_tps:
@@ -688,6 +720,7 @@ def _common_row_payload(*, row: BucketReportRow, include_total_tps: bool) -> dic
 def _planning_metric_payload(*, row: BucketReportRow, include_total_tps: bool) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "HBM TPS Gain": _format_number(row.hbm_tps_gain),
+        "HBM 同负载估算卡数": _format_number(row.hbm_estimated_card_count_for_same_load),
         "HBM 同负载估算机器数": _format_number(row.hbm_estimated_machine_count_for_same_load),
     }
     if include_total_tps:
@@ -698,6 +731,7 @@ def _planning_metric_payload(*, row: BucketReportRow, include_total_tps: bool) -
 def _tier_planning_fieldnames(*, label: str, include_total_tps: bool) -> list[str]:
     fieldnames = [
         _tps_gain_column(label),
+        _estimated_card_count_column(label),
         _estimated_machine_count_column(label),
     ]
     if include_total_tps:
@@ -713,6 +747,9 @@ def _tier_planning_payload(
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         _tps_gain_column(label): _format_number(row.extra_tier_tps_gains.get(label)),
+        _estimated_card_count_column(label): _format_number(
+            row.extra_tier_estimated_card_counts_for_same_load.get(label)
+        ),
         _estimated_machine_count_column(label): _format_number(
             row.extra_tier_estimated_machine_counts_for_same_load.get(label)
         ),
@@ -785,6 +822,10 @@ def _estimated_total_tps_column(label: str) -> str:
     return f"{_strict_prefix_column_base(label)} 估算总 TPS"
 
 
+def _estimated_card_count_column(label: str) -> str:
+    return f"{_strict_prefix_column_base(label)} 同负载估算卡数"
+
+
 def _estimated_machine_count_column(label: str) -> str:
     return f"{_strict_prefix_column_base(label)} 同负载估算机器数"
 
@@ -824,12 +865,23 @@ def _estimated_total_tps(base_tps: float | None, gain: float | None) -> float | 
     return base_tps * gain
 
 
-def _estimated_machine_count(machine_count: int, gain: float | None) -> float | None:
+def _estimated_card_count(card_count: int, gain: float | None) -> float | None:
     if gain is None:
         return None
     if math.isinf(gain):
         return 0.0
-    return machine_count / gain
+    return card_count / gain
+
+
+def _estimated_machine_count(
+    estimated_card_count: float | None,
+    cards_per_machine: int,
+) -> float | None:
+    if estimated_card_count is None:
+        return None
+    if cards_per_machine <= 0:
+        raise ValueError("cards_per_machine must be positive")
+    return estimated_card_count / cards_per_machine
 
 
 def _load_model_profile(payload: dict[str, Any]) -> ModelProfile:
@@ -858,7 +910,7 @@ def _load_model_profile(payload: dict[str, Any]) -> ModelProfile:
 
 
 def _load_bucket_deployment(payload: dict[str, Any]) -> BucketDeploymentConfig:
-    machine_count, machine_spec = _parse_machine_fields(payload)
+    accelerator_count, cards_per_machine, machine_spec = _parse_machine_fields(payload)
     extra_tiers = tuple(
         BucketCapacityTier(
             label=str(item["label"]),
@@ -873,7 +925,8 @@ def _load_bucket_deployment(payload: dict[str, Any]) -> BucketDeploymentConfig:
         upper_tokens=None
         if payload.get("upper_tokens") is None
         else int(payload["upper_tokens"]),
-        machine_count=machine_count,
+        accelerator_count=accelerator_count,
+        cards_per_machine=cards_per_machine,
         machine_spec=machine_spec,
         total_tps=None if payload.get("total_tps") is None else float(payload["total_tps"]),
         hbm_kv_gb_per_machine=None
@@ -918,12 +971,25 @@ def _parse_actual_hit_fields(payload: dict[str, Any]) -> tuple[float | None, str
     return _normalize_rate(raw_value), note
 
 
-def _parse_machine_fields(payload: dict[str, Any]) -> tuple[int, str]:
+def _parse_machine_fields(payload: dict[str, Any]) -> tuple[int, int, str]:
+    cards_per_machine = int(
+        payload.get(
+            "cards_per_machine",
+            payload.get("accelerators_per_machine", 1),
+        )
+    )
+    if cards_per_machine <= 0:
+        raise ValueError("cards_per_machine must be positive")
+
+    if "accelerator_count" in payload and payload["accelerator_count"] is not None:
+        return int(payload["accelerator_count"]), cards_per_machine, str(payload["machine_spec"])
     if "machine_count" in payload and payload["machine_count"] is not None:
-        return int(payload["machine_count"]), str(payload["machine_spec"])
+        return int(payload["machine_count"]), cards_per_machine, str(payload["machine_spec"])
 
     spec = str(payload["machine_spec"])
     if "*" not in spec:
-        raise ValueError("machine_count is missing and machine_spec does not follow '<count>*<spec>' format")
+        raise ValueError(
+            "accelerator_count is missing and machine_spec does not follow '<count>*<spec>' format"
+        )
     count_text, spec_name = spec.split("*", 1)
-    return int(count_text), spec_name
+    return int(count_text), cards_per_machine, spec_name
