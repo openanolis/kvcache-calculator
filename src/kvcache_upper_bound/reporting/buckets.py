@@ -31,33 +31,6 @@ class BucketCapacityTier:
     label: str
     kv_gb_per_machine: float
 
-
-@dataclass(frozen=True)
-class BucketTierInputSummary:
-    label: str
-    extra_kv_gb_per_machine: float
-    extra_kv_total_gb: float
-    total_kv_gb: float
-
-
-@dataclass(frozen=True)
-class BucketInputSummary:
-    bucket_label: str
-    input_lower_tokens: int
-    input_upper_tokens: int | None
-    machine_count: int
-    card_count: int
-    cards_per_machine: int
-    machine_spec: str
-    total_tps_input: float | None
-    total_tps_input_unit: str | None
-    total_tps_cluster_total: float | None
-    hbm_kv_gb_per_card: float
-    hbm_kv_total_gb: float
-    model_weight_gb_per_card: float | None
-    extra_capacity_tiers: tuple[BucketTierInputSummary, ...]
-
-
 @dataclass(frozen=True)
 class BucketDeploymentConfig:
     label: str
@@ -173,19 +146,27 @@ class BucketReportRow:
     hbm_strict_prefix_replay_hit_rate: float | None
     hbm_strict_prefix_hit_rate: float | None
     hbm_strict_prefix_proof_source: str | None
-    hbm_tps_gain: float | None
-    hbm_estimated_total_tps: float | None
-    hbm_estimated_card_count_for_same_load: float | None
-    hbm_estimated_machine_count_for_same_load: float | None
+    hbm_strict_prefix_tps_gain: float | None
+    hbm_strict_prefix_estimated_total_tps: float | None
+    hbm_strict_prefix_estimated_card_count_for_same_load: float | None
+    hbm_strict_prefix_estimated_machine_count_for_same_load: float | None
+    hbm_lru_tps_gain: float | None
+    hbm_lru_estimated_total_tps: float | None
+    hbm_lru_estimated_card_count_for_same_load: float | None
+    hbm_lru_estimated_machine_count_for_same_load: float | None
     extra_tier_relaxed_upper_bound_hit_rates: dict[str, float | None]
     extra_tier_lru_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_proof_sources: dict[str, str | None]
-    extra_tier_tps_gains: dict[str, float | None]
-    extra_tier_estimated_total_tps: dict[str, float | None]
-    extra_tier_estimated_card_counts_for_same_load: dict[str, float | None]
-    extra_tier_estimated_machine_counts_for_same_load: dict[str, float | None]
+    extra_tier_strict_prefix_tps_gains: dict[str, float | None]
+    extra_tier_strict_prefix_estimated_total_tps: dict[str, float | None]
+    extra_tier_strict_prefix_estimated_card_counts_for_same_load: dict[str, float | None]
+    extra_tier_strict_prefix_estimated_machine_counts_for_same_load: dict[str, float | None]
+    extra_tier_lru_tps_gains: dict[str, float | None]
+    extra_tier_lru_estimated_total_tps: dict[str, float | None]
+    extra_tier_lru_estimated_card_counts_for_same_load: dict[str, float | None]
+    extra_tier_lru_estimated_machine_counts_for_same_load: dict[str, float | None]
     request_count: int
     window_tokens: int | None
     input_lower_tokens: int
@@ -293,10 +274,14 @@ def analyze_bucket_deployments(
         extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None] = {}
         extra_tier_strict_prefix_hit_rates: dict[str, float | None] = {}
         extra_tier_strict_prefix_proof_sources: dict[str, str | None] = {}
-        extra_tier_tps_gains: dict[str, float | None] = {}
-        extra_tier_estimated_total_tps: dict[str, float | None] = {}
-        extra_tier_estimated_card_counts_for_same_load: dict[str, float | None] = {}
-        extra_tier_estimated_machine_counts_for_same_load: dict[str, float | None] = {}
+        extra_tier_strict_prefix_tps_gains: dict[str, float | None] = {}
+        extra_tier_strict_prefix_estimated_total_tps: dict[str, float | None] = {}
+        extra_tier_strict_prefix_estimated_card_counts_for_same_load: dict[str, float | None] = {}
+        extra_tier_strict_prefix_estimated_machine_counts_for_same_load: dict[str, float | None] = {}
+        extra_tier_lru_tps_gains: dict[str, float | None] = {}
+        extra_tier_lru_estimated_total_tps: dict[str, float | None] = {}
+        extra_tier_lru_estimated_card_counts_for_same_load: dict[str, float | None] = {}
+        extra_tier_lru_estimated_machine_counts_for_same_load: dict[str, float | None] = {}
         ceiling_capacity_result = hbm_capacity_result if (
             hbm_capacity_result.summary.hit_blocks == content_result.summary.hit_blocks
             and hbm_capacity_result.summary.total_blocks == content_result.summary.total_blocks
@@ -363,20 +348,36 @@ def analyze_bucket_deployments(
             extra_tier_strict_prefix_proof_sources[tier.label] = (
                 None if not has_bucket_records else strict_prefix_result.summary.proof_source
             )
-            extra_tier_tps_gains[tier.label] = _tps_gain(
+            extra_tier_strict_prefix_tps_gains[tier.label] = _tps_gain(
                 extra_tier_strict_prefix_hit_rates[tier.label],
                 config.prefill_savings_alpha,
             )
-            extra_tier_estimated_total_tps[tier.label] = _estimated_total_tps(
+            extra_tier_strict_prefix_estimated_total_tps[tier.label] = _estimated_total_tps(
                 resolved_total_tps,
-                extra_tier_tps_gains[tier.label],
+                extra_tier_strict_prefix_tps_gains[tier.label],
             )
-            extra_tier_estimated_card_counts_for_same_load[tier.label] = _estimated_card_count(
+            extra_tier_strict_prefix_estimated_card_counts_for_same_load[tier.label] = _estimated_card_count(
                 deployment.accelerator_count,
-                extra_tier_tps_gains[tier.label],
+                extra_tier_strict_prefix_tps_gains[tier.label],
             )
-            extra_tier_estimated_machine_counts_for_same_load[tier.label] = _estimated_machine_count(
-                extra_tier_estimated_card_counts_for_same_load[tier.label],
+            extra_tier_strict_prefix_estimated_machine_counts_for_same_load[tier.label] = _estimated_machine_count(
+                extra_tier_strict_prefix_estimated_card_counts_for_same_load[tier.label],
+                deployment.cards_per_machine,
+            )
+            extra_tier_lru_tps_gains[tier.label] = _tps_gain(
+                extra_tier_lru_hit_rates[tier.label],
+                config.prefill_savings_alpha,
+            )
+            extra_tier_lru_estimated_total_tps[tier.label] = _estimated_total_tps(
+                resolved_total_tps,
+                extra_tier_lru_tps_gains[tier.label],
+            )
+            extra_tier_lru_estimated_card_counts_for_same_load[tier.label] = _estimated_card_count(
+                deployment.accelerator_count,
+                extra_tier_lru_tps_gains[tier.label],
+            )
+            extra_tier_lru_estimated_machine_counts_for_same_load[tier.label] = _estimated_machine_count(
+                extra_tier_lru_estimated_card_counts_for_same_load[tier.label],
                 deployment.cards_per_machine,
             )
 
@@ -395,14 +396,30 @@ def analyze_bucket_deployments(
         hbm_strict_prefix_proof_source = (
             None if not has_bucket_records else hbm_strict_prefix_result.summary.proof_source
         )
-        hbm_tps_gain = _tps_gain(hbm_strict_prefix_hit_rate, config.prefill_savings_alpha)
-        hbm_estimated_total_tps = _estimated_total_tps(resolved_total_tps, hbm_tps_gain)
-        hbm_estimated_card_count_for_same_load = _estimated_card_count(
-            deployment.accelerator_count,
-            hbm_tps_gain,
+        hbm_strict_prefix_tps_gain = _tps_gain(
+            hbm_strict_prefix_hit_rate,
+            config.prefill_savings_alpha,
         )
-        hbm_estimated_machine_count_for_same_load = _estimated_machine_count(
-            hbm_estimated_card_count_for_same_load,
+        hbm_strict_prefix_estimated_total_tps = _estimated_total_tps(
+            resolved_total_tps,
+            hbm_strict_prefix_tps_gain,
+        )
+        hbm_strict_prefix_estimated_card_count_for_same_load = _estimated_card_count(
+            deployment.accelerator_count,
+            hbm_strict_prefix_tps_gain,
+        )
+        hbm_strict_prefix_estimated_machine_count_for_same_load = _estimated_machine_count(
+            hbm_strict_prefix_estimated_card_count_for_same_load,
+            deployment.cards_per_machine,
+        )
+        hbm_lru_tps_gain = _tps_gain(hbm_lru_hit_rate, config.prefill_savings_alpha)
+        hbm_lru_estimated_total_tps = _estimated_total_tps(resolved_total_tps, hbm_lru_tps_gain)
+        hbm_lru_estimated_card_count_for_same_load = _estimated_card_count(
+            deployment.accelerator_count,
+            hbm_lru_tps_gain,
+        )
+        hbm_lru_estimated_machine_count_for_same_load = _estimated_machine_count(
+            hbm_lru_estimated_card_count_for_same_load,
             deployment.cards_per_machine,
         )
 
@@ -426,19 +443,27 @@ def analyze_bucket_deployments(
             hbm_strict_prefix_replay_hit_rate=hbm_strict_prefix_replay_hit_rate,
             hbm_strict_prefix_hit_rate=hbm_strict_prefix_hit_rate,
             hbm_strict_prefix_proof_source=hbm_strict_prefix_proof_source,
-            hbm_tps_gain=hbm_tps_gain,
-            hbm_estimated_total_tps=hbm_estimated_total_tps,
-            hbm_estimated_card_count_for_same_load=hbm_estimated_card_count_for_same_load,
-            hbm_estimated_machine_count_for_same_load=hbm_estimated_machine_count_for_same_load,
+            hbm_strict_prefix_tps_gain=hbm_strict_prefix_tps_gain,
+            hbm_strict_prefix_estimated_total_tps=hbm_strict_prefix_estimated_total_tps,
+            hbm_strict_prefix_estimated_card_count_for_same_load=hbm_strict_prefix_estimated_card_count_for_same_load,
+            hbm_strict_prefix_estimated_machine_count_for_same_load=hbm_strict_prefix_estimated_machine_count_for_same_load,
+            hbm_lru_tps_gain=hbm_lru_tps_gain,
+            hbm_lru_estimated_total_tps=hbm_lru_estimated_total_tps,
+            hbm_lru_estimated_card_count_for_same_load=hbm_lru_estimated_card_count_for_same_load,
+            hbm_lru_estimated_machine_count_for_same_load=hbm_lru_estimated_machine_count_for_same_load,
             extra_tier_relaxed_upper_bound_hit_rates=extra_tier_relaxed_upper_bound_hit_rates,
             extra_tier_lru_hit_rates=extra_tier_lru_hit_rates,
             extra_tier_strict_prefix_replay_hit_rates=extra_tier_strict_prefix_replay_hit_rates,
             extra_tier_strict_prefix_hit_rates=extra_tier_strict_prefix_hit_rates,
             extra_tier_strict_prefix_proof_sources=extra_tier_strict_prefix_proof_sources,
-            extra_tier_tps_gains=extra_tier_tps_gains,
-            extra_tier_estimated_total_tps=extra_tier_estimated_total_tps,
-            extra_tier_estimated_card_counts_for_same_load=extra_tier_estimated_card_counts_for_same_load,
-            extra_tier_estimated_machine_counts_for_same_load=extra_tier_estimated_machine_counts_for_same_load,
+            extra_tier_strict_prefix_tps_gains=extra_tier_strict_prefix_tps_gains,
+            extra_tier_strict_prefix_estimated_total_tps=extra_tier_strict_prefix_estimated_total_tps,
+            extra_tier_strict_prefix_estimated_card_counts_for_same_load=extra_tier_strict_prefix_estimated_card_counts_for_same_load,
+            extra_tier_strict_prefix_estimated_machine_counts_for_same_load=extra_tier_strict_prefix_estimated_machine_counts_for_same_load,
+            extra_tier_lru_tps_gains=extra_tier_lru_tps_gains,
+            extra_tier_lru_estimated_total_tps=extra_tier_lru_estimated_total_tps,
+            extra_tier_lru_estimated_card_counts_for_same_load=extra_tier_lru_estimated_card_counts_for_same_load,
+            extra_tier_lru_estimated_machine_counts_for_same_load=extra_tier_lru_estimated_machine_counts_for_same_load,
             request_count=len(bucket_records),
             window_tokens=None if not has_bucket_records else window_tokens,
             input_lower_tokens=deployment.lower_tokens,
@@ -457,41 +482,6 @@ def analyze_bucket_deployments(
         )
 
     return BucketAnalysisResult(rows=rows, details=details)
-
-def build_bucket_input_summaries(result: BucketAnalysisResult) -> list[BucketInputSummary]:
-    summaries: list[BucketInputSummary] = []
-    for row in result.rows:
-        detail = result.details[row.bucket_label]
-        tier_summaries = tuple(
-            BucketTierInputSummary(
-                label=tier.label,
-                extra_kv_gb_per_machine=tier.kv_gb_per_machine,
-                extra_kv_total_gb=row.machine_count * tier.kv_gb_per_machine,
-                total_kv_gb=row.hbm_kv_total_gb + row.machine_count * tier.kv_gb_per_machine,
-            )
-            for tier in detail.config.extra_capacity_tiers
-        )
-        summaries.append(
-            BucketInputSummary(
-                bucket_label=row.bucket_label,
-                input_lower_tokens=row.input_lower_tokens,
-                input_upper_tokens=row.input_upper_tokens,
-                machine_count=row.machine_count,
-                card_count=row.card_count,
-                cards_per_machine=row.cards_per_machine,
-                machine_spec=row.machine_spec,
-                total_tps_input=detail.config.total_tps,
-                total_tps_input_unit=row.total_tps_input_unit,
-                total_tps_cluster_total=row.total_tps,
-                hbm_kv_gb_per_card=row.hbm_kv_gb_per_card,
-                hbm_kv_total_gb=row.hbm_kv_total_gb,
-                model_weight_gb_per_card=row.model_weight_gb_per_card,
-                extra_capacity_tiers=tier_summaries,
-            )
-        )
-    return summaries
-
-
 def _gb_to_bytes(value_gb: float) -> int:
     return int(value_gb * BYTES_PER_GB)
 

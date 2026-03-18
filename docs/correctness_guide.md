@@ -51,9 +51,12 @@ LRU 现在已经接进主报表，但它的身份很明确：
 
 - 它是 `policy baseline`。
 - 它表示“如果只用标准 LRU 在线管理 KV cache，当前容量下能做到多少 strict-prefix 命中”。
-- 它不参与 `TPS Gain`、`估算总 TPS`、`同负载估算卡数`、`同负载估算机器数` 的主计算。
+- 它不参与上界定义，但它会单独驱动 `planning_lru.csv` 里的机器需求计算。
 
-规划结果仍然统一基于 `exact strict-prefix`，因为这才是容量语义下的最优值。
+因此现在有两张规划表：
+
+- `planning_summary.csv`：`exact strict-prefix` 上界规划
+- `planning_lru.csv`：`LRU` 策略规划
 
 ## alpha 和规划结果
 
@@ -70,9 +73,10 @@ Estimated Machine Count For Same Load = Estimated Card Count / Cards Per Machine
 
 其中：
 
-- `h` 是 `exact strict-prefix` 命中率。
+- `h` 取决于你看的规划表。
 - `alpha` 不是 trace 统计值，也不是模型固有常数。
-- `planning_summary.csv` 里的规划列全部按这套公式计算。
+- `planning_summary.csv` 用 `exact strict-prefix` 命中率代入。
+- `planning_lru.csv` 用 `LRU` 命中率代入。
 
 ## 报表怎么读
 
@@ -82,14 +86,15 @@ Estimated Machine Count For Same Load = Estimated Card Count / Cards Per Machine
 2. 看 `HBM Strict-Prefix 命中率`，判断当前 HBM 下真正能保住多少复用。
 3. 看 `HBM LRU 命中率`，判断简单在线策略和最优值差多远。
 4. 看额外容量层的 `Strict-Prefix 命中率`，判断扩容值不值得。
-5. 最后再看 `planning_summary.csv` 里的 `TPS Gain / 估算总 TPS / 同负载估算卡数 / 同负载估算机器数`。
+5. 最后看规划表：`planning_summary.csv` 回答理论上界，`planning_lru.csv` 回答 LRU 策略下的机器需求。
 
 各文件职责固定如下：
 
 | 文件 | 只回答什么问题 |
 |------|----------------|
 | `hit_summary.csv` | 命中率本身是多少 |
-| `planning_summary.csv` | 这些命中率能换成多少 TPS、多少卡、多少机器 |
+| `planning_summary.csv` | exact strict-prefix 上界能换成多少 TPS、多少卡、多少机器 |
+| `planning_lru.csv` | LRU 策略能换成多少 TPS、多少卡、多少机器 |
 | `details.json` | 每个桶的详细摘要和中间统计 |
 | `correctness_report.zh.md` / `correctness_report.en.md` | 当前结果的证明范围和侧证 |
 

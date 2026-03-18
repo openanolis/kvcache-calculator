@@ -1,6 +1,6 @@
 # KVCache Upper Bound Oracle
 
-一个离线分析框架：输入 trace、模型信息和机器约束，输出 KVCache 的内容天花板、容量上界、LRU 基线，以及基于 exact strict-prefix 的规划结果。
+一个离线分析框架：输入 trace、模型信息和机器约束，输出 KVCache 的内容天花板、容量上界、LRU 基线，以及分别基于 `exact strict-prefix` 和 `LRU` 的规划结果。
 
 ## 项目产出
 
@@ -12,7 +12,7 @@
 | `relaxed upper bound` | 固定容量下，允许离线最优调度时的 event-level 上界 | 判断空间约束压掉了多少内容天花板 |
 | `LRU baseline` | 固定容量下，标准 LRU 在线策略能做到多少 strict-prefix 命中 | 给出一个简单、可实现的策略基线 |
 | `exact strict-prefix` | 固定容量下，strict-prefix 语义的真正最优值 | 核心结果；后续规划统一基于它 |
-| `planning metrics` | 把 exact strict-prefix 命中率换算成 `TPS Gain / 估算总 TPS / 同负载估算卡数 / 机器数` | 做缩容和扩容评估 |
+| `planning metrics` | 把 `exact strict-prefix` 和 `LRU` 命中率分别换算成 `TPS Gain / 估算总 TPS / 同负载估算卡数 / 机器数` | 分开看理论上界和策略落地成本 |
 
 ## 快速开始
 
@@ -62,7 +62,8 @@ kvcache-upper-bound audit-buckets \
 |------|------|------------|
 | `summary.csv` | 兼容总表，混合展示命中结果和规划结果 | 想快速扫一眼全部结果 |
 | `hit_summary.csv` | 只放命中相关列：content / relaxed / LRU / strict-prefix | 只关心 KV 命中估算 |
-| `planning_summary.csv` | 只放规划列；统一基于 exact strict-prefix 命中率 | 只关心缩容、扩容和 TPS |
+| `planning_summary.csv` | 上界规划表；统一基于 exact strict-prefix 命中率 | 想看理论最优下最多能省多少机器 |
+| `planning_lru.csv` | 策略规划表；统一基于 LRU 命中率 | 想看如果实际采用 LRU，需要多少机器 |
 | `details.json` | 每个桶的详细统计摘要 | 想查具体数字和中间结果 |
 | `metadata.json` | 输入参数、加载统计、归一化后的桶配置 | 想确认这次运行到底按什么口径算的 |
 | `correctness_report.zh.md` | 中文正确性报告 | 想确认结果边界和证明路径 |
@@ -85,7 +86,10 @@ kvcache-upper-bound audit-buckets \
 LRU baseline <= exact strict-prefix <= relaxed upper bound <= content upper bound
 ```
 
-`planning_summary.csv` 里的 `TPS Gain / 估算总 TPS / 同负载估算卡数 / 同负载估算机器数` 统一基于 `exact strict-prefix`，不基于 LRU，也不基于 relaxed。
+`planning_summary.csv` 和 `planning_lru.csv` 使用同一套规划公式，但命中率来源不同：
+
+- `planning_summary.csv`：`h = exact strict-prefix hit rate`
+- `planning_lru.csv`：`h = lru hit rate`
 
 ## 文档入口
 

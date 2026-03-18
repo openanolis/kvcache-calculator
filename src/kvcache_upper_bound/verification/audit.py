@@ -8,7 +8,7 @@ from typing import Iterable
 from kvcache_upper_bound.core.models import RequestRecord
 from kvcache_upper_bound.ingest.normalizer import build_effective_requests
 from kvcache_upper_bound.oracle.capacity import _build_access_trace
-from kvcache_upper_bound.reporting.buckets import (
+from kvcache_upper_bound.reporting import (
     BucketAnalysisConfig,
     BucketAnalysisResult,
     BucketInputSummary,

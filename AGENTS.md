@@ -33,6 +33,7 @@ kvcache-upper-bound-oracle/
 │       ├── reporting/
 │       │   ├── __init__.py
 │       │   ├── buckets.py
+│       │   ├── inputs.py
 │       │   └── output.py
 │       ├── verification/
 │       │   ├── __init__.py
@@ -59,7 +60,7 @@ kvcache-upper-bound-oracle/
 
 ## 文件职责
 
-- `README.md`：项目入口，只讲目标、范围、启动顺序，以及为什么要把 `hit_summary.csv` 和 `planning_summary.csv` 分开。
+- `README.md`：项目入口，只讲目标、范围、启动顺序，以及为什么要把 `hit_summary.csv`、`planning_summary.csv`、`planning_lru.csv` 分开。
 - `pyproject.toml`：本地可安装入口；保证 `kvcache-upper-bound` 命令可直接运行。
 - `docs/design_guide.md`：需求、口径、算法、阶段计划的单一事实来源。
 - `docs/correctness_guide.md`：解释哪些结果已被 reference 证明，哪些指标只是解释 exact strict-prefix 的辅助证据。
@@ -73,7 +74,8 @@ kvcache-upper-bound-oracle/
 - `src/kvcache_upper_bound/oracle/lru.py`：LRU 策略基线；在相同 prefix-path 语义下输出在线 LRU 的 strict-prefix 命中结果，只用来和 exact strict-prefix 对比，不充当上界。
 - `src/kvcache_upper_bound/oracle/strict_prefix.py`：严格前缀容量 oracle；先走 `content` / `relaxed==replay` 证书快路，证书不够时再做请求边界 DP 精确搜索。
 - `src/kvcache_upper_bound/reporting/buckets.py`：按长度分桶和部署规格做核心分析、配置校验与输入归一化；这里负责把“机器/卡/TPS/预算”语义钉死。
-- `src/kvcache_upper_bound/reporting/output.py`：把分析结果翻译成 `summary.csv / hit_summary.csv / planning_summary.csv / details.json`；命中表可以带 LRU baseline，规划表只保留 exact strict-prefix 派生列。
+- `src/kvcache_upper_bound/reporting/inputs.py`：输入归一化摘要；从分桶结果提炼 `metadata.json` 和 correctness report 需要的稳定输入口径。
+- `src/kvcache_upper_bound/reporting/output.py`：把分析结果翻译成 `summary.csv / hit_summary.csv / planning_summary.csv / planning_lru.csv / details.json`；上界规划和策略规划必须分文件输出，不能共用模糊列名。
 - `src/kvcache_upper_bound/cli/main.py`：命令行入口；负责把 trace、配置、输出目录串成完整离线分析流程，并让 `metadata.json` 同时输出报表行镜像和输入归一化摘要。
 - `src/kvcache_upper_bound/verification/reference.py`：朴素 reference、暴力验证器、strict-prefix 精确 oracle 对账器，以及 `relaxed == replay == exact` 的穷举等价校验器。
 - `src/kvcache_upper_bound/verification/audit.py`：把 reference 结果、trace 样本对账、relaxed/replay/exact strict-prefix 诊断、proof source 写成 correctness report，并同时输出中英文 Markdown 报告。
@@ -109,7 +111,8 @@ kvcache-upper-bound-oracle/
 - `reporting/` 负责把算法结果翻译成汇总表和结果文件；不要反向污染 oracle 的数据结构。
 - `reporting/` 内允许做命中率到 `TPS / 机器数` 的纯后处理，但不能把机器数、调度和带宽反向混进 oracle 定义。
 - `reporting/` 输出要坚持主次分离：命中估算是主结果，`TPS / 机器数` 是派生结果；不要把派生列淹没主口径。
-- `LRU` 只是一条策略基线；它可以出现在命中报表里，但不能替代 exact strict-prefix，也不能直接驱动规划列。
+- 上界规划和策略规划必须显式分开：`planning_summary.csv` 代表 exact strict-prefix，`planning_lru.csv` 代表 LRU；不要再使用含混的 `HBM TPS Gain` 之类列名。
+- `LRU` 既是命中基线，也是策略规划输入；但它不能替代 exact strict-prefix 的上界地位。
 
 ## 开发规范
 
@@ -138,3 +141,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-18`：把 `reporting/buckets.py` 拆出 `reporting/output.py`，避免单文件继续膨胀；分析、校验、输出三类职责重新分层。
 - `2026-03-18`：新增 `oracle/lru.py` 与对应测试；主报表开始同时输出 `HBM LRU 命中率` 和扩展容量层的 `LRU` 基线命中率，但规划列仍只基于 exact strict-prefix。
 - `2026-03-18`：把输出层测试拆到 `tests/test_bucket_output_files.py`，恢复单文件规模，继续保持测试职责分离。
+- `2026-03-18`：新增 `reporting/inputs.py`，把输入归一化摘要从 `buckets.py` 抽离；同时新增 `planning_lru.csv`，把 exact strict-prefix 上界规划和 LRU 策略规划彻底分开。

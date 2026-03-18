@@ -154,6 +154,7 @@ class BucketOutputFilesTest(unittest.TestCase):
             summary_csv = (output_dir / "summary.csv").read_text(encoding="utf-8")
             hit_summary_csv = (output_dir / "hit_summary.csv").read_text(encoding="utf-8")
             planning_summary_csv = (output_dir / "planning_summary.csv").read_text(encoding="utf-8")
+            planning_lru_csv = (output_dir / "planning_lru.csv").read_text(encoding="utf-8")
             details_json = json.loads((output_dir / "details.json").read_text(encoding="utf-8"))
 
         self.assertIn("分桶", summary_csv)
@@ -162,35 +163,43 @@ class BucketOutputFilesTest(unittest.TestCase):
         self.assertIn("HBM Strict-Prefix Replay 命中率", summary_csv)
         self.assertIn("HBM Strict-Prefix 命中率", summary_csv)
         self.assertIn("HBM Strict-Prefix 求解路径", summary_csv)
-        self.assertIn("HBM TPS Gain", summary_csv)
-        self.assertIn("HBM 同负载估算卡数", summary_csv)
-        self.assertIn("HBM 估算总 TPS", summary_csv)
-        self.assertIn("HBM 同负载估算机器数", summary_csv)
-        self.assertIn("HBM+单机 1T 命中率", summary_csv)
+        self.assertIn("HBM Strict-Prefix TPS Gain", summary_csv)
+        self.assertIn("HBM Strict-Prefix 同负载估算卡数", summary_csv)
+        self.assertIn("HBM Strict-Prefix 估算总 TPS", summary_csv)
+        self.assertIn("HBM Strict-Prefix 同负载估算机器数", summary_csv)
+        self.assertIn("HBM+单机 1T Strict-Prefix 命中率", summary_csv)
         self.assertIn("HBM+单机 1T Relaxed Upper Bound 命中率", summary_csv)
         self.assertIn("HBM+单机 1T LRU 命中率", summary_csv)
         self.assertIn("HBM+单机 1T Strict-Prefix Replay 命中率", summary_csv)
         self.assertIn("HBM+单机 1T Strict-Prefix 求解路径", summary_csv)
-        self.assertIn("HBM+单机 1T TPS Gain", summary_csv)
-        self.assertIn("HBM+单机 1T 同负载估算卡数", summary_csv)
-        self.assertIn("HBM+单机 1T 估算总 TPS", summary_csv)
-        self.assertIn("HBM+单机 1T 同负载估算机器数", summary_csv)
-        self.assertIn("HBM+单机 10T 命中率", summary_csv)
+        self.assertIn("HBM+单机 1T Strict-Prefix TPS Gain", summary_csv)
+        self.assertIn("HBM+单机 1T Strict-Prefix 同负载估算卡数", summary_csv)
+        self.assertIn("HBM+单机 1T Strict-Prefix 估算总 TPS", summary_csv)
+        self.assertIn("HBM+单机 1T Strict-Prefix 同负载估算机器数", summary_csv)
+        self.assertIn("HBM+单机 10T Strict-Prefix 命中率", summary_csv)
         self.assertIn("HBM Relaxed Upper Bound 命中率", hit_summary_csv)
         self.assertIn("HBM LRU 命中率", hit_summary_csv)
+        self.assertIn("HBM+单机 1T Strict-Prefix 命中率", hit_summary_csv)
         self.assertIn("HBM+单机 1T LRU 命中率", hit_summary_csv)
         self.assertIn("TPS 输入口径", hit_summary_csv)
-        self.assertNotIn("HBM TPS Gain", hit_summary_csv)
-        self.assertNotIn("HBM 估算总 TPS", hit_summary_csv)
+        self.assertNotIn("HBM Strict-Prefix TPS Gain", hit_summary_csv)
+        self.assertNotIn("HBM LRU TPS Gain", hit_summary_csv)
         self.assertIn("Prefill 节省系数 alpha", planning_summary_csv)
         self.assertIn("TPS 输入口径", planning_summary_csv)
-        self.assertIn("HBM TPS Gain", planning_summary_csv)
-        self.assertIn("HBM 同负载估算卡数", planning_summary_csv)
-        self.assertIn("HBM 估算总 TPS", planning_summary_csv)
-        self.assertIn("HBM+单机 1T TPS Gain", planning_summary_csv)
-        self.assertIn("HBM+单机 1T 同负载估算卡数", planning_summary_csv)
+        self.assertIn("HBM Strict-Prefix TPS Gain", planning_summary_csv)
+        self.assertIn("HBM Strict-Prefix 同负载估算卡数", planning_summary_csv)
+        self.assertIn("HBM Strict-Prefix 估算总 TPS", planning_summary_csv)
+        self.assertIn("HBM+单机 1T Strict-Prefix TPS Gain", planning_summary_csv)
+        self.assertIn("HBM+单机 1T Strict-Prefix 同负载估算卡数", planning_summary_csv)
         self.assertNotIn("HBM Relaxed Upper Bound 命中率", planning_summary_csv)
         self.assertNotIn("HBM Strict-Prefix Replay 命中率", planning_summary_csv)
+        self.assertIn("Prefill 节省系数 alpha", planning_lru_csv)
+        self.assertIn("HBM LRU TPS Gain", planning_lru_csv)
+        self.assertIn("HBM LRU 同负载估算卡数", planning_lru_csv)
+        self.assertIn("HBM LRU 估算总 TPS", planning_lru_csv)
+        self.assertIn("HBM+单机 1T LRU TPS Gain", planning_lru_csv)
+        self.assertIn("HBM+单机 1T LRU 同负载估算卡数", planning_lru_csv)
+        self.assertNotIn("HBM Strict-Prefix 求解路径", planning_lru_csv)
         self.assertEqual(details_json["rows"][0]["bucket_label"], "0-32K")
         self.assertEqual(details_json["rows"][0]["machine_spec"], "h20")
         self.assertEqual(details_json["rows"][0]["machine_count"], 2)
@@ -207,20 +216,40 @@ class BucketOutputFilesTest(unittest.TestCase):
         self.assertIn("hbm_lru_hit_rate", details_json["rows"][0])
         self.assertIn("hbm_strict_prefix_hit_rate", details_json["rows"][0])
         self.assertIn("hbm_strict_prefix_proof_source", details_json["rows"][0])
-        self.assertIn("hbm_tps_gain", details_json["rows"][0])
-        self.assertIn("hbm_estimated_total_tps", details_json["rows"][0])
-        self.assertIn("hbm_estimated_card_count_for_same_load", details_json["rows"][0])
-        self.assertIn("hbm_estimated_machine_count_for_same_load", details_json["rows"][0])
+        self.assertIn("hbm_strict_prefix_tps_gain", details_json["rows"][0])
+        self.assertIn("hbm_strict_prefix_estimated_total_tps", details_json["rows"][0])
+        self.assertIn("hbm_strict_prefix_estimated_card_count_for_same_load", details_json["rows"][0])
+        self.assertIn(
+            "hbm_strict_prefix_estimated_machine_count_for_same_load",
+            details_json["rows"][0],
+        )
+        self.assertIn("hbm_lru_tps_gain", details_json["rows"][0])
+        self.assertIn("hbm_lru_estimated_total_tps", details_json["rows"][0])
+        self.assertIn("hbm_lru_estimated_card_count_for_same_load", details_json["rows"][0])
+        self.assertIn("hbm_lru_estimated_machine_count_for_same_load", details_json["rows"][0])
         self.assertIn("extra_tier_relaxed_upper_bound_hit_rates", details_json["rows"][0])
         self.assertIn("extra_tier_lru_hit_rates", details_json["rows"][0])
         self.assertIn("extra_tier_strict_prefix_replay_hit_rates", details_json["rows"][0])
         self.assertIn("extra_tier_strict_prefix_hit_rates", details_json["rows"][0])
         self.assertIn("extra_tier_strict_prefix_proof_sources", details_json["rows"][0])
-        self.assertIn("extra_tier_tps_gains", details_json["rows"][0])
-        self.assertIn("extra_tier_estimated_total_tps", details_json["rows"][0])
-        self.assertIn("extra_tier_estimated_card_counts_for_same_load", details_json["rows"][0])
+        self.assertIn("extra_tier_strict_prefix_tps_gains", details_json["rows"][0])
+        self.assertIn("extra_tier_strict_prefix_estimated_total_tps", details_json["rows"][0])
         self.assertIn(
-            "extra_tier_estimated_machine_counts_for_same_load",
+            "extra_tier_strict_prefix_estimated_card_counts_for_same_load",
+            details_json["rows"][0],
+        )
+        self.assertIn(
+            "extra_tier_strict_prefix_estimated_machine_counts_for_same_load",
+            details_json["rows"][0],
+        )
+        self.assertIn("extra_tier_lru_tps_gains", details_json["rows"][0])
+        self.assertIn("extra_tier_lru_estimated_total_tps", details_json["rows"][0])
+        self.assertIn(
+            "extra_tier_lru_estimated_card_counts_for_same_load",
+            details_json["rows"][0],
+        )
+        self.assertIn(
+            "extra_tier_lru_estimated_machine_counts_for_same_load",
             details_json["rows"][0],
         )
         self.assertEqual(details_json["rows"][0]["hbm_strict_prefix_proof_source"], "certificate")
@@ -265,18 +294,34 @@ class BucketOutputFilesTest(unittest.TestCase):
             - details_json["rows"][0]["prefill_savings_alpha"]
             * details_json["rows"][0]["hbm_strict_prefix_hit_rate"]
         )
-        self.assertAlmostEqual(details_json["rows"][0]["hbm_tps_gain"], expected_hbm_tps_gain)
         self.assertAlmostEqual(
-            details_json["rows"][0]["hbm_estimated_total_tps"],
+            details_json["rows"][0]["hbm_strict_prefix_tps_gain"],
+            expected_hbm_tps_gain,
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["hbm_strict_prefix_estimated_total_tps"],
             details_json["rows"][0]["total_tps"] * expected_hbm_tps_gain,
         )
         self.assertAlmostEqual(
-            details_json["rows"][0]["hbm_estimated_card_count_for_same_load"],
+            details_json["rows"][0]["hbm_strict_prefix_estimated_card_count_for_same_load"],
             details_json["rows"][0]["card_count"] / expected_hbm_tps_gain,
         )
         self.assertAlmostEqual(
-            details_json["rows"][0]["hbm_estimated_machine_count_for_same_load"],
+            details_json["rows"][0]["hbm_strict_prefix_estimated_machine_count_for_same_load"],
             details_json["rows"][0]["machine_count"] / expected_hbm_tps_gain,
+        )
+        expected_hbm_lru_tps_gain = 1.0 / (
+            1.0
+            - details_json["rows"][0]["prefill_savings_alpha"]
+            * details_json["rows"][0]["hbm_lru_hit_rate"]
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["hbm_lru_tps_gain"],
+            expected_hbm_lru_tps_gain,
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["hbm_lru_estimated_total_tps"],
+            details_json["rows"][0]["total_tps"] * expected_hbm_lru_tps_gain,
         )
         expected_extra_tier_gain = 1.0 / (
             1.0
@@ -284,24 +329,41 @@ class BucketOutputFilesTest(unittest.TestCase):
             * details_json["rows"][0]["extra_tier_strict_prefix_hit_rates"]["HBM+单机 1T 命中率"]
         )
         self.assertAlmostEqual(
-            details_json["rows"][0]["extra_tier_tps_gains"]["HBM+单机 1T 命中率"],
+            details_json["rows"][0]["extra_tier_strict_prefix_tps_gains"]["HBM+单机 1T 命中率"],
             expected_extra_tier_gain,
         )
         self.assertAlmostEqual(
-            details_json["rows"][0]["extra_tier_estimated_total_tps"]["HBM+单机 1T 命中率"],
+            details_json["rows"][0]["extra_tier_strict_prefix_estimated_total_tps"][
+                "HBM+单机 1T 命中率"
+            ],
             details_json["rows"][0]["total_tps"] * expected_extra_tier_gain,
         )
         self.assertAlmostEqual(
-            details_json["rows"][0]["extra_tier_estimated_card_counts_for_same_load"][
+            details_json["rows"][0]["extra_tier_strict_prefix_estimated_card_counts_for_same_load"][
                 "HBM+单机 1T 命中率"
             ],
             details_json["rows"][0]["card_count"] / expected_extra_tier_gain,
         )
         self.assertAlmostEqual(
-            details_json["rows"][0]["extra_tier_estimated_machine_counts_for_same_load"][
+            details_json["rows"][0][
+                "extra_tier_strict_prefix_estimated_machine_counts_for_same_load"
+            ][
                 "HBM+单机 1T 命中率"
             ],
             details_json["rows"][0]["machine_count"] / expected_extra_tier_gain,
+        )
+        expected_extra_tier_lru_gain = 1.0 / (
+            1.0
+            - details_json["rows"][0]["prefill_savings_alpha"]
+            * details_json["rows"][0]["extra_tier_lru_hit_rates"]["HBM+单机 1T 命中率"]
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["extra_tier_lru_tps_gains"]["HBM+单机 1T 命中率"],
+            expected_extra_tier_lru_gain,
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["extra_tier_lru_estimated_total_tps"]["HBM+单机 1T 命中率"],
+            details_json["rows"][0]["total_tps"] * expected_extra_tier_lru_gain,
         )
 
     def test_bucket_reporting_omits_actual_hit_rate_column_when_absent(self) -> None:
@@ -347,17 +409,20 @@ class BucketOutputFilesTest(unittest.TestCase):
             summary_csv = (output_dir / "summary.csv").read_text(encoding="utf-8")
             hit_summary_csv = (output_dir / "hit_summary.csv").read_text(encoding="utf-8")
             planning_summary_csv = (output_dir / "planning_summary.csv").read_text(encoding="utf-8")
+            planning_lru_csv = (output_dir / "planning_lru.csv").read_text(encoding="utf-8")
 
         self.assertNotIn("实际命中率", summary_csv)
         self.assertNotIn("总 TPS", summary_csv)
-        self.assertNotIn("HBM 估算总 TPS", summary_csv)
-        self.assertIn("HBM TPS Gain", summary_csv)
-        self.assertIn("HBM 同负载估算卡数", summary_csv)
-        self.assertIn("HBM 同负载估算机器数", summary_csv)
-        self.assertNotIn("HBM TPS Gain", hit_summary_csv)
-        self.assertIn("HBM TPS Gain", planning_summary_csv)
-        self.assertIn("HBM 同负载估算卡数", planning_summary_csv)
-        self.assertNotIn("HBM 估算总 TPS", planning_summary_csv)
+        self.assertNotIn("HBM Strict-Prefix 估算总 TPS", summary_csv)
+        self.assertIn("HBM Strict-Prefix TPS Gain", summary_csv)
+        self.assertIn("HBM Strict-Prefix 同负载估算卡数", summary_csv)
+        self.assertIn("HBM Strict-Prefix 同负载估算机器数", summary_csv)
+        self.assertNotIn("HBM Strict-Prefix TPS Gain", hit_summary_csv)
+        self.assertIn("HBM Strict-Prefix TPS Gain", planning_summary_csv)
+        self.assertIn("HBM Strict-Prefix 同负载估算卡数", planning_summary_csv)
+        self.assertNotIn("HBM Strict-Prefix 估算总 TPS", planning_summary_csv)
+        self.assertIn("HBM LRU TPS Gain", planning_lru_csv)
+        self.assertNotIn("HBM LRU 估算总 TPS", planning_lru_csv)
 
 
 if __name__ == "__main__":

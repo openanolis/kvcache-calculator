@@ -459,8 +459,9 @@ kvcache-upper-bound audit-buckets \
 | 文件 | 内容 |
 |------|------|
 | `summary.csv` | 兼容汇总表；同时保留命中结果与派生规划列 |
-| `hit_summary.csv` | 核心命中估算表；只放 `content / relaxed / replay / exact strict-prefix / proof source` |
-| `planning_summary.csv` | 派生规划表；只放 exact strict-prefix 命中率及其推导出的 `TPS Gain / 同负载估算卡数 / 同负载估算机器数 / 估算总 TPS` |
+| `hit_summary.csv` | 核心命中估算表；只放 `content / relaxed / lru / replay / exact strict-prefix / proof source` |
+| `planning_summary.csv` | 上界规划表；只放 exact strict-prefix 命中率及其推导出的 `TPS Gain / 同负载估算卡数 / 同负载估算机器数 / 估算总 TPS` |
+| `planning_lru.csv` | 策略规划表；只放 LRU 命中率及其推导出的 `TPS Gain / 同负载估算卡数 / 同负载估算机器数 / 估算总 TPS` |
 | `details.json` | 每个桶的 content / relaxed / exact strict-prefix 详细摘要 |
 | `metadata.json` | 输入参数、加载统计、报表行镜像 |
 | `correctness_report.{json,md,zh.md,en.md}` | reference 校验、trace 采样对账、strict-prefix 求解路径说明 |
