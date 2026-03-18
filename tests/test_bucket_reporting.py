@@ -65,6 +65,7 @@ class BucketReportingTest(unittest.TestCase):
             result = analyze_bucket_deployments(records, config)
 
         self.assertAlmostEqual(result.rows[0].hbm_kv_total_gb, 1.0, places=6)
+        self.assertAlmostEqual(config.prefill_savings_alpha, 0.8)
 
     def test_bucket_reporting_outputs_requested_columns(self) -> None:
         records = [
@@ -106,6 +107,7 @@ class BucketReportingTest(unittest.TestCase):
             ),
         ]
         config_payload = {
+            "prefill_savings_alpha": 0.5,
             "model_profile": {
                 "n_layers": 1,
                 "n_kv_heads": 1,
@@ -147,22 +149,38 @@ class BucketReportingTest(unittest.TestCase):
         self.assertIn("HBM Strict-Prefix Replay 命中率", summary_csv)
         self.assertIn("HBM Strict-Prefix 命中率", summary_csv)
         self.assertIn("HBM Strict-Prefix 求解路径", summary_csv)
+        self.assertIn("HBM TPS Gain", summary_csv)
+        self.assertIn("HBM 估算总 TPS", summary_csv)
+        self.assertIn("HBM 同负载估算机器数", summary_csv)
         self.assertIn("HBM+单机 1T 命中率", summary_csv)
         self.assertIn("HBM+单机 1T Relaxed Upper Bound 命中率", summary_csv)
         self.assertIn("HBM+单机 1T Strict-Prefix Replay 命中率", summary_csv)
         self.assertIn("HBM+单机 1T Strict-Prefix 求解路径", summary_csv)
+        self.assertIn("HBM+单机 1T TPS Gain", summary_csv)
+        self.assertIn("HBM+单机 1T 估算总 TPS", summary_csv)
+        self.assertIn("HBM+单机 1T 同负载估算机器数", summary_csv)
         self.assertIn("HBM+单机 10T 命中率", summary_csv)
         self.assertEqual(details_json["rows"][0]["bucket_label"], "0-32K")
         self.assertEqual(details_json["rows"][0]["machine_spec"], "h20")
         self.assertEqual(details_json["rows"][0]["machine_count"], 8)
+        self.assertAlmostEqual(details_json["rows"][0]["prefill_savings_alpha"], 0.5)
         self.assertAlmostEqual(details_json["rows"][0]["actual_hit_rate"], 0.69)
         self.assertIn("hbm_strict_prefix_replay_hit_rate", details_json["rows"][0])
         self.assertIn("hbm_strict_prefix_hit_rate", details_json["rows"][0])
         self.assertIn("hbm_strict_prefix_proof_source", details_json["rows"][0])
+        self.assertIn("hbm_tps_gain", details_json["rows"][0])
+        self.assertIn("hbm_estimated_total_tps", details_json["rows"][0])
+        self.assertIn("hbm_estimated_machine_count_for_same_load", details_json["rows"][0])
         self.assertIn("extra_tier_relaxed_upper_bound_hit_rates", details_json["rows"][0])
         self.assertIn("extra_tier_strict_prefix_replay_hit_rates", details_json["rows"][0])
         self.assertIn("extra_tier_strict_prefix_hit_rates", details_json["rows"][0])
         self.assertIn("extra_tier_strict_prefix_proof_sources", details_json["rows"][0])
+        self.assertIn("extra_tier_tps_gains", details_json["rows"][0])
+        self.assertIn("extra_tier_estimated_total_tps", details_json["rows"][0])
+        self.assertIn(
+            "extra_tier_estimated_machine_counts_for_same_load",
+            details_json["rows"][0],
+        )
         self.assertEqual(details_json["rows"][0]["hbm_strict_prefix_proof_source"], "certificate")
         self.assertTrue(
             details_json["details"]["0-32K"]["hbm_strict_prefix_summary"]["proof_source"] == "certificate"
@@ -186,6 +204,37 @@ class BucketReportingTest(unittest.TestCase):
         self.assertAlmostEqual(
             details_json["rows"][0]["extra_tier_strict_prefix_hit_rates"]["HBM+单机 1T 命中率"],
             details_json["rows"][0]["extra_tier_strict_prefix_hit_rates"]["HBM+单机 10T 命中率"],
+        )
+        expected_hbm_tps_gain = 1.0 / (
+            1.0 - details_json["rows"][0]["prefill_savings_alpha"] * details_json["rows"][0]["hbm_strict_prefix_hit_rate"]
+        )
+        self.assertAlmostEqual(details_json["rows"][0]["hbm_tps_gain"], expected_hbm_tps_gain)
+        self.assertAlmostEqual(
+            details_json["rows"][0]["hbm_estimated_total_tps"],
+            details_json["rows"][0]["total_tps"] * expected_hbm_tps_gain,
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["hbm_estimated_machine_count_for_same_load"],
+            details_json["rows"][0]["machine_count"] / expected_hbm_tps_gain,
+        )
+        expected_extra_tier_gain = 1.0 / (
+            1.0
+            - details_json["rows"][0]["prefill_savings_alpha"]
+            * details_json["rows"][0]["extra_tier_strict_prefix_hit_rates"]["HBM+单机 1T 命中率"]
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["extra_tier_tps_gains"]["HBM+单机 1T 命中率"],
+            expected_extra_tier_gain,
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["extra_tier_estimated_total_tps"]["HBM+单机 1T 命中率"],
+            details_json["rows"][0]["total_tps"] * expected_extra_tier_gain,
+        )
+        self.assertAlmostEqual(
+            details_json["rows"][0]["extra_tier_estimated_machine_counts_for_same_load"][
+                "HBM+单机 1T 命中率"
+            ],
+            details_json["rows"][0]["machine_count"] / expected_extra_tier_gain,
         )
 
     def test_bucket_reporting_omits_actual_hit_rate_column_when_absent(self) -> None:
@@ -235,6 +284,10 @@ class BucketReportingTest(unittest.TestCase):
             summary_csv = (output_dir / "summary.csv").read_text(encoding="utf-8")
 
         self.assertNotIn("实际命中率", summary_csv)
+        self.assertNotIn("总 TPS", summary_csv)
+        self.assertNotIn("HBM 估算总 TPS", summary_csv)
+        self.assertIn("HBM TPS Gain", summary_csv)
+        self.assertIn("HBM 同负载估算机器数", summary_csv)
 
 
 if __name__ == "__main__":

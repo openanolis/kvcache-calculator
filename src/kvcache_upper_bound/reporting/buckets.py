@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
@@ -91,6 +92,7 @@ class BucketAnalysisConfig:
     scope: Scope
     block_size: int
     bucket_deployments: tuple[BucketDeploymentConfig, ...]
+    prefill_savings_alpha: float = 0.8
 
 
 @dataclass(frozen=True)
@@ -99,6 +101,7 @@ class BucketReportRow:
     machine_count: int
     machine_spec: str
     total_tps: float | None
+    prefill_savings_alpha: float
     hbm_kv_gb_per_machine: float
     hbm_kv_total_gb: float
     model_weight_gb_per_machine: float | None
@@ -109,10 +112,16 @@ class BucketReportRow:
     hbm_strict_prefix_replay_hit_rate: float | None
     hbm_strict_prefix_hit_rate: float | None
     hbm_strict_prefix_proof_source: str | None
+    hbm_tps_gain: float | None
+    hbm_estimated_total_tps: float | None
+    hbm_estimated_machine_count_for_same_load: float | None
     extra_tier_relaxed_upper_bound_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_hit_rates: dict[str, float | None]
     extra_tier_strict_prefix_proof_sources: dict[str, str | None]
+    extra_tier_tps_gains: dict[str, float | None]
+    extra_tier_estimated_total_tps: dict[str, float | None]
+    extra_tier_estimated_machine_counts_for_same_load: dict[str, float | None]
     request_count: int
     window_tokens: int | None
     input_lower_tokens: int
@@ -140,6 +149,7 @@ def load_bucket_analysis_config(path: str | Path) -> BucketAnalysisConfig:
     model_profile = _load_model_profile(payload.get("model_profile", {}))
     scope = Scope(str(payload.get("scope", Scope.GLOBAL.value)))
     block_size = int(payload.get("block_size", model_profile.block_size))
+    prefill_savings_alpha = _load_prefill_savings_alpha(payload)
     bucket_deployments = tuple(
         _load_bucket_deployment(item) for item in payload.get("bucket_deployments", [])
     )
@@ -150,6 +160,7 @@ def load_bucket_analysis_config(path: str | Path) -> BucketAnalysisConfig:
         scope=scope,
         block_size=block_size,
         bucket_deployments=bucket_deployments,
+        prefill_savings_alpha=prefill_savings_alpha,
     )
 
 
@@ -163,6 +174,7 @@ def analyze_bucket_deployments(
 
     for deployment in config.bucket_deployments:
         bucket_records = [record for record in record_list if deployment.contains(record.input_length)]
+        has_bucket_records = bool(bucket_records)
         window_tokens = deployment.resolved_window_tokens(bucket_records)
         normalized = build_effective_requests(
             bucket_records,
@@ -204,6 +216,9 @@ def analyze_bucket_deployments(
         extra_tier_strict_prefix_replay_hit_rates: dict[str, float | None] = {}
         extra_tier_strict_prefix_hit_rates: dict[str, float | None] = {}
         extra_tier_strict_prefix_proof_sources: dict[str, str | None] = {}
+        extra_tier_tps_gains: dict[str, float | None] = {}
+        extra_tier_estimated_total_tps: dict[str, float | None] = {}
+        extra_tier_estimated_machine_counts_for_same_load: dict[str, float | None] = {}
         ceiling_capacity_result = hbm_capacity_result if (
             hbm_capacity_result.summary.hit_blocks == content_result.summary.hit_blocks
             and hbm_capacity_result.summary.total_blocks == content_result.summary.total_blocks
@@ -248,47 +263,77 @@ def analyze_bucket_deployments(
             extra_capacity_results[tier.label] = capacity_result
             extra_strict_prefix_results[tier.label] = strict_prefix_result
             extra_tier_relaxed_upper_bound_hit_rates[tier.label] = (
-                None if not bucket_records else capacity_result.summary.block_hit_rate
+                None if not has_bucket_records else capacity_result.summary.block_hit_rate
             )
             extra_tier_strict_prefix_replay_hit_rates[tier.label] = (
-                None if not bucket_records else capacity_result.summary.strict_prefix_block_hit_rate
+                None if not has_bucket_records else capacity_result.summary.strict_prefix_block_hit_rate
             )
             extra_tier_strict_prefix_hit_rates[tier.label] = (
-                None if not bucket_records else strict_prefix_result.summary.block_hit_rate
+                None if not has_bucket_records else strict_prefix_result.summary.block_hit_rate
             )
             extra_tier_strict_prefix_proof_sources[tier.label] = (
-                None if not bucket_records else strict_prefix_result.summary.proof_source
+                None if not has_bucket_records else strict_prefix_result.summary.proof_source
             )
+            extra_tier_tps_gains[tier.label] = _tps_gain(
+                extra_tier_strict_prefix_hit_rates[tier.label],
+                config.prefill_savings_alpha,
+            )
+            extra_tier_estimated_total_tps[tier.label] = _estimated_total_tps(
+                deployment.total_tps,
+                extra_tier_tps_gains[tier.label],
+            )
+            extra_tier_estimated_machine_counts_for_same_load[tier.label] = _estimated_machine_count(
+                deployment.machine_count,
+                extra_tier_tps_gains[tier.label],
+            )
+
+        hbm_relaxed_upper_bound_hit_rate = (
+            None if not has_bucket_records else hbm_capacity_result.summary.block_hit_rate
+        )
+        hbm_strict_prefix_replay_hit_rate = (
+            None if not has_bucket_records else hbm_capacity_result.summary.strict_prefix_block_hit_rate
+        )
+        hbm_strict_prefix_hit_rate = (
+            None if not has_bucket_records else hbm_strict_prefix_result.summary.block_hit_rate
+        )
+        hbm_strict_prefix_proof_source = (
+            None if not has_bucket_records else hbm_strict_prefix_result.summary.proof_source
+        )
+        hbm_tps_gain = _tps_gain(hbm_strict_prefix_hit_rate, config.prefill_savings_alpha)
+        hbm_estimated_total_tps = _estimated_total_tps(deployment.total_tps, hbm_tps_gain)
+        hbm_estimated_machine_count_for_same_load = _estimated_machine_count(
+            deployment.machine_count,
+            hbm_tps_gain,
+        )
 
         row = BucketReportRow(
             bucket_label=deployment.label,
             machine_count=deployment.machine_count,
             machine_spec=deployment.machine_spec,
             total_tps=deployment.total_tps,
+            prefill_savings_alpha=config.prefill_savings_alpha,
             hbm_kv_gb_per_machine=hbm_kv_gb_per_machine,
             hbm_kv_total_gb=hbm_kv_total_gb,
             model_weight_gb_per_machine=model_weight_gb_per_machine,
-            extreme_hit_rate=None if not bucket_records else content_result.summary.block_hit_rate,
+            extreme_hit_rate=None if not has_bucket_records else content_result.summary.block_hit_rate,
             actual_hit_rate=deployment.actual_hit_rate,
             actual_hit_rate_note=deployment.actual_hit_rate_note,
-            hbm_relaxed_upper_bound_hit_rate=None
-            if not bucket_records
-            else hbm_capacity_result.summary.block_hit_rate,
-            hbm_strict_prefix_replay_hit_rate=None
-            if not bucket_records
-            else hbm_capacity_result.summary.strict_prefix_block_hit_rate,
-            hbm_strict_prefix_hit_rate=None
-            if not bucket_records
-            else hbm_strict_prefix_result.summary.block_hit_rate,
-            hbm_strict_prefix_proof_source=None
-            if not bucket_records
-            else hbm_strict_prefix_result.summary.proof_source,
+            hbm_relaxed_upper_bound_hit_rate=hbm_relaxed_upper_bound_hit_rate,
+            hbm_strict_prefix_replay_hit_rate=hbm_strict_prefix_replay_hit_rate,
+            hbm_strict_prefix_hit_rate=hbm_strict_prefix_hit_rate,
+            hbm_strict_prefix_proof_source=hbm_strict_prefix_proof_source,
+            hbm_tps_gain=hbm_tps_gain,
+            hbm_estimated_total_tps=hbm_estimated_total_tps,
+            hbm_estimated_machine_count_for_same_load=hbm_estimated_machine_count_for_same_load,
             extra_tier_relaxed_upper_bound_hit_rates=extra_tier_relaxed_upper_bound_hit_rates,
             extra_tier_strict_prefix_replay_hit_rates=extra_tier_strict_prefix_replay_hit_rates,
             extra_tier_strict_prefix_hit_rates=extra_tier_strict_prefix_hit_rates,
             extra_tier_strict_prefix_proof_sources=extra_tier_strict_prefix_proof_sources,
+            extra_tier_tps_gains=extra_tier_tps_gains,
+            extra_tier_estimated_total_tps=extra_tier_estimated_total_tps,
+            extra_tier_estimated_machine_counts_for_same_load=extra_tier_estimated_machine_counts_for_same_load,
             request_count=len(bucket_records),
-            window_tokens=None if not bucket_records else window_tokens,
+            window_tokens=None if not has_bucket_records else window_tokens,
             input_lower_tokens=deployment.lower_tokens,
             input_upper_tokens=deployment.upper_tokens,
         )
@@ -341,8 +386,12 @@ def _write_summary_csv(
             "HBM Strict-Prefix Replay 命中率",
             "HBM Strict-Prefix 命中率",
             "HBM Strict-Prefix 求解路径",
+            "HBM TPS Gain",
+            "HBM 同负载估算机器数",
         ]
     )
+    if include_total_tps:
+        fieldnames.append("HBM 估算总 TPS")
     for label in tier_labels:
         relaxed_label = _relaxed_upper_bound_column(label)
         strict_prefix_replay_label = _strict_prefix_replay_column(label)
@@ -353,8 +402,12 @@ def _write_summary_csv(
                 relaxed_label,
                 strict_prefix_replay_label,
                 strict_prefix_proof_label,
+                _tps_gain_column(label),
+                _estimated_machine_count_column(label),
             ]
         )
+        if include_total_tps:
+            fieldnames.append(_estimated_total_tps_column(label))
     fieldnames.extend(["请求数", "窗口上限", "输入下界", "输入上界"])
 
     with path.open("w", encoding="utf-8", newline="") as handle:
@@ -373,6 +426,10 @@ def _write_summary_csv(
                 "HBM Strict-Prefix Replay 命中率": _format_rate(row.hbm_strict_prefix_replay_hit_rate),
                 "HBM Strict-Prefix 命中率": _format_rate(row.hbm_strict_prefix_hit_rate),
                 "HBM Strict-Prefix 求解路径": _format_text(row.hbm_strict_prefix_proof_source),
+                "HBM TPS Gain": _format_number(row.hbm_tps_gain),
+                "HBM 同负载估算机器数": _format_number(
+                    row.hbm_estimated_machine_count_for_same_load
+                ),
                 "请求数": row.request_count,
                 "窗口上限": "" if row.window_tokens is None else row.window_tokens,
                 "输入下界": row.input_lower_tokens,
@@ -380,6 +437,7 @@ def _write_summary_csv(
             }
             if include_total_tps:
                 payload["总 TPS"] = row.total_tps if row.total_tps is not None else ""
+                payload["HBM 估算总 TPS"] = _format_number(row.hbm_estimated_total_tps)
             if include_actual_hit_rate:
                 payload["实际命中率"] = _format_rate(row.actual_hit_rate)
             for label in tier_labels:
@@ -393,6 +451,14 @@ def _write_summary_csv(
                 payload[_strict_prefix_proof_column(label)] = _format_text(
                     row.extra_tier_strict_prefix_proof_sources.get(label)
                 )
+                payload[_tps_gain_column(label)] = _format_number(row.extra_tier_tps_gains.get(label))
+                payload[_estimated_machine_count_column(label)] = _format_number(
+                    row.extra_tier_estimated_machine_counts_for_same_load.get(label)
+                )
+                if include_total_tps:
+                    payload[_estimated_total_tps_column(label)] = _format_number(
+                        row.extra_tier_estimated_total_tps.get(label)
+                    )
             writer.writerow(payload)
 
 
@@ -441,10 +507,12 @@ def _format_rate(value: float | None) -> str:
     return f"{value * 100:.2f}%"
 
 
-def _format_bool(value: bool | None) -> str:
+def _format_number(value: float | None) -> str:
     if value is None:
         return ""
-    return "yes" if value else "no"
+    if math.isinf(value):
+        return "inf"
+    return f"{value:.2f}"
 
 
 def _format_text(value: str | None) -> str:
@@ -465,6 +533,18 @@ def _strict_prefix_proof_column(label: str) -> str:
     return f"{_strict_prefix_column_base(label)} Strict-Prefix 求解路径"
 
 
+def _tps_gain_column(label: str) -> str:
+    return f"{_strict_prefix_column_base(label)} TPS Gain"
+
+
+def _estimated_total_tps_column(label: str) -> str:
+    return f"{_strict_prefix_column_base(label)} 估算总 TPS"
+
+
+def _estimated_machine_count_column(label: str) -> str:
+    return f"{_strict_prefix_column_base(label)} 同负载估算机器数"
+
+
 def _strict_prefix_column_base(label: str) -> str:
     suffix = " 命中率"
     if label.endswith(suffix):
@@ -474,6 +554,38 @@ def _strict_prefix_column_base(label: str) -> str:
 
 def _gb_to_bytes(value_gb: float) -> int:
     return int(value_gb * BYTES_PER_GB)
+
+
+def _load_prefill_savings_alpha(payload: dict[str, Any]) -> float:
+    alpha = _normalize_rate(payload.get("prefill_savings_alpha", 0.8))
+    if alpha is None:
+        return 0.8
+    if not 0.0 <= alpha <= 1.0:
+        raise ValueError("prefill_savings_alpha must be within [0, 1]")
+    return alpha
+
+
+def _tps_gain(hit_rate: float | None, alpha: float) -> float | None:
+    if hit_rate is None:
+        return None
+    denominator = 1.0 - alpha * hit_rate
+    if denominator <= 0.0:
+        return math.inf
+    return 1.0 / denominator
+
+
+def _estimated_total_tps(base_tps: float | None, gain: float | None) -> float | None:
+    if base_tps is None or gain is None:
+        return None
+    return base_tps * gain
+
+
+def _estimated_machine_count(machine_count: int, gain: float | None) -> float | None:
+    if gain is None:
+        return None
+    if math.isinf(gain):
+        return 0.0
+    return machine_count / gain
 
 
 def _load_model_profile(payload: dict[str, Any]) -> ModelProfile:

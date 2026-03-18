@@ -13,6 +13,7 @@
   },
   "scope": "global",
   "block_size": 16,
+  "prefill_savings_alpha": 0.8,
   "bucket_deployments": [
     {
       "label": "0-32K",

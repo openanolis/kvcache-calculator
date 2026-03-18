@@ -9,7 +9,8 @@
 - `content upper bound`：前缀复用极限命中率
 - `capacity upper bound`：HBM 或 HBM+扩展空间下、允许 `no-admit` 的 Belady relaxed 上限
 - `strict-prefix capacity oracle`：真正的严格前缀容量最优值；优先走证书快路，不够时再做精确搜索
-- 分桶报表：输出 `分桶 / 机器数 / 规格 / 总 TPS / HBM KVCache 总大小 / 极限命中率 / HBM relaxed upper bound / HBM strict-prefix replay / HBM strict-prefix / proof source / HBM+1T / HBM+10T`
+- 命中率后处理：用 `TPS(C) = TPS0 / (1 - alpha * h(C))` 把 exact strict-prefix 命中率映射到 `TPS Gain / 估算总 TPS / 同负载估算机器数`
+- 分桶报表：输出 `分桶 / 机器数 / 规格 / 总 TPS / HBM KVCache 总大小 / 极限命中率 / HBM relaxed upper bound / HBM strict-prefix replay / HBM strict-prefix / proof source / HBM TPS Gain / HBM 同负载估算机器数 / HBM+1T / HBM+10T`
 - 正确性审计：输出 exhaustive reference 校验、`relaxed == replay == exact strict-prefix` 的小规模穷举对账、真实 trace 采样对账，以及 strict-prefix exact proof path
 
 设计约束和算法边界见 `docs/design_guide.md`，正确性口径见 `docs/correctness_guide.md`。
@@ -57,6 +58,7 @@ kvcache-upper-bound audit-buckets \
 - `bucket_deployments[].gpu_memory_gb_per_machine`：也可直接给单机显存；此时项目会按 `单机显存 - 模型权重分片 - runtime reserve` 推出理论 KV HBM 容量
 - `bucket_deployments[].runtime_reserve_gb_per_machine`：可选；默认 `0`
 - `bucket_deployments[].extra_capacity_tiers`：每台机器可追加的 host/SSD 容量，例如 1T 或 10T
+- `prefill_savings_alpha`：命中后可节省的 prefill 比例，默认 `0.8`
 - `bucket_deployments[].actual_hit_rate`：实测命中率，可选
 
 公开配置 `configs/public_trace_qwen3_5_27b.json` 现在走的是推导路径：
@@ -75,5 +77,6 @@ kvcache-upper-bound audit-buckets \
 - `HBM Strict-Prefix Replay 命中率` 是把 relaxed-optimal 调度按 strict-prefix 语义重计后的结果；在当前穷举验证空间里，它与 exact strict-prefix oracle 一致
 - `HBM Strict-Prefix 命中率` 来自真正的 exact strict-prefix oracle
 - `HBM Strict-Prefix 求解路径` 为 `certificate` 或 `search`；前者表示被 `replay == content` 或 `relaxed == replay` 直接夹出，后者表示证书不足时进入精确搜索
+- `HBM TPS Gain / HBM 估算总 TPS / HBM 同负载估算机器数` 统一基于 exact strict-prefix 命中率计算；额外容量层的 TPS 列也采用相同公式
 - audit 报告会显式给出 `strict-prefix` 的穷举等价校验结论
 - 概念解释、直观例子和当前已验证的等价关系见 `docs/correctness_guide.md`

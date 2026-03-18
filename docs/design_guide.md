@@ -20,7 +20,7 @@
 | **容量上限** | 有限 GPU/CPU KV 预算下还能保住多少复用？ | trace + model + kv budget |
 | **系统上限** | 带宽和时间窗口是否允许把可复用 KV 搬到位？ | trace + model + machine |
 
-**决策**：当前阶段先做 `Oracle` 内的 `content` 和 `capacity`，`system` 放在第二阶段实现；`Policy / Economics / Heuristic` 作为更外层的后续模块。
+**决策**：当前阶段先做 `Oracle` 内的 `content` 和 `capacity`；对外需要的 `TPS / 机器数` 先作为报表层后处理，从 exact strict-prefix 命中率推导，不把它伪装成 `system oracle`。`Policy / Economics / Heuristic` 仍然作为更外层模块保留扩展位。
 
 ---
 
@@ -440,26 +440,28 @@ graph LR
 
 ## CLI 设计建议
 
-第一版建议只做一个命令：
+当前 CLI 保持两个命令：
 
 ```bash
-python -m kvcache_upper_bound analyze \
+kvcache-upper-bound analyze-buckets \
   --trace /path/to/trace.jsonl \
-  --windows 4096,8192,16384,32768 \
-  --model-config configs/qwen_like.yaml \
-  --gpu-kv-budget-gb 40 \
-  --scope session,global \
+  --config configs/public_trace_qwen3_5_27b.json \
   --output-dir outputs/run_001
+
+kvcache-upper-bound audit-buckets \
+  --trace /path/to/trace.jsonl \
+  --config configs/public_trace_qwen3_5_27b.json \
+  --output-dir outputs/run_001_audit
 ```
 
 输出最少包含：
 
 | 文件 | 内容 |
 |------|------|
-| `summary.csv` | 每个 window 的三级上限汇总 |
-| `request_metrics.parquet` | 每请求明细 |
-| `budget_curve.csv` | 预算敏感性曲线 |
-| `metadata.json` | 输入参数与运行信息 |
+| `summary.csv` | 分桶汇总；包含 exact strict-prefix 命中率，以及基于 `prefill_savings_alpha` 推导的 `TPS Gain / 估算总 TPS / 同负载估算机器数` |
+| `details.json` | 每个桶的 content / relaxed / exact strict-prefix 详细摘要 |
+| `metadata.json` | 输入参数、加载统计、报表行镜像 |
+| `correctness_report.{json,md,zh.md,en.md}` | reference 校验、trace 采样对账、strict-prefix 求解路径说明 |
 
 ---
 

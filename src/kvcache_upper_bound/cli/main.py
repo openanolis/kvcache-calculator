@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 from kvcache_upper_bound.ingest import load_request_records
@@ -154,29 +155,10 @@ def _build_analysis_metadata_payload(
         "loaded_records": trace_result.stats.loaded_records,
         "skipped_records": trace_result.stats.skipped_records,
         "total_lines": trace_result.stats.total_lines,
-        "rows": [
-            {
-                "bucket_label": row.bucket_label,
-                "machine_count": row.machine_count,
-                "machine_spec": row.machine_spec,
-                "total_tps": row.total_tps,
-                "hbm_kv_gb_per_machine": row.hbm_kv_gb_per_machine,
-                "hbm_kv_total_gb": row.hbm_kv_total_gb,
-                "model_weight_gb_per_machine": row.model_weight_gb_per_machine,
-                "extreme_hit_rate": row.extreme_hit_rate,
-                "actual_hit_rate": row.actual_hit_rate,
-                "hbm_relaxed_upper_bound_hit_rate": row.hbm_relaxed_upper_bound_hit_rate,
-                "hbm_strict_prefix_replay_hit_rate": row.hbm_strict_prefix_replay_hit_rate,
-                "hbm_strict_prefix_hit_rate": row.hbm_strict_prefix_hit_rate,
-                "hbm_strict_prefix_proof_source": row.hbm_strict_prefix_proof_source,
-                "extra_tier_relaxed_upper_bound_hit_rates": row.extra_tier_relaxed_upper_bound_hit_rates,
-                "extra_tier_strict_prefix_replay_hit_rates": row.extra_tier_strict_prefix_replay_hit_rates,
-                "extra_tier_strict_prefix_hit_rates": row.extra_tier_strict_prefix_hit_rates,
-                "extra_tier_strict_prefix_proof_sources": row.extra_tier_strict_prefix_proof_sources,
-                "request_count": row.request_count,
-            }
-            for row in analysis_result.rows
-        ],
+        "prefill_savings_alpha": None
+        if not analysis_result.rows
+        else analysis_result.rows[0].prefill_savings_alpha,
+        "rows": [asdict(row) for row in analysis_result.rows],
     }
 
 
