@@ -92,6 +92,7 @@ kvcache-upper-bound calibrate-multi-agent \
 | `bucket_deployments[].planning_target_total_tps` | 否 | 目标总 TPS；提供后会输出“最小卡数 / 最小机器数” |
 | `bucket_deployments[].extra_capacity_tiers` | 否 | 每台机器追加的 host/SSD KV 空间 |
 | `prefill_savings_alpha` | 否 | 命中收益兑现成吞吐收益的比例，默认 `0.8` |
+| `include_output_kvcache` | 否 | PD 不分离时是否将 output KV cache 纳入缓存占用和命中率计算，默认 `false` |
 
 无 trace heuristic 配置示例见 `configs/public_multi_agent_qwen3_5_27b.json`，额外字段如下：
 

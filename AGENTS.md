@@ -199,3 +199,4 @@ kvcache-upper-bound-oracle/
 - `2026-03-18`：新增 `heuristic/` 包和 `estimate-multi-agent` CLI；现在项目支持不依赖 trace 的多 Agent 冷启动估计，并额外输出 `heuristic_summary.csv / heuristic_tier_summary.csv / metadata.json`。
 - `2026-03-18`：新增 `heuristic/calibration.py`、`heuristic/report.py` 和 `calibrate-multi-agent` CLI；现在项目支持用小样本 trace 回标 `zipf_s / lru_like`，并固定输出双语 heuristic 报告与 calibration 工件。
 - `2026-03-18`：新增 `heuristic/structure.py` 与 `recommended_heuristic_config.json` 输出；现在 calibration 路径会同时给出 trace 驱动的结构模板建议，并把 content 对齐效果写入双语报告。
+- `2026-04-23`：新增 `include_output_kvcache` 特性；PD 不分离场景下，从子请求 `hash_ids` 中反向提取父请求 output 的真实 block hashes，注入 trie 后实现 output KV cache 的精确缓存占用和命中率计算。影响 `models.py`（新增 `output_hash_ids`）、`normalizer.py`（新增 `_extract_output_hashes`）、`capacity.py / content.py / strict_prefix.py / lru.py / buckets.py / config_loader.py`（透传开关）。

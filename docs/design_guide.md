@@ -243,11 +243,45 @@ content_gap = heuristic_content_ceiling - observed_content_ceiling
 
 ### 4. Prefill / Decode 边界
 
-第一版只统计 **prefill 复用**：
+默认只统计 **prefill 复用**：
 
 - 输入前缀的 KV 是否可复用，算 hit
 - decode 产生的新 token KV 不计入主命中率
-- `output_length` 只用于后续系统扩展，不进入第一版主公式
+
+#### Output KV Cache 扩展（`include_output_kvcache`）
+
+在 PD 不分离（prefill 和 decode 共用同一套 GPU 显存）的部署场景下，decode 阶段产生的 output KV cache 会驻留在 GPU 上，占用缓存空间，进而影响后续请求的缓存命中率。通过在配置中设置 `"include_output_kvcache": true` 可以开启此特性。
+
+**核心机制**：
+
+trace 只记录了每个请求的 input `hash_ids`，不包含 output 的 block hashes。但在多轮会话中，后续请求的 `hash_ids` 天然包含了前一轮的 output 内容：
+
+```text
+child.hash_ids = [parent_input_blocks | parent_output_blocks | new_user_input_blocks]
+```
+
+因此，当子请求出现时，父请求 output 的真实 block hashes 可以从子请求的 `hash_ids` 中**反向提取**：
+
+```text
+parent_output_hashes = child.hash_ids[parent.block_count : parent.block_count + parent_output_blocks]
+```
+
+parent-child 配对通过 `parent_chat_id` 字段确定，有多个 child 时按 `turn` 排序取最早的。
+
+**对各层的影响**：
+
+| 层级 | 行为 |
+|------|------|
+| **内容上限** | 父请求完成后，将 `input + output` 的完整路径注入 trie；后续请求的 prefix match 能覆盖 output 部分 |
+| **容量上限** | 真实 output hashes 注入 trie 后与子请求共享 node id，同时占用缓存空间参与 Belady/LRU 淘汰 |
+| **策略基线** | 同容量上限 |
+| **最后一轮** | 没有子请求，output blocks 仍为未知，使用虚拟占位符只占空间、不产生命中 |
+
+**效果**：
+
+- 容量充足时：output blocks 被缓存后，下一轮请求的 strict-prefix 命中深度增加（因为 output 也能 prefix match）
+- 容量紧张时：output blocks 额外占用显存空间，挤压其他请求的缓存容量，降低整体命中率
+- 默认关闭（`false`），保持与原有口径一致
 
 ### 5. Scope
 
