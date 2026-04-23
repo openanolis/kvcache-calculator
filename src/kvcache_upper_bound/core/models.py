@@ -47,6 +47,8 @@ class EffectiveRequest:
     effective_blocks: int
     effective_tokens: int
     effective_hash_ids: tuple[BlockHash, ...]
+    output_blocks: int = 0
+    output_hash_ids: tuple[BlockHash, ...] = ()
 
 
 @dataclass(frozen=True)

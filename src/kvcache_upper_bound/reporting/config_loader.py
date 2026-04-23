@@ -28,12 +28,14 @@ def load_bucket_analysis_config(path: str | Path) -> BucketAnalysisConfig:
     if not bucket_deployments:
         raise ValueError("bucket_deployments must not be empty")
     _validate_bucket_deployments(bucket_deployments)
+    include_output_kvcache = bool(payload.get("include_output_kvcache", False))
     return BucketAnalysisConfig(
         model_profile=model_profile,
         scope=scope,
         block_size=block_size,
         bucket_deployments=bucket_deployments,
         prefill_savings_alpha=prefill_savings_alpha,
+        include_output_kvcache=include_output_kvcache,
     )
 
 

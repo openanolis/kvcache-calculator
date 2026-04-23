@@ -51,6 +51,7 @@ def analyze_content_upper_bound(
     requests: Iterable[EffectiveRequest],
     model_profile: ModelProfile | None = None,
     block_size: int = 16,
+    include_output_kvcache: bool = False,
 ) -> ContentAnalysisResult:
     if block_size <= 0:
         raise ValueError("block_size must be positive")
@@ -76,6 +77,9 @@ def analyze_content_upper_bound(
     for request in ordered_requests:
         trie = tries_by_scope.setdefault(request.scope_root_id, PrefixTrie())
         matched_blocks = trie.match_and_insert(request.effective_hash_ids)
+        if include_output_kvcache and request.output_hash_ids:
+            combined_path = request.effective_hash_ids + request.output_hash_ids
+            trie.insert(combined_path)
         miss_blocks = request.effective_blocks - matched_blocks
         matched_tokens = _estimate_hit_tokens(
             effective_blocks=request.effective_blocks,

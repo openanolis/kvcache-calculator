@@ -25,6 +25,7 @@ def analyze_lru_baseline(
     model_profile: ModelProfile,
     budget_bytes: int,
     block_size: int = 16,
+    include_output_kvcache: bool = False,
 ) -> LRUSimulationResult:
     if budget_bytes < 0:
         raise ValueError("budget_bytes must be non-negative")
@@ -35,7 +36,7 @@ def analyze_lru_baseline(
 
     bytes_per_block = model_profile.kv_bytes_per_block()
     resident_block_capacity = budget_bytes // bytes_per_block if bytes_per_block > 0 else 0
-    access_trace = _build_access_trace(requests)
+    access_trace = _build_access_trace(requests, include_output_kvcache=include_output_kvcache)
     event_hits = _run_lru(access_trace.access_events, resident_block_capacity)
 
     request_metrics: list[CapacityRequestMetric] = []

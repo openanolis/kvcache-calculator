@@ -67,6 +67,7 @@ class _AccessTrace:
     request_ranges: list[tuple[int, int]]
     access_events: array
     unique_node_count: int
+    output_node_count: int = 0
 
 
 def analyze_capacity_upper_bound(
@@ -74,6 +75,7 @@ def analyze_capacity_upper_bound(
     model_profile: ModelProfile,
     budget_bytes: int,
     block_size: int = 16,
+    include_output_kvcache: bool = False,
 ) -> CapacityAnalysisResult:
     if budget_bytes < 0:
         raise ValueError("budget_bytes must be non-negative")
@@ -84,7 +86,7 @@ def analyze_capacity_upper_bound(
 
     bytes_per_block = model_profile.kv_bytes_per_block()
     resident_block_capacity = budget_bytes // bytes_per_block if bytes_per_block > 0 else 0
-    access_trace = _build_access_trace(requests)
+    access_trace = _build_access_trace(requests, include_output_kvcache=include_output_kvcache)
     if resident_block_capacity >= access_trace.unique_node_count:
         event_hits = _run_unbounded_cache(access_trace.access_events)
     else:
@@ -182,7 +184,10 @@ def analyze_capacity_upper_bound(
     return CapacityAnalysisResult(request_metrics=request_metrics, summary=summary)
 
 
-def _build_access_trace(requests: Iterable[EffectiveRequest]) -> _AccessTrace:
+def _build_access_trace(
+    requests: Iterable[EffectiveRequest],
+    include_output_kvcache: bool = False,
+) -> _AccessTrace:
     ordered_requests = sorted(requests, key=lambda request: (request.timestamp_ms, request.source_index))
     tries_by_scope: dict[str, PrefixTrie] = {}
     global_node_ids: dict[tuple[str, int], int] = {}
@@ -190,27 +195,49 @@ def _build_access_trace(requests: Iterable[EffectiveRequest]) -> _AccessTrace:
 
     access_events = array("I")
     request_ranges: list[tuple[int, int]] = []
+    placeholder_output_node_count = 0
 
     for request in ordered_requests:
         trie = tries_by_scope.setdefault(request.scope_root_id, PrefixTrie())
         _, local_node_ids = trie.match_and_insert_path(request.effective_hash_ids)
         start = len(access_events)
-        for local_node_id in local_node_ids:
-            key = (request.scope_root_id, local_node_id)
-            global_node_id = global_node_ids.get(key)
-            if global_node_id is None:
-                global_node_id = next_global_node_id
-                global_node_ids[key] = global_node_id
+        for local_id in local_node_ids:
+            key = (request.scope_root_id, local_id)
+            global_id = global_node_ids.get(key)
+            if global_id is None:
+                global_id = next_global_node_id
+                global_node_ids[key] = global_id
                 next_global_node_id += 1
-            access_events.append(global_node_id)
+            access_events.append(global_id)
         end = len(access_events)
         request_ranges.append((start, end))
+
+        if include_output_kvcache and request.output_blocks > 0:
+            if request.output_hash_ids:
+                combined_path = request.effective_hash_ids + request.output_hash_ids
+                _, combined_local_ids = trie.match_and_insert_path(combined_path)
+                output_local_ids = combined_local_ids[len(local_node_ids):]
+                for out_local_id in output_local_ids:
+                    key = (request.scope_root_id, out_local_id)
+                    global_id = global_node_ids.get(key)
+                    if global_id is None:
+                        global_id = next_global_node_id
+                        global_node_ids[key] = global_id
+                        next_global_node_id += 1
+                    access_events.append(global_id)
+            else:
+                for _ in range(request.output_blocks):
+                    placeholder_id = next_global_node_id
+                    next_global_node_id += 1
+                    access_events.append(placeholder_id)
+                    placeholder_output_node_count += 1
 
     return _AccessTrace(
         requests=ordered_requests,
         request_ranges=request_ranges,
         access_events=access_events,
-        unique_node_count=len(global_node_ids),
+        unique_node_count=len(global_node_ids) + placeholder_output_node_count,
+        output_node_count=placeholder_output_node_count,
     )
 
 

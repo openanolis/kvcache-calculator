@@ -131,6 +131,7 @@ class BucketAnalysisConfig:
     block_size: int
     bucket_deployments: tuple[BucketDeploymentConfig, ...]
     prefill_savings_alpha: float = 0.8
+    include_output_kvcache: bool = False
 
 
 @dataclass(frozen=True)
@@ -234,6 +235,7 @@ def analyze_bucket_deployments(
             normalized.requests,
             model_profile=config.model_profile,
             block_size=config.block_size,
+            include_output_kvcache=config.include_output_kvcache,
         )
 
         hbm_kv_gb_per_card = deployment.resolved_hbm_kv_gb_per_card(config.model_profile)
@@ -253,18 +255,21 @@ def analyze_bucket_deployments(
             model_profile=config.model_profile,
             budget_bytes=hbm_budget_bytes,
             block_size=config.block_size,
+            include_output_kvcache=config.include_output_kvcache,
         )
         hbm_lru_result = analyze_lru_baseline(
             normalized.requests,
             model_profile=config.model_profile,
             budget_bytes=hbm_budget_bytes,
             block_size=config.block_size,
+            include_output_kvcache=config.include_output_kvcache,
         )
         hbm_strict_prefix_result = analyze_strict_prefix_capacity_upper_bound(
             normalized.requests,
             model_profile=config.model_profile,
             budget_bytes=hbm_budget_bytes,
             block_size=config.block_size,
+            include_output_kvcache=config.include_output_kvcache,
         )
 
         extra_capacity_results: dict[str, CapacityAnalysisResult] = {}
@@ -307,6 +312,7 @@ def analyze_bucket_deployments(
                     model_profile=config.model_profile,
                     budget_bytes=_gb_to_bytes(total_budget_gb),
                     block_size=config.block_size,
+                    include_output_kvcache=config.include_output_kvcache,
                 )
                 if (
                     capacity_result.summary.hit_blocks == content_result.summary.hit_blocks
@@ -323,6 +329,7 @@ def analyze_bucket_deployments(
                     model_profile=config.model_profile,
                     budget_bytes=_gb_to_bytes(total_budget_gb),
                     block_size=config.block_size,
+                    include_output_kvcache=config.include_output_kvcache,
                 )
                 if (
                     strict_prefix_result.summary.hit_blocks == content_result.summary.hit_blocks
@@ -336,6 +343,7 @@ def analyze_bucket_deployments(
                 model_profile=config.model_profile,
                 budget_bytes=_gb_to_bytes(total_budget_gb),
                 block_size=config.block_size,
+                include_output_kvcache=config.include_output_kvcache,
             )
             extra_capacity_results[tier.label] = capacity_result
             extra_lru_results[tier.label] = lru_result
@@ -415,12 +423,14 @@ def analyze_bucket_deployments(
                             model_profile=config.model_profile,
                             budget_bytes=_gb_to_bytes(candidate_total_budget_gb),
                             block_size=config.block_size,
+                            include_output_kvcache=config.include_output_kvcache,
                         )
                         lru_result = analyze_lru_baseline(
                             normalized.requests,
                             model_profile=config.model_profile,
                             budget_bytes=_gb_to_bytes(candidate_total_budget_gb),
                             block_size=config.block_size,
+                            include_output_kvcache=config.include_output_kvcache,
                         )
                         strict_hit_rate = strict_result.summary.block_hit_rate
                         lru_hit_rate = lru_result.summary.strict_prefix_block_hit_rate
@@ -538,12 +548,14 @@ def analyze_bucket_deployments(
                         model_profile=config.model_profile,
                         budget_bytes=_gb_to_bytes(candidate_total_budget_gb),
                         block_size=config.block_size,
+                        include_output_kvcache=config.include_output_kvcache,
                     )
                     lru_result = analyze_lru_baseline(
                         normalized.requests,
                         model_profile=config.model_profile,
                         budget_bytes=_gb_to_bytes(candidate_total_budget_gb),
                         block_size=config.block_size,
+                        include_output_kvcache=config.include_output_kvcache,
                     )
                     strict_hit_rate = strict_result.summary.block_hit_rate
                     lru_hit_rate = lru_result.summary.strict_prefix_block_hit_rate

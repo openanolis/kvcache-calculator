@@ -50,6 +50,8 @@ def build_effective_requests(
     missing_parent_links = session_root_resolution.missing_parent_links
     window_blocks = window_to_block_count(window_tokens, block_size)
 
+    output_hashes_by_chat_id = _extract_output_hashes(ordered_records, block_size)
+
     effective_requests: list[EffectiveRequest] = []
     truncated_requests = 0
     inconsistent_length_requests = 0
@@ -70,6 +72,9 @@ def build_effective_requests(
             GLOBAL_SCOPE_ROOT if scope is Scope.GLOBAL else session_roots.get(record.chat_id, record.chat_id)
         )
 
+        output_blocks = _output_length_to_block_count(record.output_length, block_size)
+        output_hash_ids = output_hashes_by_chat_id.get(record.chat_id, ())
+
         effective_requests.append(
             EffectiveRequest(
                 request_id=record.request_id,
@@ -86,6 +91,8 @@ def build_effective_requests(
                 effective_blocks=effective_blocks,
                 effective_tokens=effective_tokens,
                 effective_hash_ids=effective_hash_ids,
+                output_blocks=output_blocks,
+                output_hash_ids=output_hash_ids,
             )
         )
         effective_total_blocks += effective_blocks
@@ -111,6 +118,54 @@ def window_to_block_count(window_tokens: int, block_size: int = 16) -> int:
         raise ValueError("window_tokens must be non-negative")
     return (window_tokens + block_size - 1) // block_size
 
+
+def _extract_output_hashes(
+    records: list[RequestRecord],
+    block_size: int,
+) -> dict[str, tuple[str, ...]]:
+    """Extract output block hashes for each request from its child's hash_ids.
+
+    In a multi-turn session, the child request's hash_ids has the structure:
+        [parent_input_blocks | parent_output_blocks | new_user_input_blocks]
+
+    So parent's output hashes can be recovered as:
+        child.hash_ids[parent.block_count : parent.block_count + parent_output_blocks]
+
+    Parent-child pairing uses ``parent_chat_id``; when multiple children
+    exist for the same parent, the one with the lowest ``turn`` is chosen.
+
+    For the last turn (no child), output hashes remain unknown (empty tuple).
+    """
+    by_chat_id: dict[str, RequestRecord] = {r.chat_id: r for r in records}
+    children_by_parent: dict[str, list[RequestRecord]] = {}
+    for record in records:
+        if record.parent_chat_id is not None and record.parent_chat_id in by_chat_id:
+            children_by_parent.setdefault(record.parent_chat_id, []).append(record)
+
+    output_hashes: dict[str, tuple[str, ...]] = {}
+    for parent_chat_id, children in children_by_parent.items():
+        parent = by_chat_id[parent_chat_id]
+        parent_output_blocks = _output_length_to_block_count(parent.output_length, block_size)
+        if parent_output_blocks <= 0:
+            continue
+        child = min(children, key=lambda r: (r.turn, r.source_index))
+        extract_start = parent.block_count
+        extract_end = parent.block_count + parent_output_blocks
+        if extract_end <= len(child.hash_ids):
+            output_hashes[parent_chat_id] = tuple(
+                child.hash_ids[extract_start:extract_end]
+            )
+        elif extract_start < len(child.hash_ids):
+            output_hashes[parent_chat_id] = tuple(
+                child.hash_ids[extract_start:]
+            )
+
+    return output_hashes
+
+def _output_length_to_block_count(output_length: int, block_size: int) -> int:
+    if output_length <= 0:
+        return 0
+    return (output_length + block_size - 1) // block_size
 
 def input_length_matches_blocks(input_length: int, block_count: int, block_size: int = 16) -> bool:
     if input_length < 0 or block_count < 0:

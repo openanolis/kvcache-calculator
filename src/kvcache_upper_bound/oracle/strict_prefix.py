@@ -68,6 +68,7 @@ def analyze_strict_prefix_capacity_upper_bound(
     model_profile: ModelProfile,
     budget_bytes: int,
     block_size: int = 16,
+    include_output_kvcache: bool = False,
 ) -> StrictPrefixAnalysisResult:
     if budget_bytes < 0:
         raise ValueError("budget_bytes must be non-negative")
@@ -84,12 +85,14 @@ def analyze_strict_prefix_capacity_upper_bound(
         ordered_requests,
         model_profile=model_profile,
         block_size=block_size,
+        include_output_kvcache=include_output_kvcache,
     )
     relaxed_result = analyze_capacity_upper_bound(
         ordered_requests,
         model_profile=model_profile,
         budget_bytes=budget_bytes,
         block_size=block_size,
+        include_output_kvcache=include_output_kvcache,
     )
 
     resident_block_capacity = relaxed_result.summary.resident_block_capacity
@@ -125,6 +128,7 @@ def analyze_strict_prefix_capacity_upper_bound(
         block_size=block_size,
         certified_lower_bound_hit_blocks=certified_lower_bound_hit_blocks,
         certified_upper_bound_hit_blocks=certified_upper_bound_hit_blocks,
+        include_output_kvcache=include_output_kvcache,
     )
     if search_result.summary.hit_blocks != certified_upper_bound_hit_blocks:
         return search_result
@@ -251,9 +255,10 @@ def _run_exact_request_dp(
     block_size: int,
     certified_lower_bound_hit_blocks: int,
     certified_upper_bound_hit_blocks: int,
+    include_output_kvcache: bool = False,
 ) -> StrictPrefixAnalysisResult:
     bytes_per_block = model_profile.kv_bytes_per_block()
-    access_trace = _build_access_trace(ordered_requests)
+    access_trace = _build_access_trace(ordered_requests, include_output_kvcache=include_output_kvcache)
     request_paths = [
         tuple(access_trace.access_events[start:end])
         for start, end in access_trace.request_ranges
