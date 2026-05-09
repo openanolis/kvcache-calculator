@@ -594,7 +594,7 @@ def _trial_score(trial: CalibrationTrial) -> tuple[float, float, float]:
 
 
 def _normalize_tier_label(label: str) -> str:
-    suffix = " 命中率"
+    suffix = " Hit Rate"
     if label.endswith(suffix):
         return label[: -len(suffix)]
     return label

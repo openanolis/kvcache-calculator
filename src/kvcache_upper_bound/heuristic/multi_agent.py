@@ -559,7 +559,8 @@ def _tokens_to_gb(tokens: float, kv_bytes_per_token: int) -> float:
 
 
 def _strip_rate_suffix(label: str) -> str:
-    suffix = " 命中率"
+    """Strip a trailing English hit-rate suffix from a tier label."""
+    suffix = " Hit Rate"
     if label.endswith(suffix):
         return label[: -len(suffix)]
     return label

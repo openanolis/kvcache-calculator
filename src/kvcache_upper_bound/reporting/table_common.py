@@ -10,10 +10,10 @@ COMPARISON_EPSILON = 1e-9
 
 
 def hit_prefix_fieldnames(*, include_total_tps: bool) -> list[str]:
-    fieldnames = ["分桶", "机器数", "卡数", "单机卡数", "规格"]
+    fieldnames = ["Bucket", "Machines", "Cards", "Cards per Machine", "Spec"]
     if include_total_tps:
-        fieldnames.extend(["总 TPS", "TPS 输入口径"])
-    fieldnames.extend(["HBM KVCache 总大小 (GB)", "极限命中率"])
+        fieldnames.extend(["Total TPS", "Total TPS Input Unit"])
+    fieldnames.extend(["HBM KVCache Total (GB)", "Content Upper Bound Hit Rate"])
     return fieldnames
 
 
@@ -22,37 +22,37 @@ def planning_prefix_fieldnames(
     include_total_tps: bool,
     include_target_tps_fields: bool,
 ) -> list[str]:
-    fieldnames = ["分桶", "机器数", "卡数", "单机卡数", "规格"]
+    fieldnames = ["Bucket", "Machines", "Cards", "Cards per Machine", "Spec"]
     if include_total_tps:
-        fieldnames.extend(["总 TPS", "TPS 输入口径"])
+        fieldnames.extend(["Total TPS", "Total TPS Input Unit"])
     if include_target_tps_fields:
-        fieldnames.extend(["目标总 TPS", "单卡基线 TPS (无命中)"])
-    fieldnames.extend(["HBM KVCache 总大小 (GB)", "Prefill 节省系数 alpha"])
+        fieldnames.extend(["Target Total TPS", "Baseline TPS per Card (No Hit)"])
+    fieldnames.extend(["HBM KVCache Total (GB)", "Prefill Savings Alpha"])
     return fieldnames
 
 
 def row_range_fieldnames() -> list[str]:
-    return ["请求数", "窗口上限", "输入下界", "输入上界"]
+    return ["Request Count", "Window Limit", "Input Lower Tokens", "Input Upper Tokens"]
 
 
 def common_row_payload(*, row: BucketReportRow, include_total_tps: bool) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "分桶": row.bucket_label,
-        "机器数": row.machine_count,
-        "卡数": row.card_count,
-        "单机卡数": row.cards_per_machine,
-        "规格": row.machine_spec,
+        "Bucket": row.bucket_label,
+        "Machines": row.machine_count,
+        "Cards": row.card_count,
+        "Cards per Machine": row.cards_per_machine,
+        "Spec": row.machine_spec,
     }
     if include_total_tps:
-        payload["总 TPS"] = row.total_tps if row.total_tps is not None else ""
-        payload["TPS 输入口径"] = format_text(row.total_tps_input_unit)
+        payload["Total TPS"] = row.total_tps if row.total_tps is not None else ""
+        payload["Total TPS Input Unit"] = format_text(row.total_tps_input_unit)
     return payload
 
 
 def hit_prefix_payload(row: BucketReportRow) -> dict[str, Any]:
     return {
-        "HBM KVCache 总大小 (GB)": f"{row.hbm_kv_total_gb:.2f}",
-        "极限命中率": format_rate(row.extreme_hit_rate),
+        "HBM KVCache Total (GB)": f"{row.hbm_kv_total_gb:.2f}",
+        "Content Upper Bound Hit Rate": format_rate(row.extreme_hit_rate),
     }
 
 
@@ -62,21 +62,21 @@ def planning_prefix_payload(
     include_target_tps_fields: bool,
 ) -> dict[str, Any]:
     payload = {
-        "HBM KVCache 总大小 (GB)": f"{row.hbm_kv_total_gb:.2f}",
-        "Prefill 节省系数 alpha": format_number(row.prefill_savings_alpha),
+        "HBM KVCache Total (GB)": f"{row.hbm_kv_total_gb:.2f}",
+        "Prefill Savings Alpha": format_number(row.prefill_savings_alpha),
     }
     if include_target_tps_fields:
-        payload["目标总 TPS"] = format_number(row.planning_target_total_tps)
-        payload["单卡基线 TPS (无命中)"] = format_number(row.baseline_per_card_tps)
+        payload["Target Total TPS"] = format_number(row.planning_target_total_tps)
+        payload["Baseline TPS per Card (No Hit)"] = format_number(row.baseline_per_card_tps)
     return payload
 
 
 def row_range_payload(row: BucketReportRow) -> dict[str, Any]:
     return {
-        "请求数": row.request_count,
-        "窗口上限": "" if row.window_tokens is None else row.window_tokens,
-        "输入下界": row.input_lower_tokens,
-        "输入上界": "" if row.input_upper_tokens is None else row.input_upper_tokens,
+        "Request Count": row.request_count,
+        "Window Limit": "" if row.window_tokens is None else row.window_tokens,
+        "Input Lower Tokens": row.input_lower_tokens,
+        "Input Upper Tokens": "" if row.input_upper_tokens is None else row.input_upper_tokens,
     }
 
 
@@ -115,7 +115,7 @@ def format_integer(value: int | None) -> str:
 def format_flag(value: bool | None) -> str:
     if value is None:
         return ""
-    return "是" if value else "否"
+    return "Yes" if value else "No"
 
 
 def format_delta_pp(value: float | None) -> str:
@@ -165,10 +165,10 @@ def bottleneck_label(
     if strict_hits_content is None or lru_hits_strict is None:
         return ""
     if not strict_hits_content:
-        return "容量"
+        return "Capacity"
     if not lru_hits_strict:
-        return "策略"
-    return "无明显瓶颈"
+        return "Policy"
+    return "None"
 
 
 def rate_delta(
@@ -181,23 +181,23 @@ def rate_delta(
 
 
 def relaxed_upper_bound_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} Relaxed Upper Bound 命中率"
+    return f"{strict_prefix_column_base(label)} Relaxed Upper Bound Hit Rate"
 
 
 def strict_prefix_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} Strict-Prefix 命中率"
+    return f"{strict_prefix_column_base(label)} Strict-Prefix Hit Rate"
 
 
 def strict_prefix_replay_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} Strict-Prefix Replay 命中率"
+    return f"{strict_prefix_column_base(label)} Strict-Prefix Replay Hit Rate"
 
 
 def lru_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} LRU 命中率"
+    return f"{strict_prefix_column_base(label)} LRU Hit Rate"
 
 
 def strict_prefix_proof_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} Strict-Prefix 求解路径"
+    return f"{strict_prefix_column_base(label)} Strict-Prefix Proof Source"
 
 
 def strict_prefix_tps_gain_column(label: str) -> str:
@@ -205,19 +205,19 @@ def strict_prefix_tps_gain_column(label: str) -> str:
 
 
 def strict_prefix_estimated_total_tps_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} Strict-Prefix 估算总 TPS"
+    return f"{strict_prefix_column_base(label)} Strict-Prefix Estimated Total TPS"
 
 
 def strict_prefix_current_cluster_capacity_tps_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} Strict-Prefix 当前配置可承载总 TPS"
+    return f"{strict_prefix_column_base(label)} Strict-Prefix Current Cluster Capacity TPS"
 
 
 def strict_prefix_min_card_count_for_target_total_tps_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} Strict-Prefix 目标总 TPS 最小卡数"
+    return f"{strict_prefix_column_base(label)} Strict-Prefix Min Cards for Target Total TPS"
 
 
 def strict_prefix_min_machine_count_for_target_total_tps_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} Strict-Prefix 目标总 TPS 最小机器数"
+    return f"{strict_prefix_column_base(label)} Strict-Prefix Min Machines for Target Total TPS"
 
 
 def lru_tps_gain_column(label: str) -> str:
@@ -225,23 +225,24 @@ def lru_tps_gain_column(label: str) -> str:
 
 
 def lru_estimated_total_tps_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} LRU 估算总 TPS"
+    return f"{strict_prefix_column_base(label)} LRU Estimated Total TPS"
 
 
 def lru_current_cluster_capacity_tps_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} LRU 当前配置可承载总 TPS"
+    return f"{strict_prefix_column_base(label)} LRU Current Cluster Capacity TPS"
 
 
 def lru_min_card_count_for_target_total_tps_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} LRU 目标总 TPS 最小卡数"
+    return f"{strict_prefix_column_base(label)} LRU Min Cards for Target Total TPS"
 
 
 def lru_min_machine_count_for_target_total_tps_column(label: str) -> str:
-    return f"{strict_prefix_column_base(label)} LRU 目标总 TPS 最小机器数"
+    return f"{strict_prefix_column_base(label)} LRU Min Machines for Target Total TPS"
 
 
 def strict_prefix_column_base(label: str) -> str:
-    suffix = " 命中率"
+    """Strip a trailing English hit-rate suffix from a tier label."""
+    suffix = " Hit Rate"
     if label.endswith(suffix):
         return label[: -len(suffix)]
     return label

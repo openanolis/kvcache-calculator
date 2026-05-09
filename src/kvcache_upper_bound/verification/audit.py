@@ -196,7 +196,7 @@ def write_bucket_audit_outputs(report: BucketAuditReport, output_dir: str | Path
     zh_markdown = _render_bucket_audit_markdown(report, language="zh")
     en_markdown = _render_bucket_audit_markdown(report, language="en")
     (output_path / "correctness_report.md").write_text(
-        zh_markdown,
+        en_markdown,
         encoding="utf-8",
     )
     (output_path / "correctness_report.zh.md").write_text(

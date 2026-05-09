@@ -98,17 +98,17 @@ def _hit_columns(*, tier_labels: list[str], include_actual_hit_rate: bool) -> li
     _ = tier_labels
     columns: list[str] = []
     if include_actual_hit_rate:
-        columns.append("实际命中率")
+        columns.append("Actual Hit Rate")
     columns.extend(
         [
-            "HBM Relaxed Upper Bound 命中率",
-            "HBM LRU 命中率",
-            "HBM Strict-Prefix Replay 命中率",
-            "HBM Strict-Prefix 命中率",
-            "HBM Strict-Prefix 求解路径",
-            "HBM Strict-Prefix 达到内容上界",
-            "HBM LRU 达到 Strict-Prefix",
-            "HBM 当前主要瓶颈",
+            "HBM Relaxed Upper Bound Hit Rate",
+            "HBM LRU Hit Rate",
+            "HBM Strict-Prefix Replay Hit Rate",
+            "HBM Strict-Prefix Hit Rate",
+            "HBM Strict-Prefix Proof Source",
+            "HBM Strict-Prefix Reaches Content Upper Bound",
+            "HBM LRU Reaches Strict-Prefix",
+            "HBM Current Bottleneck",
         ]
     )
     return columns
@@ -123,25 +123,25 @@ def _hit_payload_columns(
     _ = tier_labels
     payload: dict[str, Any] = {}
     if include_actual_hit_rate:
-        payload["实际命中率"] = format_rate(row.actual_hit_rate)
-    payload["HBM Relaxed Upper Bound 命中率"] = format_rate(row.hbm_relaxed_upper_bound_hit_rate)
-    payload["HBM LRU 命中率"] = format_rate(row.hbm_lru_hit_rate)
-    payload["HBM Strict-Prefix Replay 命中率"] = format_rate(row.hbm_strict_prefix_replay_hit_rate)
-    payload["HBM Strict-Prefix 命中率"] = format_rate(row.hbm_strict_prefix_hit_rate)
-    payload["HBM Strict-Prefix 求解路径"] = row.hbm_strict_prefix_proof_source or ""
-    payload["HBM Strict-Prefix 达到内容上界"] = format_flag(
+        payload["Actual Hit Rate"] = format_rate(row.actual_hit_rate)
+    payload["HBM Relaxed Upper Bound Hit Rate"] = format_rate(row.hbm_relaxed_upper_bound_hit_rate)
+    payload["HBM LRU Hit Rate"] = format_rate(row.hbm_lru_hit_rate)
+    payload["HBM Strict-Prefix Replay Hit Rate"] = format_rate(row.hbm_strict_prefix_replay_hit_rate)
+    payload["HBM Strict-Prefix Hit Rate"] = format_rate(row.hbm_strict_prefix_hit_rate)
+    payload["HBM Strict-Prefix Proof Source"] = row.hbm_strict_prefix_proof_source or ""
+    payload["HBM Strict-Prefix Reaches Content Upper Bound"] = format_flag(
         strict_prefix_reaches_content_ceiling(
             row.hbm_strict_prefix_hit_rate,
             row.extreme_hit_rate,
         )
     )
-    payload["HBM LRU 达到 Strict-Prefix"] = format_flag(
+    payload["HBM LRU Reaches Strict-Prefix"] = format_flag(
         lru_reaches_strict_prefix(
             row.hbm_lru_hit_rate,
             row.hbm_strict_prefix_hit_rate,
         )
     )
-    payload["HBM 当前主要瓶颈"] = bottleneck_label(
+    payload["HBM Current Bottleneck"] = bottleneck_label(
         content_hit_rate=row.extreme_hit_rate,
         strict_prefix_hit_rate=row.hbm_strict_prefix_hit_rate,
         lru_hit_rate=row.hbm_lru_hit_rate,

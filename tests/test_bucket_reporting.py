@@ -554,7 +554,7 @@ class BucketReportingTest(unittest.TestCase):
                     "baseline_per_card_tps": 100,
                     "hbm_kv_gb_per_card": 2,
                     "extra_capacity_tiers": [
-                        {"label": "HBM+单机 1T 命中率", "kv_gb_per_machine": 1024}
+                        {"label": "HBM+1T per machine Hit Rate", "kv_gb_per_machine": 1024}
                     ],
                 }
             ],
@@ -654,7 +654,7 @@ class BucketReportingTest(unittest.TestCase):
                     "machine_spec": "h20",
                     "hbm_kv_gb_per_card": 0.0,
                     "extra_capacity_tiers": [
-                        {"label": "HBM+单机 1 block 命中率", "kv_gb_per_machine": one_block_gb}
+                        {"label": "HBM+1 block per machine Hit Rate", "kv_gb_per_machine": one_block_gb}
                     ],
                 }
             ],
@@ -670,7 +670,7 @@ class BucketReportingTest(unittest.TestCase):
         self.assertEqual(result.rows[0].card_count, 8)
         self.assertAlmostEqual(result.rows[0].hbm_strict_prefix_hit_rate or 0.0, 0.0)
         self.assertAlmostEqual(
-            result.rows[0].extra_tier_strict_prefix_hit_rates["HBM+单机 1 block 命中率"],
+            result.rows[0].extra_tier_strict_prefix_hit_rates["HBM+1 block per machine Hit Rate"],
             1.0 / 6.0,
         )
 

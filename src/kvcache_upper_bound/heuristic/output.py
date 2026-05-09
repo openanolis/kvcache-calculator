@@ -136,42 +136,42 @@ def _heuristic_summary_fieldnames(
     include_total_tps: bool,
     include_target_tps_fields: bool,
 ) -> list[str]:
-    fieldnames = ["场景", "机器数", "卡数", "单机卡数", "规格"]
+    fieldnames = ["Scenario", "Machines", "Cards", "Cards per Machine", "Spec"]
     if include_total_tps:
-        fieldnames.extend(["总 TPS", "TPS 输入口径"])
+        fieldnames.extend(["Total TPS", "Total TPS Input Unit"])
     if include_target_tps_fields:
-        fieldnames.extend(["目标总 TPS", "单卡基线 TPS (无命中)"])
+        fieldnames.extend(["Target Total TPS", "Baseline TPS per Card (No Hit)"])
     fieldnames.extend(
         [
-            "HBM KVCache 总大小 (GB)",
-            "曲线模型",
+            "HBM KVCache Total (GB)",
+            "Curve Mode",
             "Zipf s",
-            "Power-Law beta",
-            "LRU-like 效率",
-            "极限命中率",
-            "HBM Strict-Prefix 命中率估计",
-            "HBM LRU-like 命中率估计",
-            "HBM Strict-Prefix 达到内容上界",
-            "HBM LRU-like 达到 Strict-Prefix",
-            "HBM 当前主要瓶颈",
+            "Power-Law Beta",
+            "LRU-like Efficiency",
+            "Content Upper Bound Hit Rate",
+            "HBM Strict-Prefix Hit Rate (Estimate)",
+            "HBM LRU-like Hit Rate (Estimate)",
+            "HBM Strict-Prefix Reaches Content Upper Bound",
+            "HBM LRU-like Reaches Strict-Prefix",
+            "HBM Current Bottleneck",
             "HBM Strict-Prefix TPS Gain",
             "HBM LRU-like TPS Gain",
         ]
     )
     if include_total_tps:
-        fieldnames.extend(["HBM Strict-Prefix 估算总 TPS", "HBM LRU-like 估算总 TPS"])
+        fieldnames.extend(["HBM Strict-Prefix Estimated Total TPS", "HBM LRU-like Estimated Total TPS"])
     if include_target_tps_fields:
         fieldnames.extend(
             [
-                "HBM Strict-Prefix 当前配置可承载总 TPS",
-                "HBM Strict-Prefix 目标总 TPS 最小卡数",
-                "HBM Strict-Prefix 目标总 TPS 最小机器数",
-                "HBM LRU-like 当前配置可承载总 TPS",
-                "HBM LRU-like 目标总 TPS 最小卡数",
-                "HBM LRU-like 目标总 TPS 最小机器数",
+                "HBM Strict-Prefix Current Cluster Capacity TPS",
+                "HBM Strict-Prefix Min Cards for Target Total TPS",
+                "HBM Strict-Prefix Min Machines for Target Total TPS",
+                "HBM LRU-like Current Cluster Capacity TPS",
+                "HBM LRU-like Min Cards for Target Total TPS",
+                "HBM LRU-like Min Machines for Target Total TPS",
             ]
         )
-    fieldnames.extend(["Strict-Prefix 饱和容量 (GB)", "LRU-like 饱和容量 (GB)"])
+    fieldnames.extend(["Strict-Prefix Saturation Capacity (GB)", "LRU-like Saturation Capacity (GB)"])
     return fieldnames
 
 
@@ -182,61 +182,61 @@ def _heuristic_summary_payload(
     include_target_tps_fields: bool,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "场景": row.scenario_label,
-        "机器数": row.machine_count,
-        "卡数": row.card_count,
-        "单机卡数": row.cards_per_machine,
-        "规格": row.machine_spec,
+        "Scenario": row.scenario_label,
+        "Machines": row.machine_count,
+        "Cards": row.card_count,
+        "Cards per Machine": row.cards_per_machine,
+        "Spec": row.machine_spec,
     }
     if include_total_tps:
-        payload["总 TPS"] = format_number(row.total_tps)
-        payload["TPS 输入口径"] = row.total_tps_input_unit or ""
+        payload["Total TPS"] = format_number(row.total_tps)
+        payload["Total TPS Input Unit"] = row.total_tps_input_unit or ""
     if include_target_tps_fields:
-        payload["目标总 TPS"] = format_number(row.planning_target_total_tps)
-        payload["单卡基线 TPS (无命中)"] = format_number(row.baseline_per_card_tps)
-    payload["HBM KVCache 总大小 (GB)"] = f"{row.hbm_total_kv_gb:.2f}"
-    payload["曲线模型"] = row.curve_mode
+        payload["Target Total TPS"] = format_number(row.planning_target_total_tps)
+        payload["Baseline TPS per Card (No Hit)"] = format_number(row.baseline_per_card_tps)
+    payload["HBM KVCache Total (GB)"] = f"{row.hbm_total_kv_gb:.2f}"
+    payload["Curve Mode"] = row.curve_mode
     payload["Zipf s"] = format_number(row.zipf_s)
-    payload["Power-Law beta"] = format_number(row.power_law_beta)
-    payload["LRU-like 效率"] = format_number(row.lru_like_efficiency)
-    payload["极限命中率"] = format_rate(row.content_hit_rate)
-    payload["HBM Strict-Prefix 命中率估计"] = format_rate(row.hbm_strict_prefix_hit_rate)
-    payload["HBM LRU-like 命中率估计"] = format_rate(row.hbm_lru_like_hit_rate)
-    payload["HBM Strict-Prefix 达到内容上界"] = format_flag(
+    payload["Power-Law Beta"] = format_number(row.power_law_beta)
+    payload["LRU-like Efficiency"] = format_number(row.lru_like_efficiency)
+    payload["Content Upper Bound Hit Rate"] = format_rate(row.content_hit_rate)
+    payload["HBM Strict-Prefix Hit Rate (Estimate)"] = format_rate(row.hbm_strict_prefix_hit_rate)
+    payload["HBM LRU-like Hit Rate (Estimate)"] = format_rate(row.hbm_lru_like_hit_rate)
+    payload["HBM Strict-Prefix Reaches Content Upper Bound"] = format_flag(
         row.hbm_strict_prefix_hits_content_ceiling
     )
-    payload["HBM LRU-like 达到 Strict-Prefix"] = format_flag(
+    payload["HBM LRU-like Reaches Strict-Prefix"] = format_flag(
         row.hbm_lru_like_hits_strict_prefix
     )
-    payload["HBM 当前主要瓶颈"] = row.hbm_current_bottleneck
+    payload["HBM Current Bottleneck"] = row.hbm_current_bottleneck
     payload["HBM Strict-Prefix TPS Gain"] = format_number(row.hbm_strict_prefix_tps_gain)
     payload["HBM LRU-like TPS Gain"] = format_number(row.hbm_lru_like_tps_gain)
     if include_total_tps:
-        payload["HBM Strict-Prefix 估算总 TPS"] = format_number(
+        payload["HBM Strict-Prefix Estimated Total TPS"] = format_number(
             row.hbm_strict_prefix_estimated_total_tps
         )
-        payload["HBM LRU-like 估算总 TPS"] = format_number(row.hbm_lru_like_estimated_total_tps)
+        payload["HBM LRU-like Estimated Total TPS"] = format_number(row.hbm_lru_like_estimated_total_tps)
     if include_target_tps_fields:
-        payload["HBM Strict-Prefix 当前配置可承载总 TPS"] = format_number(
+        payload["HBM Strict-Prefix Current Cluster Capacity TPS"] = format_number(
             row.hbm_strict_prefix_current_cluster_capacity_tps
         )
-        payload["HBM Strict-Prefix 目标总 TPS 最小卡数"] = format_integer(
+        payload["HBM Strict-Prefix Min Cards for Target Total TPS"] = format_integer(
             row.hbm_strict_prefix_min_card_count_for_target_total_tps
         )
-        payload["HBM Strict-Prefix 目标总 TPS 最小机器数"] = format_integer(
+        payload["HBM Strict-Prefix Min Machines for Target Total TPS"] = format_integer(
             row.hbm_strict_prefix_min_machine_count_for_target_total_tps
         )
-        payload["HBM LRU-like 当前配置可承载总 TPS"] = format_number(
+        payload["HBM LRU-like Current Cluster Capacity TPS"] = format_number(
             row.hbm_lru_like_current_cluster_capacity_tps
         )
-        payload["HBM LRU-like 目标总 TPS 最小卡数"] = format_integer(
+        payload["HBM LRU-like Min Cards for Target Total TPS"] = format_integer(
             row.hbm_lru_like_min_card_count_for_target_total_tps
         )
-        payload["HBM LRU-like 目标总 TPS 最小机器数"] = format_integer(
+        payload["HBM LRU-like Min Machines for Target Total TPS"] = format_integer(
             row.hbm_lru_like_min_machine_count_for_target_total_tps
         )
-    payload["Strict-Prefix 饱和容量 (GB)"] = format_number(row.strict_prefix_saturation_capacity_gb)
-    payload["LRU-like 饱和容量 (GB)"] = format_number(row.lru_like_saturation_capacity_gb)
+    payload["Strict-Prefix Saturation Capacity (GB)"] = format_number(row.strict_prefix_saturation_capacity_gb)
+    payload["LRU-like Saturation Capacity (GB)"] = format_number(row.lru_like_saturation_capacity_gb)
     return payload
 
 
@@ -245,40 +245,40 @@ def _heuristic_tier_summary_fieldnames(
     include_total_tps: bool,
     include_target_tps_fields: bool,
 ) -> list[str]:
-    fieldnames = ["场景", "容量层", "机器数", "卡数", "单机卡数", "规格"]
+    fieldnames = ["Scenario", "Capacity Tier", "Machines", "Cards", "Cards per Machine", "Spec"]
     if include_total_tps:
-        fieldnames.extend(["总 TPS", "TPS 输入口径"])
+        fieldnames.extend(["Total TPS", "Total TPS Input Unit"])
     if include_target_tps_fields:
-        fieldnames.extend(["目标总 TPS", "单卡基线 TPS (无命中)"])
+        fieldnames.extend(["Target Total TPS", "Baseline TPS per Card (No Hit)"])
     fieldnames.extend(
         [
-            "KVCache 总大小 (GB)",
-            "极限命中率",
-            "Strict-Prefix 命中率估计",
-            "LRU-like 命中率估计",
-            "Strict-Prefix 达到内容上界",
-            "LRU-like 达到 Strict-Prefix",
-            "当前主要瓶颈",
-            "相对上一层 Strict-Prefix 增益",
-            "相对上一层 LRU-like 增益",
+            "KVCache Total (GB)",
+            "Content Upper Bound Hit Rate",
+            "Strict-Prefix Hit Rate (Estimate)",
+            "LRU-like Hit Rate (Estimate)",
+            "Strict-Prefix Reaches Content Upper Bound",
+            "LRU-like Reaches Strict-Prefix",
+            "Current Bottleneck",
+            "Strict-Prefix Gain vs Previous Tier",
+            "LRU-like Gain vs Previous Tier",
             "Strict-Prefix TPS Gain",
             "LRU-like TPS Gain",
         ]
     )
     if include_total_tps:
-        fieldnames.extend(["Strict-Prefix 估算总 TPS", "LRU-like 估算总 TPS"])
+        fieldnames.extend(["Strict-Prefix Estimated Total TPS", "LRU-like Estimated Total TPS"])
     if include_target_tps_fields:
         fieldnames.extend(
             [
-                "Strict-Prefix 当前配置可承载总 TPS",
-                "Strict-Prefix 目标总 TPS 最小卡数",
-                "Strict-Prefix 目标总 TPS 最小机器数",
-                "LRU-like 当前配置可承载总 TPS",
-                "LRU-like 目标总 TPS 最小卡数",
-                "LRU-like 目标总 TPS 最小机器数",
+                "Strict-Prefix Current Cluster Capacity TPS",
+                "Strict-Prefix Min Cards for Target Total TPS",
+                "Strict-Prefix Min Machines for Target Total TPS",
+                "LRU-like Current Cluster Capacity TPS",
+                "LRU-like Min Cards for Target Total TPS",
+                "LRU-like Min Machines for Target Total TPS",
             ]
         )
-    fieldnames.extend(["Strict-Prefix 饱和容量 (GB)", "LRU-like 饱和容量 (GB)"])
+    fieldnames.extend(["Strict-Prefix Saturation Capacity (GB)", "LRU-like Saturation Capacity (GB)"])
     return fieldnames
 
 
@@ -289,58 +289,58 @@ def _heuristic_tier_payload(
     include_target_tps_fields: bool,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
-        "场景": row.scenario_label,
-        "容量层": row.tier_label,
-        "机器数": row.machine_count,
-        "卡数": row.card_count,
-        "单机卡数": row.cards_per_machine,
-        "规格": row.machine_spec,
+        "Scenario": row.scenario_label,
+        "Capacity Tier": row.tier_label,
+        "Machines": row.machine_count,
+        "Cards": row.card_count,
+        "Cards per Machine": row.cards_per_machine,
+        "Spec": row.machine_spec,
     }
     if include_total_tps:
-        payload["总 TPS"] = format_number(row.total_tps)
-        payload["TPS 输入口径"] = row.total_tps_input_unit or ""
+        payload["Total TPS"] = format_number(row.total_tps)
+        payload["Total TPS Input Unit"] = row.total_tps_input_unit or ""
     if include_target_tps_fields:
-        payload["目标总 TPS"] = format_number(row.planning_target_total_tps)
-        payload["单卡基线 TPS (无命中)"] = format_number(row.baseline_per_card_tps)
-    payload["KVCache 总大小 (GB)"] = f"{row.total_kv_gb:.2f}"
-    payload["极限命中率"] = format_rate(row.content_hit_rate)
-    payload["Strict-Prefix 命中率估计"] = format_rate(row.strict_prefix_hit_rate)
-    payload["LRU-like 命中率估计"] = format_rate(row.lru_like_hit_rate)
-    payload["Strict-Prefix 达到内容上界"] = format_flag(
+        payload["Target Total TPS"] = format_number(row.planning_target_total_tps)
+        payload["Baseline TPS per Card (No Hit)"] = format_number(row.baseline_per_card_tps)
+    payload["KVCache Total (GB)"] = f"{row.total_kv_gb:.2f}"
+    payload["Content Upper Bound Hit Rate"] = format_rate(row.content_hit_rate)
+    payload["Strict-Prefix Hit Rate (Estimate)"] = format_rate(row.strict_prefix_hit_rate)
+    payload["LRU-like Hit Rate (Estimate)"] = format_rate(row.lru_like_hit_rate)
+    payload["Strict-Prefix Reaches Content Upper Bound"] = format_flag(
         row.strict_prefix_hits_content_ceiling
     )
-    payload["LRU-like 达到 Strict-Prefix"] = format_flag(row.lru_like_hits_strict_prefix)
-    payload["当前主要瓶颈"] = row.current_bottleneck
-    payload["相对上一层 Strict-Prefix 增益"] = format_delta_pp(
+    payload["LRU-like Reaches Strict-Prefix"] = format_flag(row.lru_like_hits_strict_prefix)
+    payload["Current Bottleneck"] = row.current_bottleneck
+    payload["Strict-Prefix Gain vs Previous Tier"] = format_delta_pp(
         row.strict_prefix_gain_from_previous_tier
     )
-    payload["相对上一层 LRU-like 增益"] = format_delta_pp(row.lru_like_gain_from_previous_tier)
+    payload["LRU-like Gain vs Previous Tier"] = format_delta_pp(row.lru_like_gain_from_previous_tier)
     payload["Strict-Prefix TPS Gain"] = format_number(row.strict_prefix_tps_gain)
     payload["LRU-like TPS Gain"] = format_number(row.lru_like_tps_gain)
     if include_total_tps:
-        payload["Strict-Prefix 估算总 TPS"] = format_number(row.strict_prefix_estimated_total_tps)
-        payload["LRU-like 估算总 TPS"] = format_number(row.lru_like_estimated_total_tps)
+        payload["Strict-Prefix Estimated Total TPS"] = format_number(row.strict_prefix_estimated_total_tps)
+        payload["LRU-like Estimated Total TPS"] = format_number(row.lru_like_estimated_total_tps)
     if include_target_tps_fields:
-        payload["Strict-Prefix 当前配置可承载总 TPS"] = format_number(
+        payload["Strict-Prefix Current Cluster Capacity TPS"] = format_number(
             row.strict_prefix_current_cluster_capacity_tps
         )
-        payload["Strict-Prefix 目标总 TPS 最小卡数"] = format_integer(
+        payload["Strict-Prefix Min Cards for Target Total TPS"] = format_integer(
             row.strict_prefix_min_card_count_for_target_total_tps
         )
-        payload["Strict-Prefix 目标总 TPS 最小机器数"] = format_integer(
+        payload["Strict-Prefix Min Machines for Target Total TPS"] = format_integer(
             row.strict_prefix_min_machine_count_for_target_total_tps
         )
-        payload["LRU-like 当前配置可承载总 TPS"] = format_number(
+        payload["LRU-like Current Cluster Capacity TPS"] = format_number(
             row.lru_like_current_cluster_capacity_tps
         )
-        payload["LRU-like 目标总 TPS 最小卡数"] = format_integer(
+        payload["LRU-like Min Cards for Target Total TPS"] = format_integer(
             row.lru_like_min_card_count_for_target_total_tps
         )
-        payload["LRU-like 目标总 TPS 最小机器数"] = format_integer(
+        payload["LRU-like Min Machines for Target Total TPS"] = format_integer(
             row.lru_like_min_machine_count_for_target_total_tps
         )
-    payload["Strict-Prefix 饱和容量 (GB)"] = format_number(row.strict_prefix_saturation_capacity_gb)
-    payload["LRU-like 饱和容量 (GB)"] = format_number(row.lru_like_saturation_capacity_gb)
+    payload["Strict-Prefix Saturation Capacity (GB)"] = format_number(row.strict_prefix_saturation_capacity_gb)
+    payload["LRU-like Saturation Capacity (GB)"] = format_number(row.lru_like_saturation_capacity_gb)
     return payload
 
 

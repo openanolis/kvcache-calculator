@@ -39,11 +39,11 @@
       "planning_target_total_tps": 8.0,
       "extra_capacity_tiers": [
         {
-          "label": "HBM+单机 1T",
+          "label": "HBM+1T per Machine",
           "kv_gb_per_machine": 1024
         },
         {
-          "label": "HBM+单机 10T",
+          "label": "HBM+10T per Machine",
           "kv_gb_per_machine": 10240
         }
       ]

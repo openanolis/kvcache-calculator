@@ -25,11 +25,11 @@
       "gpu_memory_gb_per_card": 96,
       "extra_capacity_tiers": [
         {
-          "label": "HBM+单机 1T 命中率",
+          "label": "HBM+1T per Machine Hit Rate",
           "kv_gb_per_machine": 1024
         },
         {
-          "label": "HBM+单机 10T 命中率",
+          "label": "HBM+10T per Machine Hit Rate",
           "kv_gb_per_machine": 10240
         }
       ]
@@ -44,11 +44,11 @@
       "gpu_memory_gb_per_card": 96,
       "extra_capacity_tiers": [
         {
-          "label": "HBM+单机 1T 命中率",
+          "label": "HBM+1T per Machine Hit Rate",
           "kv_gb_per_machine": 1024
         },
         {
-          "label": "HBM+单机 10T 命中率",
+          "label": "HBM+10T per Machine Hit Rate",
           "kv_gb_per_machine": 10240
         }
       ]
@@ -63,11 +63,11 @@
       "gpu_memory_gb_per_card": 96,
       "extra_capacity_tiers": [
         {
-          "label": "HBM+单机 1T 命中率",
+          "label": "HBM+1T per Machine Hit Rate",
           "kv_gb_per_machine": 1024
         },
         {
-          "label": "HBM+单机 10T 命中率",
+          "label": "HBM+10T per Machine Hit Rate",
           "kv_gb_per_machine": 10240
         }
       ]
@@ -82,11 +82,11 @@
       "gpu_memory_gb_per_card": 96,
       "extra_capacity_tiers": [
         {
-          "label": "HBM+单机 1T 命中率",
+          "label": "HBM+1T per Machine Hit Rate",
           "kv_gb_per_machine": 1024
         },
         {
-          "label": "HBM+单机 10T 命中率",
+          "label": "HBM+10T per Machine Hit Rate",
           "kv_gb_per_machine": 10240
         }
       ]
@@ -101,11 +101,11 @@
       "gpu_memory_gb_per_card": 96,
       "extra_capacity_tiers": [
         {
-          "label": "HBM+单机 1T 命中率",
+          "label": "HBM+1T per Machine Hit Rate",
           "kv_gb_per_machine": 1024
         },
         {
-          "label": "HBM+单机 10T 命中率",
+          "label": "HBM+10T per Machine Hit Rate",
           "kv_gb_per_machine": 10240
         }
       ]

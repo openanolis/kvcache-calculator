@@ -44,7 +44,7 @@ def write_multi_agent_report_outputs(
         context=context,
         calibration=calibration,
     )
-    (output_path / "heuristic_report.md").write_text(zh_content, encoding="utf-8")
+    (output_path / "heuristic_report.md").write_text(en_content, encoding="utf-8")
     (output_path / "heuristic_report.zh.md").write_text(zh_content, encoding="utf-8")
     (output_path / "heuristic_report.en.md").write_text(en_content, encoding="utf-8")
 
