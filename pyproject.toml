@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "kvcache-upper-bound-oracle"
 version = "0.1.0"
 description = "Offline KVCache upper bound analyzer for Bailian traces"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.11"
 dependencies = []
 
