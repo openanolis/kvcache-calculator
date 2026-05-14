@@ -131,7 +131,7 @@ class BucketAnalysisConfig:
     block_size: int
     bucket_deployments: tuple[BucketDeploymentConfig, ...]
     prefill_savings_alpha: float = 0.8
-    include_output_kvcache: bool = False
+    include_output_kvcache: bool = True
 
 
 @dataclass(frozen=True)

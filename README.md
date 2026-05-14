@@ -162,7 +162,7 @@ Best for: stabilizing a heuristic configuration so it can be reused for trace-le
 **Global parameters**:
 
 - `prefill_savings_alpha`: how much of the prefill cost saved by a cache hit translates into throughput gain. Default `0.8`.
-- `include_output_kvcache`: when prefill and decode are not separated (PD-not-disaggregated), whether to count output-stage KV cache toward occupancy and hit rate. Default `false`.
+- `include_output_kvcache`: when prefill and decode are not separated (PD-not-disaggregated), whether to count output-stage KV cache toward occupancy and hit rate. Default `true`.
 
 ### Heuristic-only fields
 

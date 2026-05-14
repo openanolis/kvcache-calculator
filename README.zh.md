@@ -160,7 +160,7 @@ kvcache-upper-bound calibrate-multi-agent \
 **全局参数**：
 
 - `prefill_savings_alpha`：命中节省的 prefill 算力，能转化成多少吞吐增益。默认 `0.8`。
-- `include_output_kvcache`：PD 不分离时，是否把 output 阶段产生的 KV cache 也算进占用和命中率。默认 `false`。
+- `include_output_kvcache`：PD 不分离时，是否把 output 阶段产生的 KV cache 也算进占用和命中率。默认 `true`。
 
 ### 无 trace heuristic 专属字段
 

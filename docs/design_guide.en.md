@@ -251,7 +251,7 @@ By default, only **prefill reuse** is counted:
 
 #### Output KV Cache Extension (`include_output_kvcache`)
 
-In non-PD-separated deployments, where prefill and decode share the same GPU memory, output KV cache generated during decode remains on GPU, occupies cache space, and affects later hit rates. This feature can be enabled with `"include_output_kvcache": true`.
+In non-PD-separated deployments, where prefill and decode share the same GPU memory, output KV cache generated during decode remains on GPU, occupies cache space, and affects later hit rates. This feature is enabled by default (`true`); set `"include_output_kvcache": false` to disable it.
 
 **Core mechanism:**
 

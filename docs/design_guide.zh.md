@@ -250,7 +250,7 @@ content_gap = heuristic_content_ceiling - observed_content_ceiling
 
 #### Output KV Cache 扩展（`include_output_kvcache`）
 
-在 PD 不分离（prefill 和 decode 共用同一套 GPU 显存）的部署场景下，decode 阶段产生的 output KV cache 会驻留在 GPU 上，占用缓存空间，进而影响后续请求的缓存命中率。通过在配置中设置 `"include_output_kvcache": true` 可以开启此特性。
+在 PD 不分离（prefill 和 decode 共用同一套 GPU 显存）的部署场景下，decode 阶段产生的 output KV cache 会驻留在 GPU 上，占用缓存空间，进而影响后续请求的缓存命中率。此特性默认开启（`true`）；如需关闭，可在配置中设置 `"include_output_kvcache": false`。
 
 **核心机制**：
 
