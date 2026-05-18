@@ -1,0 +1,1 @@
+{"id":"sharegpt-sample-1","conversations":[{"from":"human","value":"What is prefix reuse?"},{"from":"gpt","value":"It reuses cached KV for repeated prompt prefixes."},{"from":"human","value":"Why does capacity matter?"},{"from":"gpt","value":"Because only resident prefixes can be reused."}]}

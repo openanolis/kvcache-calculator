@@ -21,7 +21,11 @@ from kvcache_upper_bound.heuristic import (
     write_multi_agent_outputs,
     write_multi_agent_report_outputs,
 )
-from kvcache_upper_bound.ingest import load_request_records
+from kvcache_upper_bound.ingest import (
+    convert_benchmark_results,
+    convert_conversation_dataset,
+    load_request_records,
+)
 from kvcache_upper_bound.reporting import (
     analyze_bucket_deployments,
     build_bucket_input_summaries,
@@ -121,6 +125,50 @@ def main() -> int:
         help="Prefix sample size for fast-vs-naive content cross-checks",
     )
 
+    conversation_convert_parser = subparsers.add_parser(
+        "convert-conversation-dataset",
+        help="Convert LMSYS/ShareGPT-style conversation datasets into trace-compatible JSONL",
+    )
+    conversation_convert_parser.add_argument("--input", required=True, help="Local JSON/JSONL dataset path")
+    conversation_convert_parser.add_argument(
+        "--format",
+        required=True,
+        choices=("lmsys-chat-1m", "sharegpt"),
+        help="Conversation dataset schema family",
+    )
+    conversation_convert_parser.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory for converted_trace.jsonl and metadata.json",
+    )
+    conversation_convert_parser.add_argument(
+        "--block-size",
+        type=int,
+        default=16,
+        help="Synthetic block size used when generating hash_ids",
+    )
+    benchmark_convert_parser = subparsers.add_parser(
+        "convert-benchmark-results",
+        help="Convert benchmark/result JSONL into replay-oriented trace-compatible JSONL",
+    )
+    benchmark_convert_parser.add_argument("--input", required=True, help="Local JSON/JSONL dataset path")
+    benchmark_convert_parser.add_argument(
+        "--output-dir",
+        required=True,
+        help="Directory for converted_trace.jsonl and metadata.json",
+    )
+    benchmark_convert_parser.add_argument(
+        "--block-size",
+        type=int,
+        default=16,
+        help="Synthetic block size used when generating fallback hash_ids",
+    )
+    benchmark_convert_parser.add_argument(
+        "--allow-synthetic-hash-ids",
+        action="store_true",
+        help="Allow replay-only synthetic hash_ids when benchmark records do not provide them",
+    )
+
     args = parser.parse_args()
     if args.command == "analyze-buckets":
         return _run_analyze_buckets(args)
@@ -130,6 +178,10 @@ def main() -> int:
         return _run_calibrate_multi_agent(args)
     if args.command == "audit-buckets":
         return _run_audit_buckets(args)
+    if args.command == "convert-conversation-dataset":
+        return _run_convert_conversation_dataset(args)
+    if args.command == "convert-benchmark-results":
+        return _run_convert_benchmark_results(args)
     raise ValueError(f"unsupported command: {args.command}")
 
 
@@ -329,6 +381,53 @@ def _run_audit_buckets(args: argparse.Namespace) -> int:
             "strict_prefix_replay_hit_blocks": audit_report.strict_prefix_replay_gap_counterexample.strict_prefix_replay_hit_blocks,
             "strict_prefix_hit_blocks": audit_report.strict_prefix_replay_gap_counterexample.strict_prefix_hit_blocks,
         },
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _run_convert_conversation_dataset(args: argparse.Namespace) -> int:
+    output_dir = Path(args.output_dir)
+    output_trace_path = output_dir / "converted_trace.jsonl"
+    result = convert_conversation_dataset(
+        args.input,
+        output_trace_path,
+        source_format=args.format,
+        block_size=args.block_size,
+    )
+    payload = {
+        "mode": result.mode,
+        "source_format": result.source_format,
+        "input": result.input_path,
+        "output_trace": result.output_trace_path,
+        "output_dir": str(output_dir.resolve()),
+        "block_size": result.block_size,
+        "stats": asdict(result.stats),
+        "limitations": list(result.limitations),
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _run_convert_benchmark_results(args: argparse.Namespace) -> int:
+    output_dir = Path(args.output_dir)
+    output_trace_path = output_dir / "converted_trace.jsonl"
+    result = convert_benchmark_results(
+        args.input,
+        output_trace_path,
+        block_size=args.block_size,
+        allow_synthetic_hash_ids=args.allow_synthetic_hash_ids,
+    )
+    payload = {
+        "mode": result.mode,
+        "source_format": result.source_format,
+        "input": result.input_path,
+        "output_trace": result.output_trace_path,
+        "output_dir": str(output_dir.resolve()),
+        "block_size": result.block_size,
+        "stats": asdict(result.stats),
+        "limitations": list(result.limitations),
+        "allow_synthetic_hash_ids": args.allow_synthetic_hash_ids,
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0

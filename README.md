@@ -41,6 +41,37 @@ When reading the results, fix your eyes on two gaps:
 - **content upper bound − exact strict-prefix**: a large gap → bottlenecked by capacity → adding memory helps.
 - **exact strict-prefix − LRU baseline**: a large gap → bottlenecked by policy → switching to a smarter cache policy helps.
 
+## Workflow
+
+```mermaid
+flowchart TD
+    A[Input] --> B{Have a trace?}
+
+    B -- Yes --> C[JSONL trace file\nor URL]
+    B -- No --> D[Model spec +\nAgent scenario]
+    B -- Raw dataset --> E[convert-conversation-dataset\nconvert-benchmark-results]
+    E --> C
+
+    C --> F[analyze-buckets /\naudit-buckets]
+    D --> G[estimate-multi-agent]
+    C --> H[calibrate-multi-agent]
+
+    F --> I[Oracle results\nhit_summary.csv\ntier_summary.csv]
+    G --> J[Heuristic estimate\nheuristic_summary.csv\nheuristic_report.md]
+    H --> K[Calibrated params\ncalibrated_config.json]
+
+    I --> L[Planning\nplanning_strict_prefix.csv\nplanning_lru.csv]
+    J --> L
+    K --> G
+
+    L --> M[Answer\nMin cards / machines\nto hit target TPS]
+
+    style A fill:#f0f4ff,stroke:#4a6cf7
+    style M fill:#f0fff4,stroke:#2ea043
+    style I fill:#fff8f0,stroke:#d08000
+    style J fill:#fff8f0,stroke:#d08000
+```
+
 ## Getting started
 
 Install first:

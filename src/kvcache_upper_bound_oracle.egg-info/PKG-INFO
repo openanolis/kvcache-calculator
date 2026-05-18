@@ -2,4 +2,9 @@ Metadata-Version: 2.4
 Name: kvcache-upper-bound-oracle
 Version: 0.1.0
 Summary: Offline KVCache upper bound analyzer for Bailian traces
+License: Apache-2.0
 Requires-Python: >=3.11
+License-File: LICENSE
+Provides-Extra: dev
+Requires-Dist: pytest; extra == "dev"
+Dynamic: license-file

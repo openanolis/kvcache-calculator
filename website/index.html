@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KVCache Upper Bound Oracle — Results Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── reset & tokens ───────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #0d1117;
+      --surface:     #161b22;
+      --surface2:    #21262d;
+      --border:      #30363d;
+      --text:        #c9d1d9;
+      --text-muted:  #8b949e;
+      --accent:      #58a6ff;
+      --accent2:     #3fb950;
+      --warn:        #f0883e;
+      --danger:      #f85149;
+      --purple:      #bc8cff;
+      --radius:      8px;
+      --shadow:      0 2px 8px rgba(0,0,0,.4);
+    }
+
+    html { font-size: 15px; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+
+    /* ── layout ───────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+    header .logo {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--accent);
+      white-space: nowrap;
+    }
+    header .subtitle {
+      font-size: .82rem;
+      color: var(--text-muted);
+    }
+
+    main {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 28px 24px 60px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    /* ── cards / sections ─────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      box-shadow: var(--shadow);
+    }
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title .badge {
+      font-size: .72rem;
+      font-weight: 600;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2px 8px;
+      color: var(--text-muted);
+    }
+
+    /* ── drop zone ────────────────────────────────────────────────── */
+    #drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 40px 24px;
+      text-align: center;
+      transition: border-color .2s, background .2s;
+      cursor: pointer;
+      background: var(--surface2);
+    }
+    #drop-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(88,166,255,.07);
+    }
+    #drop-zone .drop-icon {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      display: block;
+    }
+    #drop-zone .drop-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    #drop-zone .drop-hint {
+      font-size: .85rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    #drop-zone .drop-hint code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: .82rem;
+      color: var(--accent2);
+    }
+    #file-input { display: none; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 14px;
+      padding: 8px 18px;
+      background: var(--accent);
+      color: #0d1117;
+      border: none;
+      border-radius: var(--radius);
+      font-size: .9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn:hover { opacity: .85; }
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    /* ── file list chips ──────────────────────────────────────────── */
+    #loaded-files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 14px;
+    }
+    .file-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: .8rem;
+      color: var(--text-muted);
+    }
+    .file-chip .ok  { color: var(--accent2); }
+    .file-chip .err { color: var(--danger); }
+
+    /* ── tables ───────────────────────────────────────────────────── */
+    .table-wrap {
+      overflow-x: auto;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: .83rem;
+    }
+    th {
+      background: var(--surface2);
+      color: var(--text-muted);
+      font-weight: 600;
+      text-align: left;
+      padding: 9px 12px;
+      white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+    }
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.03); }
+
+    /* ── rate cells ───────────────────────────────────────────────── */
+    .rate-cell {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .rate-bar-wrap {
+      flex: 1;
+      min-width: 60px;
+      height: 6px;
+      background: var(--surface2);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .rate-bar {
+      height: 100%;
+      border-radius: 3px;
+    }
+    .rate-val { min-width: 50px; text-align: right; font-variant-numeric: tabular-nums; }
+
+    /* ── bottleneck badges ────────────────────────────────────────── */
+    .bottleneck-capacity { color: var(--warn); font-weight: 600; }
+    .bottleneck-policy   { color: var(--purple); font-weight: 600; }
+    .bottleneck-none     { color: var(--accent2); font-weight: 600; }
+
+    /* ── key-value metadata ───────────────────────────────────────── */
+    .kv-grid {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 6px 16px;
+      font-size: .88rem;
+    }
+    .kv-key { color: var(--text-muted); font-weight: 600; }
+    .kv-val { color: var(--text); word-break: break-all; font-family: monospace; font-size: .82rem; }
+
+    /* ── chart container ──────────────────────────────────────────── */
+    .chart-wrap {
+      position: relative;
+      margin-top: 24px;
+      height: 320px;
+    }
+
+    /* ── planning side-by-side ────────────────────────────────────── */
+    .planning-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 760px) {
+      .planning-grid { grid-template-columns: 1fr; }
+    }
+
+    /* ── section sub-title ────────────────────────────────────────── */
+    .section-label {
+      font-size: .78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    /* ── empty / error states ─────────────────────────────────────── */
+    .empty-state {
+      text-align: center;
+      padding: 32px 16px;
+      color: var(--text-muted);
+      font-size: .9rem;
+    }
+    .empty-state span { display: block; font-size: 2rem; margin-bottom: 8px; }
+    .error-banner {
+      background: rgba(248,81,73,.12);
+      border: 1px solid rgba(248,81,73,.4);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-size: .84rem;
+      color: var(--danger);
+      margin-top: 10px;
+    }
+
+    /* ── tier pill ────────────────────────────────────────────────── */
+    .tier-hbm    { color: var(--accent); }
+    .tier-extra  { color: var(--purple); }
+
+    /* ── scrollable tall tables ───────────────────────────────────── */
+    .table-scroll { max-height: 480px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">⚡ KVCache Upper Bound Oracle</div>
+    <div class="subtitle">Results Dashboard</div>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── File Loader ──────────────────────────────────────────────── -->
+  <div class="card">
+    <div class="card-title">📂 Load Output Files</div>
+
+    <div id="drop-zone" role="button" tabindex="0" aria-label="Drop output files or click to browse">
+      <span class="drop-icon">📁</span>
+      <div class="drop-title">Drag &amp; drop output files here, or click to browse</div>
+      <div class="drop-hint">
+        Select one or more files from your output directory:<br/>
+        <code>metadata.json</code> &nbsp;
+        <code>hit_summary.csv</code> &nbsp;
+        <code>tier_summary.csv</code> &nbsp;
+        <code>planning_strict_prefix.csv</code> &nbsp;
+        <code>planning_lru.csv</code> &nbsp;
+        <code>heuristic_summary.csv</code>
+      </div>
+      <button class="btn" id="browse-btn" type="button">Browse files</button>
+    </div>
+    <input type="file" id="file-input" multiple accept=".csv,.json" />
+
+    <div id="loaded-files"></div>
+    <div id="load-errors"></div>
+  </div>
+
+  <!-- ── Run Metadata ─────────────────────────────────────────────── -->
+  <div class="card" id="section-metadata" style="display:none">
+    <div class="card-title">📋 Run Metadata</div>
+    <div id="metadata-content"></div>
+  </div>
+
+  <!-- ── Hit Rate Summary ─────────────────────────────────────────── -->
+  <div class="card" id="section-hit" style="display:none">
+    <div class="card-title">
+      🎯 Hit Rate Summary
+      <span class="badge" id="hit-source-badge">hit_summary.csv</span>
+    </div>
+    <div class="table-wrap table-scroll">
+      <table id="hit-table"><thead></thead><tbody></tbody></table>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="hit-chart"></canvas>
+    </div>
+  </div>
+
+  <!-- ── Tier Comparison ──────────────────────────────────────────── -->
+  <div class="card" id="section-tier" style="display:none">
+    <div class="card-title">🗂️ Capacity Tier Comparison <span class="badge">tier_summary.csv</span></div>
+    <div class="table-wrap table-scroll">
+      <table id="tier-table"><thead></thead><tbody></tbody></table>
+    </div>
+  </div>
+
+  <!-- ── Planning Summary ─────────────────────────────────────────── -->
+  <div class="card" id="section-planning" style="display:none">
+    <div class="card-title">📐 Planning Summary</div>
+    <div class="planning-grid">
+      <div>
+        <div class="section-label">Strict-Prefix Planning</div>
+        <div class="table-wrap table-scroll">
+          <table id="sp-table"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+      <div>
+        <div class="section-label">LRU Planning</div>
+        <div class="table-wrap table-scroll">
+          <table id="lru-table"><thead></thead><tbody></tbody></table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   Utilities
+═══════════════════════════════════════════════════════════════════ */
+function parseCSV(text) {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  if (!lines.length) return [];
+  const headers = splitCSVRow(lines[0]);
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const cols = splitCSVRow(line);
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h] = cols[idx] ?? ''; });
+    rows.push(obj);
+  }
+  return rows;
+}
+
+function splitCSVRow(line) {
+  // handles quoted fields with embedded commas
+  const result = [];
+  let inQuote = false, cur = '';
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQuote = !inQuote; }
+    else if (ch === ',' && !inQuote) { result.push(cur); cur = ''; }
+    else { cur += ch; }
+  }
+  result.push(cur);
+  return result;
+}
+
+function parseRate(s) {
+  if (!s) return null;
+  const m = s.match(/([\d.]+)%/);
+  return m ? parseFloat(m[1]) : null;
+}
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function rateBar(rateStr, color) {
+  const pct = parseRate(rateStr);
+  if (pct === null) return esc(rateStr || '—');
+  return `<div class="rate-cell">
+    <div class="rate-bar-wrap"><div class="rate-bar" style="width:${pct}%;background:${color}"></div></div>
+    <span class="rate-val">${esc(rateStr)}</span>
+  </div>`;
+}
+
+function bottleneckHtml(val) {
+  if (!val) return '—';
+  const lv = val.toLowerCase();
+  if (lv === 'capacity') return `<span class="bottleneck-capacity">${esc(val)}</span>`;
+  if (lv === 'policy')   return `<span class="bottleneck-policy">${esc(val)}</span>`;
+  if (lv === 'none')     return `<span class="bottleneck-none">${esc(val)}</span>`;
+  return esc(val);
+}
+
+function buildTable(tableEl, headers, rows, cellFn) {
+  const thead = tableEl.querySelector('thead');
+  const tbody = tableEl.querySelector('tbody');
+  thead.innerHTML = '<tr>' + headers.map(h => `<th>${esc(h)}</th>`).join('') + '</tr>';
+  tbody.innerHTML = rows.map(r =>
+    '<tr>' + headers.map(h => `<td>${cellFn(h, r[h] ?? '')}</td>`).join('') + '</tr>'
+  ).join('');
+}
+
+function show(id) { document.getElementById(id).style.display = ''; }
+function addError(msg) {
+  const el = document.getElementById('load-errors');
+  el.insertAdjacentHTML('beforeend', `<div class="error-banner">⚠ ${esc(msg)}</div>`);
+}
+function clearErrors() { document.getElementById('load-errors').innerHTML = ''; }
+
+/* ════════════════════════════════════════════════════════════════════
+   State
+═══════════════════════════════════════════════════════════════════ */
+const state = {
+  metadata: null,
+  hitRows: null,
+  heuristicRows: null,
+  tierRows: null,
+  spRows: null,
+  lruRows: null,
+};
+
+let hitChartInstance = null;
+
+/* ════════════════════════════════════════════════════════════════════
+   File dispatch
+═══════════════════════════════════════════════════════════════════ */
+function handleFiles(files) {
+  clearErrors();
+  Array.from(files).forEach(file => {
+    const name = file.name.toLowerCase();
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        processFile(name, e.target.result);
+        markChip(file.name, true);
+      } catch (err) {
+        markChip(file.name, false);
+        addError(`${file.name}: ${err.message}`);
+      }
+    };
+    reader.onerror = () => { markChip(file.name, false); addError(`Cannot read ${file.name}`); };
+    addChip(file.name);
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
+function processFile(name, text) {
+  if (name === 'metadata.json') {
+    state.metadata = JSON.parse(text);
+    renderMetadata();
+  } else if (name === 'hit_summary.csv') {
+    state.hitRows = parseCSV(text);
+    renderHitSummary();
+  } else if (name === 'heuristic_summary.csv') {
+    state.heuristicRows = parseCSV(text);
+    renderHeuristicSummary();
+  } else if (name === 'tier_summary.csv') {
+    state.tierRows = parseCSV(text);
+    renderTierSummary();
+  } else if (name === 'planning_strict_prefix.csv') {
+    state.spRows = parseCSV(text);
+    renderPlanningTables();
+  } else if (name === 'planning_lru.csv') {
+    state.lruRows = parseCSV(text);
+    renderPlanningTables();
+  } else {
+    throw new Error('Unrecognised file name — expected one of: metadata.json, hit_summary.csv, heuristic_summary.csv, tier_summary.csv, planning_strict_prefix.csv, planning_lru.csv');
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Chip helpers
+═══════════════════════════════════════════════════════════════════ */
+function chipId(name) { return 'chip-' + name.replace(/[^a-z0-9]/gi, '_'); }
+
+function addChip(name) {
+  const container = document.getElementById('loaded-files');
+  const id = chipId(name);
+  if (document.getElementById(id)) return;
+  container.insertAdjacentHTML('beforeend',
+    `<span class="file-chip" id="${id}"><span class="status">⏳</span> ${esc(name)}</span>`);
+}
+
+function markChip(name, ok) {
+  const el = document.getElementById(chipId(name));
+  if (!el) return;
+  el.querySelector('.status').textContent = ok ? '✅' : '❌';
+  el.querySelector('.status').className = 'status ' + (ok ? 'ok' : 'err');
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Renderers
+═══════════════════════════════════════════════════════════════════ */
+
+/* ── Metadata ────────────────────────────────────────────────────── */
+function renderMetadata() {
+  const m = state.metadata;
+  if (!m) return;
+
+  const interesting = [
+    ['Mode',           m.mode || 'trace-oracle'],
+    ['Trace',          m.trace || '—'],
+    ['Config',         m.config || '—'],
+    ['Output Dir',     m.output_dir || '—'],
+    ['Loaded Records', m.loaded_records != null ? m.loaded_records.toLocaleString() : '—'],
+    ['Skipped Records',m.skipped_records != null ? m.skipped_records.toLocaleString() : '—'],
+    ['Total Lines',    m.total_lines != null ? m.total_lines.toLocaleString() : '—'],
+    ['Prefill Savings Alpha', m.prefill_savings_alpha != null ? m.prefill_savings_alpha : '—'],
+  ].filter(([, v]) => v !== '—' && v !== null && v !== undefined);
+
+  let html = '<div class="kv-grid">';
+  interesting.forEach(([k, v]) => {
+    html += `<span class="kv-key">${esc(k)}</span><span class="kv-val">${esc(String(v))}</span>`;
+  });
+  html += '</div>';
+
+  document.getElementById('metadata-content').innerHTML = html;
+  show('section-metadata');
+}
+
+/* ── Hit-rate table + chart ─────────────────────────────────────── */
+const HIT_RATE_COLS = [
+  { key: 'Content Upper Bound Hit Rate',       color: '#58a6ff', label: 'Content UB' },
+  { key: 'HBM Relaxed Upper Bound Hit Rate',   color: '#79c0ff', label: 'Relaxed UB' },
+  { key: 'HBM Strict-Prefix Hit Rate',         color: '#3fb950', label: 'Strict-Prefix' },
+  { key: 'HBM Strict-Prefix Replay Hit Rate',  color: '#56d364', label: 'SP Replay' },
+  { key: 'HBM LRU Hit Rate',                   color: '#f0883e', label: 'LRU' },
+  { key: 'Actual Hit Rate',                    color: '#bc8cff', label: 'Actual' },
+];
+
+const HEURISTIC_HIT_RATE_COLS = [
+  { key: 'Content Upper Bound Hit Rate',          color: '#58a6ff', label: 'Content UB' },
+  { key: 'HBM Strict-Prefix Hit Rate (Estimate)', color: '#3fb950', label: 'Strict-Prefix (Est.)' },
+  { key: 'HBM LRU-like Hit Rate (Estimate)',      color: '#f0883e', label: 'LRU-like (Est.)' },
+];
+
+function renderHitSummary() {
+  const rows = state.hitRows;
+  if (!rows || !rows.length) return;
+
+  const badge = document.getElementById('hit-source-badge');
+  badge.textContent = 'hit_summary.csv';
+
+  const displayCols = HIT_RATE_COLS.filter(c => c.key in rows[0]);
+
+  const colDefs = [
+    { key: 'Bucket',                      render: (v) => `<strong>${esc(v)}</strong>` },
+    { key: 'Machines',                    render: esc },
+    { key: 'Cards',                       render: esc },
+    { key: 'HBM KVCache Total (GB)',      render: esc },
+    ...displayCols.map(c => ({
+      key: c.key,
+      render: (v) => rateBar(v, c.color),
+    })),
+    { key: 'HBM Current Bottleneck',      render: bottleneckHtml },
+    { key: 'Request Count',               render: esc },
+  ].filter(c => c.key in rows[0]);
+
+  const tbl = document.getElementById('hit-table');
+  const thead = tbl.querySelector('thead');
+  const tbody = tbl.querySelector('tbody');
+  thead.innerHTML = '<tr>' + colDefs.map(c => `<th>${esc(c.key)}</th>`).join('') + '</tr>';
+  tbody.innerHTML = rows.map(r =>
+    '<tr>' + colDefs.map(c => `<td>${c.render(r[c.key] ?? '')}</td>`).join('') + '</tr>'
+  ).join('');
+
+  renderHitChart(rows, displayCols);
+  show('section-hit');
+}
+
+function renderHeuristicSummary() {
+  const rows = state.heuristicRows;
+  if (!rows || !rows.length) return;
+
+  const badge = document.getElementById('hit-source-badge');
+  badge.textContent = 'heuristic_summary.csv';
+
+  // Map heuristic rows to use same bucket key so rendering logic re-uses same chart fn
+  const mapped = rows.map(r => {
+    const out = Object.assign({}, r);
+    if (!('Bucket' in out) && 'Scenario' in out) out['Bucket'] = out['Scenario'];
+    if (!('Content Upper Bound Hit Rate' in out) && 'Content Upper Bound Hit Rate' in r) {/* ok */}
+    return out;
+  });
+
+  const displayCols = HEURISTIC_HIT_RATE_COLS.filter(c => c.key in rows[0]);
+
+  const colDefs = [
+    { key: 'Bucket',                               render: (v) => `<strong>${esc(v)}</strong>` },
+    { key: 'Machines',                             render: esc },
+    { key: 'Cards',                                render: esc },
+    { key: 'HBM KVCache Total (GB)',               render: esc },
+    { key: 'Curve Mode',                           render: esc },
+    ...displayCols.map(c => ({
+      key: c.key,
+      render: (v) => rateBar(v, c.color),
+    })),
+    { key: 'HBM Current Bottleneck',               render: bottleneckHtml },
+  ].filter(c => c.key in rows[0]);
+
+  const tbl = document.getElementById('hit-table');
+  const thead = tbl.querySelector('thead');
+  const tbody = tbl.querySelector('tbody');
+  thead.innerHTML = '<tr>' + colDefs.map(c => `<th>${esc(c.key)}</th>`).join('') + '</tr>';
+  tbody.innerHTML = rows.map(r =>
+    '<tr>' + colDefs.map(c => `<td>${c.render(r[c.key] ?? '')}</td>`).join('') + '</tr>'
+  ).join('');
+
+  renderHitChart(mapped, displayCols);
+  show('section-hit');
+}
+
+function renderHitChart(rows, displayCols) {
+  const labels = rows.map(r => r['Bucket'] || r['Scenario'] || '?');
+
+  const datasets = displayCols
+    .filter(c => rows.some(r => parseRate(r[c.key]) !== null))
+    .map(c => ({
+      label: c.label,
+      data: rows.map(r => parseRate(r[c.key])),
+      backgroundColor: c.color + 'cc',
+      borderColor: c.color,
+      borderWidth: 1,
+      borderRadius: 3,
+    }));
+
+  if (hitChartInstance) { hitChartInstance.destroy(); hitChartInstance = null; }
+
+  const ctx = document.getElementById('hit-chart').getContext('2d');
+  hitChartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#c9d1d9', font: { size: 12 } } },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.y !== null ? ctx.parsed.y.toFixed(2) + '%' : '—'}`,
+          },
+        },
+      },
+      scales: {
+        x: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } },
+        y: {
+          ticks: { color: '#8b949e', callback: v => v + '%' },
+          grid: { color: '#21262d' },
+          min: 0, max: 100,
+          title: { display: true, text: 'Hit Rate (%)', color: '#8b949e' },
+        },
+      },
+    },
+  });
+}
+
+/* ── Tier Summary ───────────────────────────────────────────────── */
+function renderTierSummary() {
+  const rows = state.tierRows;
+  if (!rows || !rows.length) return;
+
+  const rateKeys = [
+    'Content Upper Bound Hit Rate',
+    'Strict-Prefix Hit Rate',
+    'LRU Hit Rate',
+  ];
+  const rateColors = { 
+    'Content Upper Bound Hit Rate': '#58a6ff',
+    'Strict-Prefix Hit Rate':       '#3fb950',
+    'LRU Hit Rate':                 '#f0883e',
+  };
+
+  const allKeys = Object.keys(rows[0]);
+  const visibleKeys = [
+    'Bucket', 'Capacity Tier', 'Machines', 'Cards',
+    'KVCache Total (GB)',
+    ...rateKeys.filter(k => allKeys.includes(k)),
+    'Strict-Prefix Gain vs Previous Tier',
+    'LRU Gain vs Previous Tier',
+    'Current Bottleneck',
+  ].filter(k => allKeys.includes(k));
+
+  function tierCell(k, v) {
+    if (k === 'Capacity Tier') {
+      const isHBM = v === 'HBM';
+      return `<span class="${isHBM ? 'tier-hbm' : 'tier-extra'}">${esc(v)}</span>`;
+    }
+    if (rateColors[k]) return rateBar(v, rateColors[k]);
+    if (k === 'Current Bottleneck') return bottleneckHtml(v);
+    if (k === 'Bucket') return `<strong>${esc(v)}</strong>`;
+    return esc(v);
+  }
+
+  const tbl = document.getElementById('tier-table');
+  const thead = tbl.querySelector('thead');
+  const tbody = tbl.querySelector('tbody');
+  thead.innerHTML = '<tr>' + visibleKeys.map(k => `<th>${esc(k)}</th>`).join('') + '</tr>';
+
+  // Group rows by bucket for alternating shading
+  let lastBucket = null;
+  let shade = false;
+  tbody.innerHTML = rows.map(r => {
+    if (r['Bucket'] !== lastBucket) { lastBucket = r['Bucket']; shade = !shade; }
+    const bg = shade ? 'background:rgba(255,255,255,.02)' : '';
+    return `<tr style="${bg}">` + visibleKeys.map(k => `<td>${tierCell(k, r[k] ?? '')}</td>`).join('') + '</tr>';
+  }).join('');
+
+  show('section-tier');
+}
+
+/* ── Planning tables ────────────────────────────────────────────── */
+function renderPlanningTables() {
+  let anyShown = false;
+
+  function renderOne(tableId, rows, hitKey, minCardsKey, minMachinesKey) {
+    if (!rows || !rows.length) return;
+    const allKeys = Object.keys(rows[0]);
+
+    const wantCols = [
+      'Bucket', 'Machines', 'Cards', 'Spec',
+      'HBM KVCache Total (GB)',
+      hitKey,
+      minCardsKey,
+      minMachinesKey,
+      'HBM Strict-Prefix TPS Gain',
+      'HBM LRU TPS Gain',
+      'Prefill Savings Alpha',
+      'Request Count',
+    ].filter(k => allKeys.includes(k));
+
+    const hitColor = hitKey.includes('LRU') ? '#f0883e' : '#3fb950';
+    function planCell(k, v) {
+      if (k === hitKey) return rateBar(v, hitColor);
+      if (k === 'Bucket') return `<strong>${esc(v)}</strong>`;
+      return esc(v);
+    }
+
+    const tbl = document.getElementById(tableId);
+    const thead = tbl.querySelector('thead');
+    const tbody = tbl.querySelector('tbody');
+    thead.innerHTML = '<tr>' + wantCols.map(k => `<th>${esc(k)}</th>`).join('') + '</tr>';
+    tbody.innerHTML = rows.map(r =>
+      '<tr>' + wantCols.map(k => `<td>${planCell(k, r[k] ?? '')}</td>`).join('') + '</tr>'
+    ).join('');
+    anyShown = true;
+  }
+
+  renderOne(
+    'sp-table', state.spRows,
+    'HBM Strict-Prefix Hit Rate',
+    'HBM Strict-Prefix Min Cards for Target Total TPS',
+    'HBM Strict-Prefix Min Machines for Target Total TPS',
+  );
+  renderOne(
+    'lru-table', state.lruRows,
+    'HBM LRU Hit Rate',
+    'HBM LRU Min Cards for Target Total TPS',
+    'HBM LRU Min Machines for Target Total TPS',
+  );
+
+  if (anyShown) show('section-planning');
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   Drop zone / file input wiring
+═══════════════════════════════════════════════════════════════════ */
+const dropZone  = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const browseBtn = document.getElementById('browse-btn');
+
+browseBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
+dropZone.addEventListener('click',  () => fileInput.click());
+dropZone.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) handleFiles(fileInput.files);
+  fileInput.value = '';
+});
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', e => { if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('drag-over'); });
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+});
+</script>
+</body>
+</html>

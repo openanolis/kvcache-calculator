@@ -13,6 +13,9 @@ dependencies = []
 [project.scripts]
 kvcache-upper-bound = "kvcache_upper_bound.cli.main:main"
 
+[project.optional-dependencies]
+dev = ["pytest"]
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
