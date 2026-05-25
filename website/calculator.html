@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KVCache Calculator — Interactive Multi-Agent Heuristic</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --accent2: #3fb950;
+      --warn: #f0883e;
+      --danger: #f85149;
+      --purple: #bc8cff;
+      --radius: 8px;
+      --shadow: 0 2px 8px rgba(0,0,0,.4);
+    }
+    html { font-size: 14px; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: var(--shadow);
+    }
+    header .logo { font-size: 1.2rem; font-weight: 700; color: var(--accent); white-space: nowrap; }
+    header .subtitle { font-size: .8rem; color: var(--text-muted); }
+    header nav { margin-left: auto; display: flex; gap: 12px; }
+    header nav a { color: var(--accent); text-decoration: none; font-size: .85rem; }
+    header nav a:hover { text-decoration: underline; }
+
+    main {
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 20px 16px 60px;
+      display: grid;
+      grid-template-columns: 380px 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 1000px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      box-shadow: var(--shadow);
+    }
+    .card-title {
+      font-size: .95rem;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .form-panel { display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 80px); overflow-y: auto; }
+    .form-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .form-group.full { grid-template-columns: 1fr; }
+    .form-field { display: flex; flex-direction: column; gap: 2px; }
+    .form-field label { font-size: .75rem; color: var(--text-muted); font-weight: 500; }
+    .form-field input, .form-field select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 6px 8px;
+      color: var(--text);
+      font-size: .85rem;
+      width: 100%;
+    }
+    .form-field input:focus, .form-field select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .results-panel { display: flex; flex-direction: column; gap: 16px; }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 10px;
+    }
+    .metric-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      text-align: center;
+    }
+    .metric-box .value { font-size: 1.1rem; font-weight: 700; color: var(--accent2); }
+    .metric-box .label { font-size: .7rem; color: var(--text-muted); margin-top: 2px; }
+
+    .results-table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+    th, td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 600; font-size: .72rem; text-transform: uppercase; position: sticky; top: 0; background: var(--surface); }
+    td:first-child, th:first-child { text-align: left; }
+    tr:hover td { background: var(--surface2); }
+
+    .chart-container { position: relative; height: 300px; }
+
+    .tier-row { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 6px; }
+    .tier-row .form-field { flex: 1; }
+    .btn-sm {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-muted);
+      padding: 4px 10px;
+      cursor: pointer;
+      font-size: .75rem;
+    }
+    .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-danger:hover { border-color: var(--danger); color: var(--danger); }
+    .btn-add { margin-top: 4px; }
+
+    .bottleneck-none { color: var(--accent2); }
+    .bottleneck-capacity { color: var(--warn); }
+    .bottleneck-policy { color: var(--purple); }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <div class="logo">KVCache Calculator</div>
+      <div class="subtitle">Interactive Multi-Agent Heuristic Estimator</div>
+    </div>
+    <nav>
+      <a href="index.html">Results Dashboard</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="form-panel">
+      <!-- Preset Selector -->
+      <div class="card">
+        <div class="card-title">Configuration Preset</div>
+        <div class="form-group full">
+          <div class="form-field">
+            <label>Preset</label>
+            <select id="preset-select">
+              <option value="qwen3-27b-8xh20">Qwen3-27B (8×H20, TP=8)</option>
+              <option value="qwen3-27b-1xh20">Qwen3-27B (1×H20, TP=1)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Model Profile -->
+      <div class="card">
+        <div class="card-title">Model Profile</div>
+        <div class="form-group">
+          <div class="form-field"><label>n_layers</label><input type="number" id="n_layers" /></div>
+          <div class="form-field"><label>kv_cache_layer_count</label><input type="number" id="kv_cache_layer_count" /></div>
+          <div class="form-field"><label>n_kv_heads</label><input type="number" id="n_kv_heads" /></div>
+          <div class="form-field"><label>head_dim</label><input type="number" id="head_dim" /></div>
+          <div class="form-field"><label>dtype_bytes</label><input type="number" id="dtype_bytes" /></div>
+          <div class="form-field"><label>block_size</label><input type="number" id="block_size" /></div>
+          <div class="form-field"><label>parameter_count</label><input type="number" id="parameter_count" /></div>
+          <div class="form-field"><label>weight_dtype_bytes</label><input type="number" id="weight_dtype_bytes" /></div>
+          <div class="form-field"><label>tp_size</label><input type="number" id="tp_size" /></div>
+          <div class="form-field"><label>pp_size</label><input type="number" id="pp_size" /></div>
+        </div>
+      </div>
+
+      <!-- Multi-Agent Heuristic -->
+      <div class="card">
+        <div class="card-title">Multi-Agent Heuristic</div>
+        <div class="form-group">
+          <div class="form-field"><label>concurrent_agents</label><input type="number" id="concurrent_agents" /></div>
+          <div class="form-field"><label>shared_prefix_tokens</label><input type="number" id="shared_prefix_tokens" /></div>
+          <div class="form-field"><label>avg_new_tokens_per_turn</label><input type="number" id="avg_new_tokens_per_turn" /></div>
+          <div class="form-field"><label>avg_turns_per_session</label><input type="number" id="avg_turns_per_session" /></div>
+          <div class="form-field"><label>private_window_tokens</label><input type="number" id="private_window_tokens" /></div>
+          <div class="form-field">
+            <label>curve_mode</label>
+            <select id="curve_mode">
+              <option value="zipf_harmonic">zipf_harmonic</option>
+              <option value="power_law_fit">power_law_fit</option>
+              <option value="linear">linear</option>
+            </select>
+          </div>
+          <div class="form-field" id="zipf_s_field"><label>zipf_s</label><input type="number" step="0.1" id="zipf_s" /></div>
+          <div class="form-field" id="zipf_pop_field"><label>zipf_population_blocks</label><input type="number" id="zipf_population_blocks" /></div>
+          <div class="form-field"><label>strict_prefix_efficiency</label><input type="number" step="0.05" id="strict_prefix_efficiency" /></div>
+          <div class="form-field"><label>lru_like_efficiency</label><input type="number" step="0.05" id="lru_like_efficiency" /></div>
+        </div>
+      </div>
+
+      <!-- Deployment -->
+      <div class="card">
+        <div class="card-title">Deployment</div>
+        <div class="form-group">
+          <div class="form-field"><label>label</label><input type="text" id="deploy_label" /></div>
+          <div class="form-field"><label>machine_spec</label><input type="text" id="machine_spec" /></div>
+          <div class="form-field"><label>accelerator_count</label><input type="number" id="accelerator_count" /></div>
+          <div class="form-field"><label>cards_per_machine</label><input type="number" id="cards_per_machine" /></div>
+          <div class="form-field"><label>gpu_memory_gb_per_card</label><input type="number" id="gpu_memory_gb_per_card" /></div>
+          <div class="form-field">
+            <label>total_tps_unit</label>
+            <select id="total_tps_unit">
+              <option value="cluster_total">cluster_total</option>
+              <option value="per_machine">per_machine</option>
+              <option value="per_card">per_card</option>
+            </select>
+          </div>
+          <div class="form-field"><label>total_tps</label><input type="number" step="0.1" id="total_tps" /></div>
+          <div class="form-field"><label>baseline_per_card_tps</label><input type="number" step="0.1" id="baseline_per_card_tps" /></div>
+          <div class="form-field"><label>planning_target_total_tps</label><input type="number" step="0.1" id="planning_target_total_tps" /></div>
+        </div>
+      </div>
+
+      <!-- Extra Capacity Tiers -->
+      <div class="card">
+        <div class="card-title">Extra Capacity Tiers</div>
+        <div id="tiers-container"></div>
+        <button class="btn-sm btn-add" id="add-tier-btn">+ Add Tier</button>
+      </div>
+
+      <!-- Analysis Settings -->
+      <div class="card">
+        <div class="card-title">Analysis Settings</div>
+        <div class="form-group">
+          <div class="form-field"><label>prefill_savings_alpha</label><input type="number" step="0.05" id="prefill_savings_alpha" /></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="results-panel">
+      <!-- Summary Metrics -->
+      <div class="card">
+        <div class="card-title">Summary Metrics</div>
+        <div class="metrics-grid" id="metrics-grid"></div>
+      </div>
+
+      <!-- Chart -->
+      <div class="card">
+        <div class="card-title">Hit Rate vs. KV Capacity</div>
+        <div class="chart-container">
+          <canvas id="hit-rate-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Results Table -->
+      <div class="card">
+        <div class="card-title">Tier Analysis</div>
+        <div class="results-table-wrap">
+          <table id="results-table">
+            <thead><tr id="results-header"></tr></thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- TPS Planning -->
+      <div class="card">
+        <div class="card-title">TPS Capacity Planning</div>
+        <div class="results-table-wrap">
+          <table id="tps-table">
+            <thead><tr id="tps-header"></tr></thead>
+            <tbody id="tps-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script>
+  // ═══════════════════════════════════════════════════════════════════
+  // Preset Configurations
+  // ═══════════════════════════════════════════════════════════════════
+  const PRESETS = {
+    "qwen3-27b-8xh20": {
+      model_profile: { n_layers: 64, kv_cache_layer_count: 16, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27781419504, weight_dtype_bytes: 2, tp_size: 8, pp_size: 1, block_size: 16 },
+      prefill_savings_alpha: 0.8,
+      heuristic_multi_agent: { concurrent_agents: 2048, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 8, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
+      deployment: { label: "1x8-h20", accelerator_count: 8, cards_per_machine: 8, machine_spec: "h20", gpu_memory_gb_per_card: 96, total_tps: 8.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.0, planning_target_total_tps: 8.0, extra_capacity_tiers: [{ label: "HBM+1T per Machine", kv_gb_per_machine: 1024 }, { label: "HBM+10T per Machine", kv_gb_per_machine: 10240 }] }
+    },
+    "qwen3-27b-1xh20": {
+      model_profile: { n_layers: 64, kv_cache_layer_count: 16, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27781419504, weight_dtype_bytes: 2, tp_size: 1, pp_size: 1, block_size: 16 },
+      prefill_savings_alpha: 0.8,
+      heuristic_multi_agent: { concurrent_agents: 2048, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 8, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
+      deployment: { label: "1x1-h20", accelerator_count: 1, cards_per_machine: 1, machine_spec: "h20", gpu_memory_gb_per_card: 96, total_tps: 1.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.0, planning_target_total_tps: 8.0, extra_capacity_tiers: [{ label: "HBM+1T per Machine", kv_gb_per_machine: 1024 }, { label: "HBM+10T per Machine", kv_gb_per_machine: 10240 }] }
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Core Calculation Engine (port of Python heuristic/multi_agent.py)
+  // ═══════════════════════════════════════════════════════════════════
+  const BYTES_PER_GB = 1024 ** 3;
+
+  const harmonicCache = new Map();
+  function generalizedHarmonic(n, s) {
+    const key = `${n}:${s}`;
+    if (harmonicCache.has(key)) return harmonicCache.get(key);
+    let sum = 0;
+    for (let i = 1; i <= n; i++) sum += 1.0 / Math.pow(i, s);
+    harmonicCache.set(key, sum);
+    return sum;
+  }
+
+  function shapeFraction(ratio, curveShape) {
+    const clipped = Math.max(0, Math.min(1, ratio));
+    if (clipped <= 0) return 0;
+    if (clipped >= 1) return 1;
+    if (curveShape.mode === "linear") return clipped;
+    if (curveShape.mode === "power_law_fit") {
+      const beta = curveShape.power_law_beta != null ? curveShape.power_law_beta : (1.0 - 1.0 / curveShape.zipf_s);
+      return Math.pow(clipped, beta);
+    }
+    if (curveShape.mode === "zipf_harmonic") {
+      const pop = Math.max(1, curveShape.zipf_population_blocks);
+      const cached = Math.min(pop, Math.max(0, Math.floor(clipped * pop)));
+      if (cached <= 0) return 0;
+      return generalizedHarmonic(cached, curveShape.zipf_s) / generalizedHarmonic(pop, curveShape.zipf_s);
+    }
+    return clipped;
+  }
+
+  function gbToTokens(gb, kvBytesPerToken) { return gb * BYTES_PER_GB / kvBytesPerToken; }
+  function tokensToGb(tokens, kvBytesPerToken) { return tokens * kvBytesPerToken / BYTES_PER_GB; }
+
+  function kvBytesPerToken(model) {
+    const layers = model.kv_cache_layer_count != null ? model.kv_cache_layer_count : model.n_layers;
+    return 2 * layers * model.n_kv_heads * model.head_dim * model.dtype_bytes;
+  }
+
+  function kvBytesPerTokenPerRank(model) {
+    const shard = model.tp_size * model.pp_size;
+    return kvBytesPerToken(model) / shard;
+  }
+
+  function weightBytesPerRank(model) {
+    if (model.parameter_count == null) return null;
+    const wdt = model.weight_dtype_bytes != null ? model.weight_dtype_bytes : model.dtype_bytes;
+    const shard = model.tp_size * model.pp_size;
+    return Math.ceil(model.parameter_count * wdt / shard);
+  }
+
+  function tpsGain(hitRate, alpha) {
+    if (hitRate == null) return null;
+    const denom = 1.0 - alpha * hitRate;
+    if (denom <= 0) return Infinity;
+    return 1.0 / denom;
+  }
+
+  function estimatedTotalTps(baseTps, gain) {
+    if (baseTps == null || gain == null) return null;
+    return baseTps * gain;
+  }
+
+  function clusterCapacityTps(cardCount, baselinePerCardTps, hitRate, alpha) {
+    if (baselinePerCardTps == null) return null;
+    const gain = tpsGain(hitRate, alpha);
+    if (gain == null) return null;
+    return cardCount * baselinePerCardTps * gain;
+  }
+
+  class MultiAgentHeuristic {
+    constructor(cfg) {
+      this.concurrent_agents = cfg.concurrent_agents;
+      this.shared_prefix_tokens = cfg.shared_prefix_tokens;
+      this.avg_new_tokens_per_turn = cfg.avg_new_tokens_per_turn;
+      this.avg_turns_per_session = cfg.avg_turns_per_session;
+      this.private_window_tokens = cfg.private_window_tokens;
+      this.curve_shape = { mode: cfg.curve_mode || "zipf_harmonic", zipf_s: cfg.zipf_s || 1.3, zipf_population_blocks: cfg.zipf_population_blocks || 4096, power_law_beta: null };
+      this.policy_efficiency = cfg.policy_efficiency || { strict_prefix_upper_bound: 1.0, lru_like: 0.55 };
+    }
+    averageReusablePrivateTokensPerAgent() {
+      if (this.avg_turns_per_session <= 0) return 0;
+      let total = 0;
+      for (let step = 0; step < this.avg_turns_per_session; step++) {
+        total += Math.min(this.private_window_tokens, step * this.avg_new_tokens_per_turn);
+      }
+      return total / this.avg_turns_per_session;
+    }
+    averageRequestTokens() {
+      return this.shared_prefix_tokens + this.avg_new_tokens_per_turn + this.averageReusablePrivateTokensPerAgent();
+    }
+    contentHitRate() {
+      const avg = this.averageRequestTokens();
+      if (avg <= 0) return 0;
+      const hit = this.shared_prefix_tokens + this.averageReusablePrivateTokensPerAgent();
+      return Math.min(1.0, hit / avg);
+    }
+    totalPrivateWorkingSetTokens() {
+      return this.concurrent_agents * this.averageReusablePrivateTokensPerAgent();
+    }
+    totalWorkingSetTokens() {
+      return this.shared_prefix_tokens + this.totalPrivateWorkingSetTokens();
+    }
+    strictSaturationCapacityTokens() {
+      return this.shared_prefix_tokens + this.totalPrivateWorkingSetTokens();
+    }
+    policySaturationCapacityTokens(efficiency) {
+      if (efficiency <= 0) return Infinity;
+      return this.shared_prefix_tokens + this.totalPrivateWorkingSetTokens() / efficiency;
+    }
+  }
+
+  function hitRateForCapacityTokens(capacityTokens, heuristic, efficiency) {
+    if (capacityTokens <= 0) return 0;
+    const avgReq = heuristic.averageRequestTokens();
+    if (avgReq <= 0) return 0;
+    if (capacityTokens < heuristic.shared_prefix_tokens) {
+      return Math.min(1.0, capacityTokens / avgReq);
+    }
+    const avgPrivate = heuristic.averageReusablePrivateTokensPerAgent();
+    const totalPrivate = heuristic.totalPrivateWorkingSetTokens();
+    if (totalPrivate <= 0) return heuristic.contentHitRate();
+    const privateCapacity = Math.max(0, capacityTokens - heuristic.shared_prefix_tokens);
+    const effectiveRatio = Math.max(0, efficiency * privateCapacity / totalPrivate);
+    const privateFraction = shapeFraction(effectiveRatio, heuristic.curve_shape);
+    const hitTokens = heuristic.shared_prefix_tokens + privateFraction * avgPrivate;
+    return Math.min(heuristic.contentHitRate(), hitTokens / avgReq);
+  }
+
+  function resolvedHbmKvGbPerCard(deployment, model) {
+    if (deployment.hbm_kv_gb_per_card != null) return deployment.hbm_kv_gb_per_card;
+    const wbpr = weightBytesPerRank(model);
+    if (wbpr == null) return deployment.gpu_memory_gb_per_card * 0.5;
+    const weightGb = wbpr / BYTES_PER_GB;
+    const runtimeReserve = deployment.runtime_reserve_gb_per_card || 0;
+    return Math.max(0, deployment.gpu_memory_gb_per_card - weightGb - runtimeReserve);
+  }
+
+  function resolvedTotalTps(deployment) {
+    if (deployment.total_tps == null) return null;
+    const unit = deployment.total_tps_unit || "cluster_total";
+    if (unit === "cluster_total") return deployment.total_tps;
+    const machines = deployment.accelerator_count / deployment.cards_per_machine;
+    if (unit === "per_machine") return deployment.total_tps * machines;
+    if (unit === "per_card") return deployment.total_tps * deployment.accelerator_count;
+    return deployment.total_tps;
+  }
+
+  function bottleneckLabel(contentHitRate, strictHitRate, lruHitRate) {
+    const eps = 1e-9;
+    const strictHitsContent = strictHitRate + eps >= contentHitRate;
+    const lruHitsStrict = lruHitRate + eps >= strictHitRate;
+    if (!strictHitsContent) return "Capacity";
+    if (!lruHitsStrict) return "Policy";
+    return "None";
+  }
+
+  function buildTargetTpsPlan(targetTps, baselinePerCardTps, currentMachineCount, cardsPerMachine, clusterTpsFn) {
+    const currentCapacity = clusterTpsFn(currentMachineCount);
+    if (targetTps == null || baselinePerCardTps == null || baselinePerCardTps <= 0) {
+      return { currentClusterCapacityTps: currentCapacity, minCardCount: null, minMachineCount: null };
+    }
+    if (targetTps === 0) return { currentClusterCapacityTps: currentCapacity, minCardCount: 0, minMachineCount: 0 };
+    const upper = Math.max(1, Math.ceil(targetTps / (baselinePerCardTps * cardsPerMachine)));
+    let low = 1, high = upper;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      const midCap = clusterTpsFn(mid);
+      if (midCap == null || midCap < targetTps) low = mid + 1;
+      else high = mid;
+    }
+    return { currentClusterCapacityTps: currentCapacity, minCardCount: low * cardsPerMachine, minMachineCount: low };
+  }
+
+  function analyzeMultiAgentHeuristic(config) {
+    const model = config.model_profile;
+    const kbpt = kvBytesPerToken(model);
+    const heuristic = new MultiAgentHeuristic(config.heuristic_multi_agent);
+    const alpha = config.prefill_savings_alpha;
+    const deployment = config.deployment;
+
+    const contentHitRate = heuristic.contentHitRate();
+    const avgPrivate = heuristic.averageReusablePrivateTokensPerAgent();
+    const totalPrivate = heuristic.totalPrivateWorkingSetTokens();
+    const totalWorkingSet = heuristic.totalWorkingSetTokens();
+    const avgRequest = heuristic.averageRequestTokens();
+    const strictSatTokens = heuristic.strictSaturationCapacityTokens();
+    const lruSatTokens = heuristic.policySaturationCapacityTokens(heuristic.policy_efficiency.lru_like);
+    const strictSatGb = tokensToGb(strictSatTokens, kbpt);
+    const lruSatGb = tokensToGb(lruSatTokens, kbpt);
+
+    const machineCount = Math.floor(deployment.accelerator_count / deployment.cards_per_machine);
+    const hbmKvGbPerCard = resolvedHbmKvGbPerCard(deployment, model);
+    const totalTps = resolvedTotalTps(deployment);
+    const planningTarget = deployment.planning_target_total_tps != null ? deployment.planning_target_total_tps : totalTps;
+    const baselinePerCardTps = deployment.baseline_per_card_tps;
+
+    const tiers = [{ label: "HBM", kv_gb_per_machine: 0 }].concat(
+      (deployment.extra_capacity_tiers || []).map(t => ({ label: t.label, kv_gb_per_machine: t.kv_gb_per_machine }))
+    );
+
+    const rows = [];
+    let prevStrict = null, prevLru = null;
+
+    for (const tier of tiers) {
+      const totalKvGb = deployment.accelerator_count * hbmKvGbPerCard + machineCount * tier.kv_gb_per_machine;
+      const totalKvTokens = gbToTokens(totalKvGb, kbpt);
+      const strictHit = hitRateForCapacityTokens(totalKvTokens, heuristic, heuristic.policy_efficiency.strict_prefix_upper_bound);
+      const lruHit = hitRateForCapacityTokens(totalKvTokens, heuristic, heuristic.policy_efficiency.lru_like);
+      const strictGain = tpsGain(strictHit, alpha);
+      const lruGain = tpsGain(lruHit, alpha);
+      const strictEstTps = estimatedTotalTps(totalTps, strictGain);
+      const lruEstTps = estimatedTotalTps(totalTps, lruGain);
+
+      const clusterTpsFnStrict = (mc) => {
+        const cc = mc * deployment.cards_per_machine;
+        const kvGb = cc * hbmKvGbPerCard + mc * tier.kv_gb_per_machine;
+        const kvTokens = gbToTokens(kvGb, kbpt);
+        const hr = hitRateForCapacityTokens(kvTokens, heuristic, heuristic.policy_efficiency.strict_prefix_upper_bound);
+        return clusterCapacityTps(cc, baselinePerCardTps, hr, alpha);
+      };
+      const clusterTpsFnLru = (mc) => {
+        const cc = mc * deployment.cards_per_machine;
+        const kvGb = cc * hbmKvGbPerCard + mc * tier.kv_gb_per_machine;
+        const kvTokens = gbToTokens(kvGb, kbpt);
+        const hr = hitRateForCapacityTokens(kvTokens, heuristic, heuristic.policy_efficiency.lru_like);
+        return clusterCapacityTps(cc, baselinePerCardTps, hr, alpha);
+      };
+
+      const strictPlan = buildTargetTpsPlan(planningTarget, baselinePerCardTps, machineCount, deployment.cards_per_machine, clusterTpsFnStrict);
+      const lruPlan = buildTargetTpsPlan(planningTarget, baselinePerCardTps, machineCount, deployment.cards_per_machine, clusterTpsFnLru);
+
+      rows.push({
+        tierLabel: tier.label,
+        totalKvGb,
+        totalKvTokens,
+        strictPrefixHitRate: strictHit,
+        lruLikeHitRate: lruHit,
+        contentHitRate,
+        bottleneck: bottleneckLabel(contentHitRate, strictHit, lruHit),
+        strictGainFromPrev: prevStrict != null ? strictHit - prevStrict : null,
+        lruGainFromPrev: prevLru != null ? lruHit - prevLru : null,
+        strictTpsGain: strictGain,
+        lruTpsGain: lruGain,
+        strictEstimatedTotalTps: strictEstTps,
+        lruEstimatedTotalTps: lruEstTps,
+        strictClusterCapacityTps: strictPlan.currentClusterCapacityTps,
+        strictMinCards: strictPlan.minCardCount,
+        strictMinMachines: strictPlan.minMachineCount,
+        lruClusterCapacityTps: lruPlan.currentClusterCapacityTps,
+        lruMinCards: lruPlan.minCardCount,
+        lruMinMachines: lruPlan.minMachineCount,
+      });
+      prevStrict = strictHit;
+      prevLru = lruHit;
+    }
+
+    return {
+      summary: { contentHitRate, avgPrivate, totalPrivate, totalWorkingSet, avgRequest, kbpt, strictSatGb, lruSatGb, hbmKvGbPerCard, machineCount },
+      rows
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // UI Logic
+  // ═══════════════════════════════════════════════════════════════════
+  let hitRateChart = null;
+  let debounceTimer = null;
+
+  function getFormConfig() {
+    const model = {
+      n_layers: +document.getElementById("n_layers").value,
+      kv_cache_layer_count: +document.getElementById("kv_cache_layer_count").value || null,
+      n_kv_heads: +document.getElementById("n_kv_heads").value,
+      head_dim: +document.getElementById("head_dim").value,
+      dtype_bytes: +document.getElementById("dtype_bytes").value,
+      parameter_count: +document.getElementById("parameter_count").value || null,
+      weight_dtype_bytes: +document.getElementById("weight_dtype_bytes").value || null,
+      tp_size: +document.getElementById("tp_size").value || 1,
+      pp_size: +document.getElementById("pp_size").value || 1,
+      block_size: +document.getElementById("block_size").value || 16,
+    };
+    const heuristic = {
+      concurrent_agents: +document.getElementById("concurrent_agents").value,
+      shared_prefix_tokens: +document.getElementById("shared_prefix_tokens").value,
+      avg_new_tokens_per_turn: +document.getElementById("avg_new_tokens_per_turn").value,
+      avg_turns_per_session: +document.getElementById("avg_turns_per_session").value,
+      private_window_tokens: +document.getElementById("private_window_tokens").value,
+      curve_mode: document.getElementById("curve_mode").value,
+      zipf_s: +document.getElementById("zipf_s").value,
+      zipf_population_blocks: +document.getElementById("zipf_population_blocks").value,
+      policy_efficiency: {
+        strict_prefix_upper_bound: +document.getElementById("strict_prefix_efficiency").value,
+        lru_like: +document.getElementById("lru_like_efficiency").value,
+      }
+    };
+    const tiers = [];
+    document.querySelectorAll(".tier-row").forEach(row => {
+      const label = row.querySelector(".tier-label").value;
+      const gb = +row.querySelector(".tier-gb").value;
+      if (label && gb > 0) tiers.push({ label, kv_gb_per_machine: gb });
+    });
+    const deployment = {
+      label: document.getElementById("deploy_label").value,
+      accelerator_count: +document.getElementById("accelerator_count").value,
+      cards_per_machine: +document.getElementById("cards_per_machine").value,
+      machine_spec: document.getElementById("machine_spec").value,
+      gpu_memory_gb_per_card: +document.getElementById("gpu_memory_gb_per_card").value,
+      total_tps: +document.getElementById("total_tps").value,
+      total_tps_unit: document.getElementById("total_tps_unit").value,
+      baseline_per_card_tps: +document.getElementById("baseline_per_card_tps").value,
+      planning_target_total_tps: +document.getElementById("planning_target_total_tps").value || null,
+      extra_capacity_tiers: tiers,
+    };
+    return {
+      model_profile: model,
+      prefill_savings_alpha: +document.getElementById("prefill_savings_alpha").value,
+      heuristic_multi_agent: heuristic,
+      deployment
+    };
+  }
+
+  function loadPreset(name) {
+    const p = PRESETS[name];
+    if (!p) return;
+    const m = p.model_profile;
+    document.getElementById("n_layers").value = m.n_layers;
+    document.getElementById("kv_cache_layer_count").value = m.kv_cache_layer_count || "";
+    document.getElementById("n_kv_heads").value = m.n_kv_heads;
+    document.getElementById("head_dim").value = m.head_dim;
+    document.getElementById("dtype_bytes").value = m.dtype_bytes;
+    document.getElementById("parameter_count").value = m.parameter_count || "";
+    document.getElementById("weight_dtype_bytes").value = m.weight_dtype_bytes || "";
+    document.getElementById("tp_size").value = m.tp_size;
+    document.getElementById("pp_size").value = m.pp_size;
+    document.getElementById("block_size").value = m.block_size;
+
+    const h = p.heuristic_multi_agent;
+    document.getElementById("concurrent_agents").value = h.concurrent_agents;
+    document.getElementById("shared_prefix_tokens").value = h.shared_prefix_tokens;
+    document.getElementById("avg_new_tokens_per_turn").value = h.avg_new_tokens_per_turn;
+    document.getElementById("avg_turns_per_session").value = h.avg_turns_per_session;
+    document.getElementById("private_window_tokens").value = h.private_window_tokens;
+    document.getElementById("curve_mode").value = h.curve_mode;
+    document.getElementById("zipf_s").value = h.zipf_s;
+    document.getElementById("zipf_population_blocks").value = h.zipf_population_blocks;
+    document.getElementById("strict_prefix_efficiency").value = h.policy_efficiency.strict_prefix_upper_bound;
+    document.getElementById("lru_like_efficiency").value = h.policy_efficiency.lru_like;
+
+    const d = p.deployment;
+    document.getElementById("deploy_label").value = d.label;
+    document.getElementById("accelerator_count").value = d.accelerator_count;
+    document.getElementById("cards_per_machine").value = d.cards_per_machine;
+    document.getElementById("machine_spec").value = d.machine_spec;
+    document.getElementById("gpu_memory_gb_per_card").value = d.gpu_memory_gb_per_card;
+    document.getElementById("total_tps").value = d.total_tps;
+    document.getElementById("total_tps_unit").value = d.total_tps_unit;
+    document.getElementById("baseline_per_card_tps").value = d.baseline_per_card_tps;
+    document.getElementById("planning_target_total_tps").value = d.planning_target_total_tps || "";
+
+    document.getElementById("prefill_savings_alpha").value = p.prefill_savings_alpha;
+
+    // Tiers
+    const container = document.getElementById("tiers-container");
+    container.innerHTML = "";
+    (d.extra_capacity_tiers || []).forEach(t => addTierRow(t.label, t.kv_gb_per_machine));
+
+    updateCurveModeVisibility();
+    recalculate();
+  }
+
+  function addTierRow(label, gb) {
+    const container = document.getElementById("tiers-container");
+    const row = document.createElement("div");
+    row.className = "tier-row";
+    row.innerHTML = `
+      <div class="form-field"><label>Label</label><input type="text" class="tier-label" value="${label || ""}" /></div>
+      <div class="form-field"><label>KV GB/Machine</label><input type="number" class="tier-gb" value="${gb || ""}" /></div>
+      <button class="btn-sm btn-danger tier-remove">×</button>
+    `;
+    row.querySelector(".tier-remove").addEventListener("click", () => { row.remove(); scheduleRecalc(); });
+    row.querySelectorAll("input").forEach(i => i.addEventListener("input", scheduleRecalc));
+    container.appendChild(row);
+  }
+
+  function updateCurveModeVisibility() {
+    const mode = document.getElementById("curve_mode").value;
+    const show = mode === "zipf_harmonic" || mode === "power_law_fit";
+    document.getElementById("zipf_s_field").style.display = show ? "" : "none";
+    document.getElementById("zipf_pop_field").style.display = mode === "zipf_harmonic" ? "" : "none";
+  }
+
+  function formatRate(v) { return v != null ? (v * 100).toFixed(2) + "%" : "—"; }
+  function formatNum(v, dec = 2) { return v != null ? (isFinite(v) ? v.toFixed(dec) : "∞") : "—"; }
+  function formatInt(v) { return v != null ? v.toString() : "—"; }
+  function formatTokens(v) {
+    if (v == null) return "—";
+    if (v >= 1e9) return (v / 1e9).toFixed(2) + "B";
+    if (v >= 1e6) return (v / 1e6).toFixed(2) + "M";
+    if (v >= 1e3) return (v / 1e3).toFixed(1) + "K";
+    return v.toFixed(0);
+  }
+
+  function renderMetrics(summary) {
+    const grid = document.getElementById("metrics-grid");
+    const items = [
+      { value: formatRate(summary.contentHitRate), label: "Content Hit Rate" },
+      { value: formatTokens(summary.avgRequest), label: "Avg Request Tokens" },
+      { value: formatTokens(summary.totalWorkingSet), label: "Working Set Tokens" },
+      { value: formatNum(summary.kbpt, 0) + " B", label: "KV Bytes/Token" },
+      { value: formatNum(summary.hbmKvGbPerCard, 1) + " GB", label: "HBM KV/Card" },
+      { value: formatNum(summary.strictSatGb, 1) + " GB", label: "Strict Saturation" },
+      { value: formatNum(summary.lruSatGb, 1) + " GB", label: "LRU Saturation" },
+      { value: formatTokens(summary.avgPrivate), label: "Avg Private Tokens" },
+    ];
+    grid.innerHTML = items.map(i => `<div class="metric-box"><div class="value">${i.value}</div><div class="label">${i.label}</div></div>`).join("");
+  }
+
+  function renderTable(rows) {
+    const header = document.getElementById("results-header");
+    const body = document.getElementById("results-body");
+    header.innerHTML = ["Tier", "Total KV (GB)", "Strict Prefix", "LRU-like", "Content Ceiling", "Strict TPS Gain", "LRU TPS Gain", "Bottleneck"]
+      .map(h => `<th>${h}</th>`).join("");
+    body.innerHTML = rows.map(r => {
+      const bnClass = r.bottleneck === "None" ? "bottleneck-none" : r.bottleneck === "Capacity" ? "bottleneck-capacity" : "bottleneck-policy";
+      return `<tr>
+        <td>${r.tierLabel}</td>
+        <td>${formatNum(r.totalKvGb, 1)}</td>
+        <td>${formatRate(r.strictPrefixHitRate)}</td>
+        <td>${formatRate(r.lruLikeHitRate)}</td>
+        <td>${formatRate(r.contentHitRate)}</td>
+        <td>${formatNum(r.strictTpsGain)}×</td>
+        <td>${formatNum(r.lruTpsGain)}×</td>
+        <td class="${bnClass}">${r.bottleneck}</td>
+      </tr>`;
+    }).join("");
+  }
+
+  function renderTpsTable(rows) {
+    const header = document.getElementById("tps-header");
+    const body = document.getElementById("tps-body");
+    header.innerHTML = ["Tier", "Strict Est. TPS", "LRU Est. TPS", "Strict Cluster Cap.", "LRU Cluster Cap.", "Strict Min Cards", "Strict Min Machines", "LRU Min Cards", "LRU Min Machines"]
+      .map(h => `<th>${h}</th>`).join("");
+    body.innerHTML = rows.map(r => `<tr>
+      <td>${r.tierLabel}</td>
+      <td>${formatNum(r.strictEstimatedTotalTps)}</td>
+      <td>${formatNum(r.lruEstimatedTotalTps)}</td>
+      <td>${formatNum(r.strictClusterCapacityTps)}</td>
+      <td>${formatNum(r.lruClusterCapacityTps)}</td>
+      <td>${formatInt(r.strictMinCards)}</td>
+      <td>${formatInt(r.strictMinMachines)}</td>
+      <td>${formatInt(r.lruMinCards)}</td>
+      <td>${formatInt(r.lruMinMachines)}</td>
+    </tr>`).join("");
+  }
+
+  function renderChart(rows, contentHitRate) {
+    const ctx = document.getElementById("hit-rate-chart").getContext("2d");
+    const labels = rows.map(r => formatNum(r.totalKvGb, 0) + " GB");
+    const strictData = rows.map(r => (r.strictPrefixHitRate * 100));
+    const lruData = rows.map(r => (r.lruLikeHitRate * 100));
+    const ceilingData = rows.map(() => contentHitRate * 100);
+
+    if (hitRateChart) hitRateChart.destroy();
+    hitRateChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          { label: "Strict Prefix Upper Bound", data: strictData, borderColor: "#58a6ff", backgroundColor: "rgba(88,166,255,0.1)", tension: 0.3, fill: false, pointRadius: 4 },
+          { label: "LRU-like", data: lruData, borderColor: "#bc8cff", backgroundColor: "rgba(188,140,255,0.1)", tension: 0.3, fill: false, pointRadius: 4 },
+          { label: "Content Ceiling", data: ceilingData, borderColor: "#3fb950", borderDash: [6, 4], pointRadius: 0, fill: false },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { min: 0, max: 100, title: { display: true, text: "Hit Rate (%)", color: "#8b949e" }, grid: { color: "#21262d" }, ticks: { color: "#8b949e" } },
+          x: { title: { display: true, text: "Total KV Capacity", color: "#8b949e" }, grid: { color: "#21262d" }, ticks: { color: "#8b949e" } }
+        },
+        plugins: {
+          legend: { labels: { color: "#c9d1d9" } }
+        }
+      }
+    });
+  }
+
+  function recalculate() {
+    try {
+      harmonicCache.clear();
+      const config = getFormConfig();
+      const result = analyzeMultiAgentHeuristic(config);
+      renderMetrics(result.summary);
+      renderTable(result.rows);
+      renderTpsTable(result.rows);
+      renderChart(result.rows, result.summary.contentHitRate);
+    } catch (e) {
+      console.error("Calculation error:", e);
+    }
+  }
+
+  function scheduleRecalc() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(recalculate, 100);
+  }
+
+  // Wire up events
+  document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("preset-select").addEventListener("change", (e) => loadPreset(e.target.value));
+    document.getElementById("curve_mode").addEventListener("change", () => { updateCurveModeVisibility(); scheduleRecalc(); });
+    document.getElementById("add-tier-btn").addEventListener("click", () => { addTierRow("", ""); scheduleRecalc(); });
+
+    // Wire all inputs for recalculation
+    document.querySelectorAll("input, select").forEach(el => {
+      if (el.id === "preset-select") return;
+      el.addEventListener("input", scheduleRecalc);
+      el.addEventListener("change", scheduleRecalc);
+    });
+
+    // Load default preset
+    loadPreset("qwen3-27b-8xh20");
+  });
+  </script>
+</body>
+</html>
