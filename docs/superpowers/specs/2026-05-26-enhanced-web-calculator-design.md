@@ -45,20 +45,37 @@ const MODEL_LIBRARY = [
 
 ### Models to Include
 
+**Priority models (user-requested):**
+
+| Family | Model | Params (B) | KV Heads | Head Dim | KV Layers (full attn) | Architecture Note |
+|--------|-------|-----------|----------|----------|-----------|-------------------|
+| DeepSeek | DeepSeek-V3.2 671B | 671 | 1 (MLA) | 576 (kv_lora_rank=512 + rope=64) | 61 | MLA + MoE, kv_lora_rank=512, v_head_dim=128 |
+| Qwen | Qwen3.5-397B-A17B | 397 | 2 | 256 | 15 (of 60 total) | Hybrid: linear_attention + full_attention, MoE 512 experts |
+| Qwen | Qwen3.5-27B | 27 | 4 | 256 | 16 (of 64 total) | Hybrid: linear_attention + full_attention |
+| Qwen | Qwen3.6-27B | 27 | 4 | 256 | 16 (of 64 total) | Same arch as Qwen3.5-27B with Gated Delta Networks |
+| GLM | GLM5-5 | TBD | TBD | TBD | TBD | Not yet publicly available — add when config is released |
+| DeepSeek | DeepSeek-V4 | TBD | TBD | TBD | TBD | Not yet publicly available — add when config is released |
+
+**Additional models:**
+
 | Family | Model | Params (B) | KV Heads | Head Dim | KV Layers | Architecture Note |
 |--------|-------|-----------|----------|----------|-----------|-------------------|
-| Qwen | Qwen3-27B | 27.8 | 4 | 256 | 16 | MLA |
-| Qwen | Qwen2.5-72B | 72.7 | 8 | 128 | 80 | GQA |
-| Qwen | Qwen2.5-7B | 7.6 | 4 | 128 | 28 | GQA |
+| Qwen | Qwen3-27B | 27.8 | 4 | 256 | 16 | MLA (already in project) |
 | Llama | Llama 3.1 70B | 70.6 | 8 | 128 | 80 | GQA |
 | Llama | Llama 3.1 8B | 8.0 | 8 | 128 | 32 | GQA |
-| Llama | Llama 3.3 70B | 70.6 | 8 | 128 | 80 | GQA |
-| DeepSeek | DeepSeek-V2 236B | 236 | 128 | 128 | 60 | MLA + MoE (compressed KV — use effective n_kv_heads=16, head_dim=512 for kv_bytes) |
-| DeepSeek | DeepSeek-V3 671B | 671 | 128 | 128 | 61 | MLA + MoE (compressed KV — same note) |
-| Mistral | Mixtral 8x22B | 141 | 8 | 128 | 56 | MoE, GQA |
-| Mistral | Mistral 7B | 7.2 | 8 | 128 | 32 | GQA |
 | GLM | GLM-4 9B | 9.4 | 2 | 128 | 40 | MQA |
-| Yi | Yi-1.5 34B | 34.4 | 8 | 128 | 60 | GQA |
+| Mistral | Mixtral 8x22B | 141 | 8 | 128 | 56 | MoE, GQA |
+
+**Notes on MLA/Hybrid models and KV cache sizing:**
+
+For DeepSeek V3.2 (MLA architecture), the effective KV cache per token is:
+- Per layer: `kv_lora_rank + qk_rope_head_dim` = 512 + 64 = 576 elements × dtype_bytes
+- This replaces the standard `2 × n_kv_heads × head_dim` formula
+- In the calculator, model this as: n_kv_heads=1, head_dim=576, to get correct kv_bytes_per_token
+
+For Qwen3.5/3.6 (Hybrid attention), only "full_attention" layers maintain standard KV cache:
+- Use `kv_cache_layer_count` = number of full_attention layers (e.g., 16 for 27B)
+- Linear attention layers use a fixed-size state that doesn't scale with sequence length
 
 ### UX
 
