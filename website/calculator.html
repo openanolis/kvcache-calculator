@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>KVCache Calculator — Interactive Multi-Agent Heuristic</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -21,6 +22,20 @@
       --purple: #bc8cff;
       --radius: 8px;
       --shadow: 0 2px 8px rgba(0,0,0,.4);
+    }
+    :root.light {
+      --bg: #ffffff;
+      --surface: #f6f8fa;
+      --surface2: #eaeef2;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --text-muted: #656d76;
+      --accent: #0969da;
+      --accent2: #1a7f37;
+      --warn: #bf8700;
+      --danger: #cf222e;
+      --purple: #8250df;
+      --shadow: 0 2px 8px rgba(0,0,0,.1);
     }
     html { font-size: 14px; }
     body {
@@ -44,20 +59,37 @@
     }
     header .logo { font-size: 1.2rem; font-weight: 700; color: var(--accent); white-space: nowrap; }
     header .subtitle { font-size: .8rem; color: var(--text-muted); }
-    header nav { margin-left: auto; display: flex; gap: 12px; }
+    header nav { margin-left: auto; display: flex; gap: 12px; align-items: center; }
     header nav a { color: var(--accent); text-decoration: none; font-size: .85rem; }
     header nav a:hover { text-decoration: underline; }
+    .theme-toggle {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      padding: 4px 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+    }
+    .theme-toggle:hover { border-color: var(--accent); }
 
     main {
       max-width: 1600px;
       margin: 0 auto;
       padding: 20px 16px 60px;
       display: grid;
-      grid-template-columns: 380px 1fr;
+      grid-template-columns: 420px 1fr;
       gap: 20px;
     }
-    @media (max-width: 1000px) {
+    @media (max-width: 1200px) {
       main { grid-template-columns: 1fr; }
+      .form-panel { max-height: none !important; }
+    }
+    @media (max-width: 800px) {
+      main { padding: 12px 8px 40px; }
+      .form-group { grid-template-columns: 1fr !important; }
+      .metrics-grid { grid-template-columns: 1fr 1fr !important; }
     }
 
     .card {
@@ -74,6 +106,17 @@
       margin-bottom: 12px;
       padding-bottom: 8px;
       border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .card-title .badge {
+      font-size: .65rem;
+      background: var(--warn);
+      color: #000;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-weight: 600;
     }
 
     .form-panel { display: flex; flex-direction: column; gap: 16px; max-height: calc(100vh - 80px); overflow-y: auto; }
@@ -94,6 +137,10 @@
       outline: none;
       border-color: var(--accent);
     }
+    .form-field input.invalid { border-color: var(--danger); }
+    .form-field input.warning { border-color: var(--warn); }
+    .form-field .validation-msg { font-size: .65rem; color: var(--danger); margin-top: 1px; display: none; }
+    .form-field .validation-msg.visible { display: block; }
 
     .results-panel { display: flex; flex-direction: column; gap: 16px; }
 
@@ -136,9 +183,141 @@
     .btn-danger:hover { border-color: var(--danger); color: var(--danger); }
     .btn-add { margin-top: 4px; }
 
+    .btn-primary {
+      background: var(--accent);
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-size: .9rem;
+      font-weight: 600;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+
     .bottleneck-none { color: var(--accent2); }
     .bottleneck-capacity { color: var(--warn); }
     .bottleneck-policy { color: var(--purple); }
+
+    /* Export toolbar */
+    .export-toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .export-toolbar button {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      padding: 5px 12px;
+      cursor: pointer;
+      font-size: .78rem;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .export-toolbar button:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Comparison mode */
+    .compare-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 800px) { .compare-columns { grid-template-columns: 1fr; } }
+    .compare-col { padding: 12px; border-radius: var(--radius); border: 1px solid var(--border); }
+    .compare-col.scenario-a { background: var(--surface2); opacity: 0.85; }
+    .compare-col.scenario-b { border-color: var(--accent); }
+    .compare-col h4 { font-size: .8rem; color: var(--text-muted); margin-bottom: 8px; }
+    .delta { font-size: .75rem; font-weight: 600; }
+    .delta.positive { color: var(--accent2); }
+    .delta.negative { color: var(--danger); }
+
+    /* Wizard modal */
+    .wizard-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.7);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+    }
+    .wizard-overlay.active { display: flex; }
+    .wizard-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 32px;
+      width: min(640px, 90vw);
+      max-height: 85vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    }
+    .wizard-box h2 { font-size: 1.3rem; color: var(--accent); margin-bottom: 4px; }
+    .wizard-box .step-indicator { font-size: .8rem; color: var(--text-muted); margin-bottom: 16px; }
+    .wizard-models {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 10px;
+      margin: 16px 0;
+    }
+    .wizard-model-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .wizard-model-card:hover, .wizard-model-card.selected { border-color: var(--accent); }
+    .wizard-model-card .model-name { font-size: .85rem; font-weight: 600; color: var(--text); }
+    .wizard-model-card .model-family { font-size: .7rem; color: var(--text-muted); }
+    .wizard-model-card .model-info { font-size: .7rem; color: var(--text-muted); margin-top: 4px; }
+    .wizard-nav { display: flex; gap: 10px; margin-top: 20px; justify-content: flex-end; }
+    .wizard-nav button { padding: 8px 18px; border-radius: 6px; font-size: .85rem; cursor: pointer; }
+    .wizard-nav .btn-back { background: var(--surface2); border: 1px solid var(--border); color: var(--text); }
+    .wizard-nav .btn-next { background: var(--accent); border: none; color: #fff; font-weight: 600; }
+    .wizard-nav .btn-next:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .workload-templates {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 16px 0;
+    }
+    .workload-template-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .workload-template-card:hover, .workload-template-card.selected { border-color: var(--accent); }
+    .workload-template-card .template-name { font-size: .85rem; font-weight: 600; color: var(--text); }
+    .workload-template-card .template-desc { font-size: .72rem; color: var(--text-muted); margin-top: 2px; }
+
+    /* Model search filter */
+    .model-search {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-size: .85rem;
+      margin-bottom: 8px;
+    }
+    .model-search:focus { outline: none; border-color: var(--accent); }
+
+    /* Sensitivity chart */
+    .sensitivity-bar { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: .78rem; }
+    .sensitivity-bar .param-name { width: 140px; text-align: right; color: var(--text-muted); }
+    .sensitivity-bar .bar-container { flex: 1; height: 16px; background: var(--surface2); border-radius: 3px; position: relative; overflow: hidden; }
+    .sensitivity-bar .bar-fill { height: 100%; border-radius: 3px; }
+    .sensitivity-bar .bar-value { width: 50px; font-size: .72rem; color: var(--text-muted); }
   </style>
 </head>
 <body>
@@ -149,20 +328,49 @@
     </div>
     <nav>
       <a href="index.html">Results Dashboard</a>
+      <button class="theme-toggle" id="theme-toggle" title="Toggle dark/light mode">&#9790;</button>
     </nav>
   </header>
 
+  <!-- Quick-Start Wizard -->
+  <div class="wizard-overlay" id="wizard-overlay">
+    <div class="wizard-box" id="wizard-box"></div>
+  </div>
+
   <main>
     <div class="form-panel">
-      <!-- Preset Selector -->
+      <!-- Guided Setup Button -->
+      <div class="card" style="text-align:center;padding:12px;">
+        <button class="btn-primary" id="wizard-btn">Guided Setup</button>
+      </div>
+
+      <!-- Model Preset Selector -->
+      <div class="card">
+        <div class="card-title">Model Preset <span class="badge" id="model-modified-badge" style="display:none">Modified</span></div>
+        <div class="form-group full">
+          <div class="form-field">
+            <label>Search models</label>
+            <input type="text" id="model-search" class="model-search" placeholder="Type to filter models..." />
+          </div>
+          <div class="form-field">
+            <label>Model</label>
+            <select id="model-preset-select">
+              <option value="custom">Custom (manual entry)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Deployment Preset -->
       <div class="card">
         <div class="card-title">Configuration Preset</div>
         <div class="form-group full">
           <div class="form-field">
-            <label>Preset</label>
+            <label>Deployment Preset</label>
             <select id="preset-select">
-              <option value="qwen3-27b-8xh20">Qwen3-27B (8×H20, TP=8)</option>
-              <option value="qwen3-27b-1xh20">Qwen3-27B (1×H20, TP=1)</option>
+              <option value="custom">Custom</option>
+              <option value="qwen3-27b-8xh20">Qwen3-27B (8xH20, TP=8)</option>
+              <option value="qwen3-27b-1xh20">Qwen3-27B (1xH20, TP=1)</option>
             </select>
           </div>
         </div>
@@ -172,16 +380,16 @@
       <div class="card">
         <div class="card-title">Model Profile</div>
         <div class="form-group">
-          <div class="form-field"><label>n_layers</label><input type="number" id="n_layers" /></div>
-          <div class="form-field"><label>kv_cache_layer_count</label><input type="number" id="kv_cache_layer_count" /></div>
-          <div class="form-field"><label>n_kv_heads</label><input type="number" id="n_kv_heads" /></div>
-          <div class="form-field"><label>head_dim</label><input type="number" id="head_dim" /></div>
-          <div class="form-field"><label>dtype_bytes</label><input type="number" id="dtype_bytes" /></div>
-          <div class="form-field"><label>block_size</label><input type="number" id="block_size" /></div>
-          <div class="form-field"><label>parameter_count</label><input type="number" id="parameter_count" /></div>
-          <div class="form-field"><label>weight_dtype_bytes</label><input type="number" id="weight_dtype_bytes" /></div>
-          <div class="form-field"><label>tp_size</label><input type="number" id="tp_size" /></div>
-          <div class="form-field"><label>pp_size</label><input type="number" id="pp_size" /></div>
+          <div class="form-field"><label>n_layers</label><input type="number" id="n_layers" title="Total number of transformer layers in the model" /></div>
+          <div class="form-field"><label>kv_cache_layer_count</label><input type="number" id="kv_cache_layer_count" title="Number of layers that use standard KV cache (leave empty if all layers)" /></div>
+          <div class="form-field"><label>n_kv_heads</label><input type="number" id="n_kv_heads" title="Number of key-value attention heads per layer" /></div>
+          <div class="form-field"><label>head_dim</label><input type="number" id="head_dim" title="Dimension of each attention head" /></div>
+          <div class="form-field"><label>dtype_bytes</label><input type="number" id="dtype_bytes" title="Bytes per element for KV cache (2=FP16/BF16, 1=FP8)" /></div>
+          <div class="form-field"><label>block_size</label><input type="number" id="block_size" title="Token block size for memory allocation" /></div>
+          <div class="form-field"><label>parameter_count</label><input type="number" id="parameter_count" title="Total model parameter count (for weight memory estimation)" /><span class="validation-msg" id="param-warn"></span></div>
+          <div class="form-field"><label>weight_dtype_bytes</label><input type="number" id="weight_dtype_bytes" title="Bytes per weight parameter (2=FP16, 1=INT8)" /></div>
+          <div class="form-field"><label>tp_size</label><input type="number" id="tp_size" title="Tensor parallelism size" /></div>
+          <div class="form-field"><label>pp_size</label><input type="number" id="pp_size" title="Pipeline parallelism size" /></div>
         </div>
       </div>
 
@@ -189,23 +397,23 @@
       <div class="card">
         <div class="card-title">Multi-Agent Heuristic</div>
         <div class="form-group">
-          <div class="form-field"><label>concurrent_agents</label><input type="number" id="concurrent_agents" /></div>
-          <div class="form-field"><label>shared_prefix_tokens</label><input type="number" id="shared_prefix_tokens" /></div>
-          <div class="form-field"><label>avg_new_tokens_per_turn</label><input type="number" id="avg_new_tokens_per_turn" /></div>
-          <div class="form-field"><label>avg_turns_per_session</label><input type="number" id="avg_turns_per_session" /></div>
-          <div class="form-field"><label>private_window_tokens</label><input type="number" id="private_window_tokens" /></div>
+          <div class="form-field"><label>concurrent_agents</label><input type="number" id="concurrent_agents" title="Number of simultaneous agent sessions sharing the cache pool" /></div>
+          <div class="form-field"><label>shared_prefix_tokens</label><input type="number" id="shared_prefix_tokens" title="System prompt tokens shared identically across all agents" /></div>
+          <div class="form-field"><label>avg_new_tokens_per_turn</label><input type="number" id="avg_new_tokens_per_turn" title="Average new tokens generated per conversation turn" /></div>
+          <div class="form-field"><label>avg_turns_per_session</label><input type="number" id="avg_turns_per_session" title="Average number of turns in each agent session" /></div>
+          <div class="form-field"><label>private_window_tokens</label><input type="number" id="private_window_tokens" title="Maximum private context window size per agent" /></div>
           <div class="form-field">
             <label>curve_mode</label>
-            <select id="curve_mode">
+            <select id="curve_mode" title="Cache hit curve model: zipf for realistic workloads, linear for uniform">
               <option value="zipf_harmonic">zipf_harmonic</option>
               <option value="power_law_fit">power_law_fit</option>
               <option value="linear">linear</option>
             </select>
           </div>
-          <div class="form-field" id="zipf_s_field"><label>zipf_s</label><input type="number" step="0.1" id="zipf_s" /></div>
-          <div class="form-field" id="zipf_pop_field"><label>zipf_population_blocks</label><input type="number" id="zipf_population_blocks" /></div>
-          <div class="form-field"><label>strict_prefix_efficiency</label><input type="number" step="0.05" id="strict_prefix_efficiency" /></div>
-          <div class="form-field"><label>lru_like_efficiency</label><input type="number" step="0.05" id="lru_like_efficiency" /></div>
+          <div class="form-field" id="zipf_s_field"><label>zipf_s</label><input type="number" step="0.1" id="zipf_s" title="Zipf distribution skewness parameter (higher = more concentrated access)" /></div>
+          <div class="form-field" id="zipf_pop_field"><label>zipf_population_blocks</label><input type="number" id="zipf_population_blocks" title="Total number of cache blocks in Zipf population" /></div>
+          <div class="form-field"><label>strict_prefix_efficiency</label><input type="number" step="0.05" id="strict_prefix_efficiency" title="Efficiency of strict prefix matching (1.0 = perfect)" /></div>
+          <div class="form-field"><label>lru_like_efficiency</label><input type="number" step="0.05" id="lru_like_efficiency" title="Efficiency of LRU-like eviction policy (typically 0.5-0.8)" /></div>
         </div>
       </div>
 
@@ -213,22 +421,22 @@
       <div class="card">
         <div class="card-title">Deployment</div>
         <div class="form-group">
-          <div class="form-field"><label>label</label><input type="text" id="deploy_label" /></div>
-          <div class="form-field"><label>machine_spec</label><input type="text" id="machine_spec" /></div>
-          <div class="form-field"><label>accelerator_count</label><input type="number" id="accelerator_count" /></div>
-          <div class="form-field"><label>cards_per_machine</label><input type="number" id="cards_per_machine" /></div>
-          <div class="form-field"><label>gpu_memory_gb_per_card</label><input type="number" id="gpu_memory_gb_per_card" /></div>
+          <div class="form-field"><label>label</label><input type="text" id="deploy_label" title="Deployment configuration name" /></div>
+          <div class="form-field"><label>machine_spec</label><input type="text" id="machine_spec" title="GPU/accelerator model (e.g., h20, a100)" /></div>
+          <div class="form-field"><label>accelerator_count</label><input type="number" id="accelerator_count" title="Total number of GPUs in the cluster" /><span class="validation-msg" id="accel-warn"></span></div>
+          <div class="form-field"><label>cards_per_machine</label><input type="number" id="cards_per_machine" title="Number of GPUs per physical machine" /></div>
+          <div class="form-field"><label>gpu_memory_gb_per_card</label><input type="number" id="gpu_memory_gb_per_card" title="GPU HBM capacity in GB" /></div>
           <div class="form-field">
             <label>total_tps_unit</label>
-            <select id="total_tps_unit">
+            <select id="total_tps_unit" title="Unit for TPS measurement">
               <option value="cluster_total">cluster_total</option>
               <option value="per_machine">per_machine</option>
               <option value="per_card">per_card</option>
             </select>
           </div>
-          <div class="form-field"><label>total_tps</label><input type="number" step="0.1" id="total_tps" /></div>
-          <div class="form-field"><label>baseline_per_card_tps</label><input type="number" step="0.1" id="baseline_per_card_tps" /></div>
-          <div class="form-field"><label>planning_target_total_tps</label><input type="number" step="0.1" id="planning_target_total_tps" /></div>
+          <div class="form-field"><label>total_tps</label><input type="number" step="0.1" id="total_tps" title="Current baseline throughput (tokens per second)" /></div>
+          <div class="form-field"><label>baseline_per_card_tps</label><input type="number" step="0.1" id="baseline_per_card_tps" title="Baseline TPS per GPU card without caching" /></div>
+          <div class="form-field"><label>planning_target_total_tps</label><input type="number" step="0.1" id="planning_target_total_tps" title="Target total TPS for capacity planning" /></div>
         </div>
       </div>
 
@@ -243,24 +451,55 @@
       <div class="card">
         <div class="card-title">Analysis Settings</div>
         <div class="form-group">
-          <div class="form-field"><label>prefill_savings_alpha</label><input type="number" step="0.05" id="prefill_savings_alpha" /></div>
+          <div class="form-field"><label>prefill_savings_alpha</label><input type="number" step="0.05" id="prefill_savings_alpha" title="Fraction of prefill compute saved when tokens hit cache (0-1)" /></div>
         </div>
       </div>
     </div>
 
     <div class="results-panel">
+      <!-- Export Toolbar -->
+      <div class="card" style="padding:10px 16px;">
+        <div class="export-toolbar">
+          <button id="export-md" title="Copy results as Markdown to clipboard">Markdown</button>
+          <button id="export-png" title="Download hit rate chart as PNG image">PNG</button>
+          <button id="export-json" title="Download full analysis as JSON">JSON</button>
+          <button id="export-share" title="Generate shareable URL with current configuration">Share</button>
+          <button id="compare-btn" title="Compare current config against a what-if scenario">Compare</button>
+        </div>
+      </div>
+
+      <!-- Comparison Panel (hidden by default) -->
+      <div class="card" id="compare-panel" style="display:none;">
+        <div class="card-title">Scenario Comparison <button class="btn-sm" id="compare-exit" style="margin-left:auto;">Exit Compare</button></div>
+        <div class="compare-columns" id="compare-content"></div>
+      </div>
+
       <!-- Summary Metrics -->
       <div class="card">
         <div class="card-title">Summary Metrics</div>
         <div class="metrics-grid" id="metrics-grid"></div>
       </div>
 
-      <!-- Chart -->
+      <!-- Hit Rate Chart -->
       <div class="card">
         <div class="card-title">Hit Rate vs. KV Capacity</div>
         <div class="chart-container">
           <canvas id="hit-rate-chart"></canvas>
         </div>
+      </div>
+
+      <!-- TPS vs Machines Chart -->
+      <div class="card">
+        <div class="card-title">TPS vs. Machine Count</div>
+        <div class="chart-container">
+          <canvas id="tps-machines-chart"></canvas>
+        </div>
+      </div>
+
+      <!-- Sensitivity Analysis -->
+      <div class="card">
+        <div class="card-title">Parameter Sensitivity</div>
+        <div id="sensitivity-container"></div>
       </div>
 
       <!-- Results Table -->
@@ -289,7 +528,25 @@
 
   <script>
   // ═══════════════════════════════════════════════════════════════════
-  // Preset Configurations
+  // Model Preset Library
+  // ═══════════════════════════════════════════════════════════════════
+  const MODEL_LIBRARY = [
+    { id: "qwen3-27b", family: "Qwen", name: "Qwen3-27B (MLA)", params: { n_layers: 64, kv_cache_layer_count: 16, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27781419504, weight_dtype_bytes: 2, block_size: 16 }, notes: "Multi-head Latent Attention — only 16 KV layers" },
+    { id: "qwen2.5-72b", family: "Qwen", name: "Qwen2.5-72B", params: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 72700000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+    { id: "qwen2.5-7b", family: "Qwen", name: "Qwen2.5-7B", params: { n_layers: 28, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 128, dtype_bytes: 2, parameter_count: 7600000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+    { id: "llama3.1-70b", family: "Llama", name: "Llama 3.1 70B", params: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70600000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+    { id: "llama3.1-8b", family: "Llama", name: "Llama 3.1 8B", params: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 8000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+    { id: "llama3.3-70b", family: "Llama", name: "Llama 3.3 70B", params: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70600000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+    { id: "deepseek-v2-236b", family: "DeepSeek", name: "DeepSeek-V2 236B", params: { n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 236000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE (compressed KV: effective n_kv_heads=16, head_dim=512)" },
+    { id: "deepseek-v3-671b", family: "DeepSeek", name: "DeepSeek-V3 671B", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 671000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE (compressed KV: effective n_kv_heads=16, head_dim=512)" },
+    { id: "mixtral-8x22b", family: "Mistral", name: "Mixtral 8x22B", params: { n_layers: 56, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 141000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MoE, GQA" },
+    { id: "mistral-7b", family: "Mistral", name: "Mistral 7B", params: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 7200000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+    { id: "glm4-9b", family: "GLM", name: "GLM-4 9B", params: { n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 2, head_dim: 128, dtype_bytes: 2, parameter_count: 9400000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MQA" },
+    { id: "yi1.5-34b", family: "Yi", name: "Yi-1.5 34B", params: { n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 34400000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+  ];
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Deployment Preset Configurations
   // ═══════════════════════════════════════════════════════════════════
   const PRESETS = {
     "qwen3-27b-8xh20": {
@@ -305,6 +562,25 @@
       deployment: { label: "1x1-h20", accelerator_count: 1, cards_per_machine: 1, machine_spec: "h20", gpu_memory_gb_per_card: 96, total_tps: 1.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.0, planning_target_total_tps: 8.0, extra_capacity_tiers: [{ label: "HBM+1T per Machine", kv_gb_per_machine: 1024 }, { label: "HBM+10T per Machine", kv_gb_per_machine: 10240 }] }
     }
   };
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Workload Templates (for Quick-Start Wizard)
+  // ═══════════════════════════════════════════════════════════════════
+  const WORKLOAD_TEMPLATES = {
+    "multi-agent-chat": { name: "Multi-agent Chat", desc: "2048 concurrent agents, long sessions with shared system prompt", concurrent_agents: 2048, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 8, private_window_tokens: 65536 },
+    "rag-pipeline": { name: "RAG Pipeline", desc: "512 queries, large shared context from document retrieval", concurrent_agents: 512, shared_prefix_tokens: 8192, avg_new_tokens_per_turn: 2048, avg_turns_per_session: 2, private_window_tokens: 16384 },
+    "code-assistant": { name: "Code Assistant", desc: "1024 sessions, large shared repo context, longer generation", concurrent_agents: 1024, shared_prefix_tokens: 16384, avg_new_tokens_per_turn: 8192, avg_turns_per_session: 6, private_window_tokens: 32768 },
+    "light-chatbot": { name: "Light Chatbot", desc: "4096 concurrent users, short conversations, minimal shared context", concurrent_agents: 4096, shared_prefix_tokens: 2048, avg_new_tokens_per_turn: 1024, avg_turns_per_session: 4, private_window_tokens: 8192 },
+  };
+
+  // GPU specs for wizard
+  const GPU_SPECS = [
+    { id: "h20", name: "H20 (96GB)", memory_gb: 96 },
+    { id: "a100-80", name: "A100 (80GB)", memory_gb: 80 },
+    { id: "a100-40", name: "A100 (40GB)", memory_gb: 40 },
+    { id: "h100", name: "H100 (80GB)", memory_gb: 80 },
+    { id: "l40s", name: "L40S (48GB)", memory_gb: 48 },
+  ];
 
   // ═══════════════════════════════════════════════════════════════════
   // Core Calculation Engine (port of Python heuristic/multi_agent.py)
@@ -575,7 +851,10 @@
   // UI Logic
   // ═══════════════════════════════════════════════════════════════════
   let hitRateChart = null;
+  let tpsMachinesChart = null;
   let debounceTimer = null;
+  let scenarioA = null;
+  let modelPresetValues = null;
 
   function getFormConfig() {
     const model = {
@@ -670,13 +949,70 @@
 
     document.getElementById("prefill_savings_alpha").value = p.prefill_savings_alpha;
 
-    // Tiers
     const container = document.getElementById("tiers-container");
     container.innerHTML = "";
     (d.extra_capacity_tiers || []).forEach(t => addTierRow(t.label, t.kv_gb_per_machine));
 
+    // Also select matching model preset
+    const modelId = findModelForPreset(m);
+    if (modelId) {
+      document.getElementById("model-preset-select").value = modelId;
+      modelPresetValues = { ...m };
+    }
+
     updateCurveModeVisibility();
+    checkModelModified();
     recalculate();
+  }
+
+  function findModelForPreset(modelProfile) {
+    for (const m of MODEL_LIBRARY) {
+      if (m.params.n_layers === modelProfile.n_layers &&
+          m.params.n_kv_heads === modelProfile.n_kv_heads &&
+          m.params.head_dim === modelProfile.head_dim &&
+          m.params.kv_cache_layer_count === modelProfile.kv_cache_layer_count) {
+        return m.id;
+      }
+    }
+    return null;
+  }
+
+  function loadModelPreset(modelId) {
+    const model = MODEL_LIBRARY.find(m => m.id === modelId);
+    if (!model) {
+      modelPresetValues = null;
+      checkModelModified();
+      return;
+    }
+    const p = model.params;
+    document.getElementById("n_layers").value = p.n_layers;
+    document.getElementById("kv_cache_layer_count").value = p.kv_cache_layer_count || "";
+    document.getElementById("n_kv_heads").value = p.n_kv_heads;
+    document.getElementById("head_dim").value = p.head_dim;
+    document.getElementById("dtype_bytes").value = p.dtype_bytes;
+    document.getElementById("parameter_count").value = p.parameter_count || "";
+    document.getElementById("weight_dtype_bytes").value = p.weight_dtype_bytes || "";
+    document.getElementById("block_size").value = p.block_size;
+    modelPresetValues = { ...p, tp_size: +document.getElementById("tp_size").value || 1, pp_size: +document.getElementById("pp_size").value || 1 };
+    checkModelModified();
+    scheduleRecalc();
+  }
+
+  function checkModelModified() {
+    const badge = document.getElementById("model-modified-badge");
+    if (!modelPresetValues) { badge.style.display = "none"; return; }
+    const current = {
+      n_layers: +document.getElementById("n_layers").value,
+      kv_cache_layer_count: +document.getElementById("kv_cache_layer_count").value || null,
+      n_kv_heads: +document.getElementById("n_kv_heads").value,
+      head_dim: +document.getElementById("head_dim").value,
+      dtype_bytes: +document.getElementById("dtype_bytes").value,
+    };
+    const preset = modelPresetValues;
+    const modified = current.n_layers !== preset.n_layers || current.n_kv_heads !== preset.n_kv_heads ||
+      current.head_dim !== preset.head_dim || current.dtype_bytes !== preset.dtype_bytes ||
+      current.kv_cache_layer_count !== preset.kv_cache_layer_count;
+    badge.style.display = modified ? "" : "none";
   }
 
   function addTierRow(label, gb) {
@@ -686,7 +1022,7 @@
     row.innerHTML = `
       <div class="form-field"><label>Label</label><input type="text" class="tier-label" value="${label || ""}" /></div>
       <div class="form-field"><label>KV GB/Machine</label><input type="number" class="tier-gb" value="${gb || ""}" /></div>
-      <button class="btn-sm btn-danger tier-remove">×</button>
+      <button class="btn-sm btn-danger tier-remove">&times;</button>
     `;
     row.querySelector(".tier-remove").addEventListener("click", () => { row.remove(); scheduleRecalc(); });
     row.querySelectorAll("input").forEach(i => i.addEventListener("input", scheduleRecalc));
@@ -764,36 +1100,192 @@
     </tr>`).join("");
   }
 
-  function renderChart(rows, contentHitRate) {
+  function renderHitRateChart(rows, contentHitRate, summary) {
     const ctx = document.getElementById("hit-rate-chart").getContext("2d");
     const labels = rows.map(r => formatNum(r.totalKvGb, 0) + " GB");
     const strictData = rows.map(r => (r.strictPrefixHitRate * 100));
     const lruData = rows.map(r => (r.lruLikeHitRate * 100));
     const ceilingData = rows.map(() => contentHitRate * 100);
 
+    const datasets = [
+      { label: "Strict Prefix Upper Bound", data: strictData, borderColor: "#58a6ff", backgroundColor: "rgba(88,166,255,0.08)", tension: 0.3, fill: "+1", pointRadius: 4 },
+      { label: "LRU-like", data: lruData, borderColor: "#bc8cff", backgroundColor: "rgba(188,140,255,0.08)", tension: 0.3, fill: false, pointRadius: 4 },
+      { label: "Content Ceiling", data: ceilingData, borderColor: "#3fb950", borderDash: [6, 4], pointRadius: 0, fill: false },
+    ];
+
+    if (scenarioA) {
+      const aStrict = scenarioA.rows.map(r => (r.strictPrefixHitRate * 100));
+      const aLru = scenarioA.rows.map(r => (r.lruLikeHitRate * 100));
+      datasets.push({ label: "Scenario A - Strict", data: aStrict, borderColor: "rgba(88,166,255,0.4)", borderDash: [4, 4], pointRadius: 0, fill: false });
+      datasets.push({ label: "Scenario A - LRU", data: aLru, borderColor: "rgba(188,140,255,0.4)", borderDash: [4, 4], pointRadius: 0, fill: false });
+    }
+
     if (hitRateChart) hitRateChart.destroy();
     hitRateChart = new Chart(ctx, {
+      type: "line",
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { min: 0, max: 100, title: { display: true, text: "Hit Rate (%)", color: "#8b949e" }, grid: { color: "rgba(48,54,61,0.5)" }, ticks: { color: "#8b949e" } },
+          x: { title: { display: true, text: "Total KV Capacity", color: "#8b949e" }, grid: { color: "rgba(48,54,61,0.5)" }, ticks: { color: "#8b949e" } }
+        },
+        plugins: {
+          legend: { labels: { color: "#c9d1d9" } },
+          annotation: summary ? {
+            annotations: {
+              hbmLine: { type: "line", xMin: 0, xMax: 0, borderColor: "rgba(240,136,62,0.6)", borderWidth: 1, borderDash: [3, 3], label: { display: true, content: "HBM", color: "#f0883e", font: { size: 10 } } }
+            }
+          } : undefined
+        }
+      }
+    });
+  }
+
+  function renderTpsMachinesChart(config, summary) {
+    const ctx = document.getElementById("tps-machines-chart").getContext("2d");
+    const model = config.model_profile;
+    const kbpt = kvBytesPerToken(model);
+    const heuristic = new MultiAgentHeuristic(config.heuristic_multi_agent);
+    const alpha = config.prefill_savings_alpha;
+    const deployment = config.deployment;
+    const hbmKvGbPerCard = summary.hbmKvGbPerCard;
+    const baselinePerCardTps = deployment.baseline_per_card_tps;
+    const planningTarget = deployment.planning_target_total_tps;
+    const currentMachines = summary.machineCount;
+    const maxMachines = Math.max(currentMachines * 2, 8);
+
+    const labels = [];
+    const strictTpsData = [];
+    const lruTpsData = [];
+    const targetData = [];
+
+    for (let mc = 1; mc <= maxMachines; mc++) {
+      labels.push(mc.toString());
+      const cc = mc * deployment.cards_per_machine;
+      const kvGb = cc * hbmKvGbPerCard;
+      const kvTokens = gbToTokens(kvGb, kbpt);
+      const strictHr = hitRateForCapacityTokens(kvTokens, heuristic, heuristic.policy_efficiency.strict_prefix_upper_bound);
+      const lruHr = hitRateForCapacityTokens(kvTokens, heuristic, heuristic.policy_efficiency.lru_like);
+      strictTpsData.push(clusterCapacityTps(cc, baselinePerCardTps, strictHr, alpha));
+      lruTpsData.push(clusterCapacityTps(cc, baselinePerCardTps, lruHr, alpha));
+      targetData.push(planningTarget);
+    }
+
+    if (tpsMachinesChart) tpsMachinesChart.destroy();
+    tpsMachinesChart = new Chart(ctx, {
       type: "line",
       data: {
         labels,
         datasets: [
-          { label: "Strict Prefix Upper Bound", data: strictData, borderColor: "#58a6ff", backgroundColor: "rgba(88,166,255,0.1)", tension: 0.3, fill: false, pointRadius: 4 },
-          { label: "LRU-like", data: lruData, borderColor: "#bc8cff", backgroundColor: "rgba(188,140,255,0.1)", tension: 0.3, fill: false, pointRadius: 4 },
-          { label: "Content Ceiling", data: ceilingData, borderColor: "#3fb950", borderDash: [6, 4], pointRadius: 0, fill: false },
+          { label: "Strict Prefix TPS", data: strictTpsData, borderColor: "#58a6ff", tension: 0.3, pointRadius: 2, fill: false },
+          { label: "LRU-like TPS", data: lruTpsData, borderColor: "#bc8cff", tension: 0.3, pointRadius: 2, fill: false },
+          { label: "Target TPS", data: targetData, borderColor: "#f0883e", borderDash: [6, 4], pointRadius: 0, fill: false },
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         scales: {
-          y: { min: 0, max: 100, title: { display: true, text: "Hit Rate (%)", color: "#8b949e" }, grid: { color: "#21262d" }, ticks: { color: "#8b949e" } },
-          x: { title: { display: true, text: "Total KV Capacity", color: "#8b949e" }, grid: { color: "#21262d" }, ticks: { color: "#8b949e" } }
+          y: { title: { display: true, text: "Cluster TPS", color: "#8b949e" }, grid: { color: "rgba(48,54,61,0.5)" }, ticks: { color: "#8b949e" } },
+          x: { title: { display: true, text: "Machine Count", color: "#8b949e" }, grid: { color: "rgba(48,54,61,0.5)" }, ticks: { color: "#8b949e" } }
         },
-        plugins: {
-          legend: { labels: { color: "#c9d1d9" } }
-        }
+        plugins: { legend: { labels: { color: "#c9d1d9" } } }
       }
     });
+  }
+
+  function renderSensitivity(config) {
+    const container = document.getElementById("sensitivity-container");
+    const baseConfig = JSON.parse(JSON.stringify(config));
+    harmonicCache.clear();
+    const baseResult = analyzeMultiAgentHeuristic(baseConfig);
+    const baseHitRate = baseResult.rows[0] ? baseResult.rows[0].strictPrefixHitRate : 0;
+
+    const params = [
+      { name: "concurrent_agents", path: "heuristic_multi_agent.concurrent_agents" },
+      { name: "shared_prefix", path: "heuristic_multi_agent.shared_prefix_tokens" },
+      { name: "avg_new_tokens", path: "heuristic_multi_agent.avg_new_tokens_per_turn" },
+      { name: "private_window", path: "heuristic_multi_agent.private_window_tokens" },
+      { name: "avg_turns", path: "heuristic_multi_agent.avg_turns_per_session" },
+      { name: "lru_efficiency", path: "heuristic_multi_agent.policy_efficiency.lru_like" },
+    ];
+
+    const results = [];
+    for (const param of params) {
+      const parts = param.path.split(".");
+      const getValue = (obj) => parts.reduce((o, k) => o[k], obj);
+      const setValue = (obj, v) => { const p2 = [...parts]; const last = p2.pop(); p2.reduce((o, k) => o[k], obj)[last] = v; };
+
+      const original = getValue(baseConfig);
+      const upConfig = JSON.parse(JSON.stringify(baseConfig));
+      const downConfig = JSON.parse(JSON.stringify(baseConfig));
+      setValue(upConfig, original * 1.2);
+      setValue(downConfig, original * 0.8);
+
+      harmonicCache.clear();
+      const upResult = analyzeMultiAgentHeuristic(upConfig);
+      harmonicCache.clear();
+      const downResult = analyzeMultiAgentHeuristic(downConfig);
+
+      const upHit = upResult.rows[0] ? upResult.rows[0].strictPrefixHitRate : 0;
+      const downHit = downResult.rows[0] ? downResult.rows[0].strictPrefixHitRate : 0;
+      const sensitivity = Math.abs(upHit - downHit);
+      results.push({ name: param.name, sensitivity, delta: upHit - baseHitRate });
+    }
+
+    results.sort((a, b) => b.sensitivity - a.sensitivity);
+    const maxSens = Math.max(...results.map(r => r.sensitivity), 0.001);
+
+    container.innerHTML = results.map(r => {
+      const pct = (r.sensitivity / maxSens * 100).toFixed(0);
+      const color = r.delta >= 0 ? "var(--accent2)" : "var(--danger)";
+      return `<div class="sensitivity-bar">
+        <span class="param-name">${r.name}</span>
+        <div class="bar-container"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>
+        <span class="bar-value">${(r.sensitivity * 100).toFixed(2)}pp</span>
+      </div>`;
+    }).join("");
+  }
+
+  function renderComparison(resultB) {
+    if (!scenarioA) return;
+    const panel = document.getElementById("compare-panel");
+    const content = document.getElementById("compare-content");
+    panel.style.display = "";
+
+    const sa = scenarioA.summary;
+    const sb = resultB.summary;
+    const rowA = scenarioA.rows[0];
+    const rowB = resultB.rows[0];
+
+    function deltaHtml(a, b, suffix = "", invert = false) {
+      if (a == null || b == null) return "";
+      const d = b - a;
+      const better = invert ? d < 0 : d > 0;
+      const cls = better ? "positive" : "negative";
+      const arrow = d > 0 ? "▲" : d < 0 ? "▼" : "";
+      const val = suffix === "pp" ? (d * 100).toFixed(2) + "pp" : d.toFixed(2) + suffix;
+      return `<span class="delta ${cls}">Δ ${d > 0 ? "+" : ""}${val} ${arrow}</span>`;
+    }
+
+    content.innerHTML = `
+      <div class="compare-col scenario-a">
+        <h4>Scenario A (Base)</h4>
+        <div>Strict Hit: ${formatRate(rowA?.strictPrefixHitRate)}</div>
+        <div>LRU Hit: ${formatRate(rowA?.lruLikeHitRate)}</div>
+        <div>Min Machines (Strict): ${formatInt(rowA?.strictMinMachines)}</div>
+        <div>Content Hit: ${formatRate(sa.contentHitRate)}</div>
+      </div>
+      <div class="compare-col scenario-b">
+        <h4>Scenario B (Current)</h4>
+        <div>Strict Hit: ${formatRate(rowB?.strictPrefixHitRate)} ${deltaHtml(rowA?.strictPrefixHitRate, rowB?.strictPrefixHitRate, "pp")}</div>
+        <div>LRU Hit: ${formatRate(rowB?.lruLikeHitRate)} ${deltaHtml(rowA?.lruLikeHitRate, rowB?.lruLikeHitRate, "pp")}</div>
+        <div>Min Machines (Strict): ${formatInt(rowB?.strictMinMachines)} ${deltaHtml(rowA?.strictMinMachines, rowB?.strictMinMachines, "", true)}</div>
+        <div>Content Hit: ${formatRate(sb.contentHitRate)} ${deltaHtml(sa.contentHitRate, sb.contentHitRate, "pp")}</div>
+      </div>
+    `;
   }
 
   function recalculate() {
@@ -804,7 +1296,11 @@
       renderMetrics(result.summary);
       renderTable(result.rows);
       renderTpsTable(result.rows);
-      renderChart(result.rows, result.summary.contentHitRate);
+      renderHitRateChart(result.rows, result.summary.contentHitRate, result.summary);
+      renderTpsMachinesChart(config, result.summary);
+      renderSensitivity(config);
+      if (scenarioA) renderComparison(result);
+      validateInputs(config);
     } catch (e) {
       console.error("Calculation error:", e);
     }
@@ -812,24 +1308,467 @@
 
   function scheduleRecalc() {
     clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(recalculate, 100);
+    debounceTimer = setTimeout(() => { checkModelModified(); recalculate(); }, 100);
   }
 
-  // Wire up events
+  // ═══════════════════════════════════════════════════════════════════
+  // Input Validation
+  // ═══════════════════════════════════════════════════════════════════
+  function validateInputs(config) {
+    const accelWarn = document.getElementById("accel-warn");
+    const paramWarn = document.getElementById("param-warn");
+    const accelCount = config.deployment.accelerator_count;
+    const cardsPerMachine = config.deployment.cards_per_machine;
+
+    if (cardsPerMachine > 0 && accelCount % cardsPerMachine !== 0) {
+      accelWarn.textContent = "GPU count must be N × cards_per_machine";
+      accelWarn.classList.add("visible");
+      document.getElementById("accelerator_count").classList.add("invalid");
+    } else {
+      accelWarn.textContent = "";
+      accelWarn.classList.remove("visible");
+      document.getElementById("accelerator_count").classList.remove("invalid");
+    }
+
+    const paramCount = config.model_profile.parameter_count;
+    const nLayers = config.model_profile.n_layers;
+    if (paramCount && paramCount < 1e9 && nLayers > 32) {
+      paramWarn.textContent = "Parameter count seems low for " + nLayers + " layers";
+      paramWarn.classList.add("visible");
+      document.getElementById("parameter_count").classList.add("warning");
+    } else {
+      paramWarn.textContent = "";
+      paramWarn.classList.remove("visible");
+      document.getElementById("parameter_count").classList.remove("warning");
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Quick-Start Wizard
+  // ═══════════════════════════════════════════════════════════════════
+  let wizardStep = 0;
+  let wizardState = { modelId: null, gpuSpec: null, gpuCount: 8, workloadId: null };
+
+  function openWizard() {
+    wizardStep = 1;
+    wizardState = { modelId: null, gpuSpec: "h20", gpuCount: 8, workloadId: null };
+    renderWizardStep();
+    document.getElementById("wizard-overlay").classList.add("active");
+  }
+
+  function closeWizard() {
+    document.getElementById("wizard-overlay").classList.remove("active");
+  }
+
+  function renderWizardStep() {
+    const box = document.getElementById("wizard-box");
+    if (wizardStep === 1) {
+      box.innerHTML = `
+        <h2>Quick-Start Setup</h2>
+        <div class="step-indicator">Step 1 of 3 — Select Model</div>
+        <input type="text" class="model-search" id="wizard-model-search" placeholder="Filter models..." />
+        <div class="wizard-models" id="wizard-models-grid"></div>
+        <div style="text-align:center;margin-top:8px;"><a href="#" id="wizard-skip" style="color:var(--text-muted);font-size:.8rem;">Skip — I'll configure manually</a></div>
+        <div class="wizard-nav"><button class="btn-next" id="wizard-next" disabled>Next</button></div>
+      `;
+      renderWizardModels("");
+      box.querySelector("#wizard-model-search").addEventListener("input", (e) => renderWizardModels(e.target.value));
+      box.querySelector("#wizard-skip").addEventListener("click", (e) => { e.preventDefault(); closeWizard(); });
+      box.querySelector("#wizard-next").addEventListener("click", () => { wizardStep = 2; renderWizardStep(); });
+    } else if (wizardStep === 2) {
+      const model = MODEL_LIBRARY.find(m => m.id === wizardState.modelId);
+      const modelWeightGb = model ? (model.params.parameter_count * (model.params.weight_dtype_bytes || 2)) / BYTES_PER_GB : 14;
+      box.innerHTML = `
+        <h2>Quick-Start Setup</h2>
+        <div class="step-indicator">Step 2 of 3 — Hardware Configuration</div>
+        <div class="form-group" style="margin:16px 0;">
+          <div class="form-field">
+            <label>GPU Type</label>
+            <select id="wizard-gpu-type">${GPU_SPECS.map(g => `<option value="${g.id}" ${g.id === wizardState.gpuSpec ? "selected" : ""}>${g.name}</option>`).join("")}</select>
+          </div>
+          <div class="form-field">
+            <label>GPU Count</label>
+            <input type="number" id="wizard-gpu-count" value="${wizardState.gpuCount}" min="1" max="128" />
+          </div>
+        </div>
+        <div id="wizard-tp-suggest" style="font-size:.8rem;color:var(--text-muted);margin:8px 0;"></div>
+        <div class="wizard-nav">
+          <button class="btn-back" id="wizard-back">Back</button>
+          <button class="btn-next" id="wizard-next">Next</button>
+        </div>
+      `;
+      const updateSuggestion = () => {
+        const gpu = GPU_SPECS.find(g => g.id === document.getElementById("wizard-gpu-type").value);
+        if (gpu) {
+          const suggestTp = Math.ceil(modelWeightGb / (0.7 * gpu.memory_gb));
+          document.getElementById("wizard-tp-suggest").textContent = `Suggested TP=${suggestTp} (model weights ~${modelWeightGb.toFixed(0)}GB, GPU memory ${gpu.memory_gb}GB)`;
+        }
+      };
+      updateSuggestion();
+      box.querySelector("#wizard-gpu-type").addEventListener("change", updateSuggestion);
+      box.querySelector("#wizard-back").addEventListener("click", () => { wizardStep = 1; renderWizardStep(); });
+      box.querySelector("#wizard-next").addEventListener("click", () => {
+        wizardState.gpuSpec = document.getElementById("wizard-gpu-type").value;
+        wizardState.gpuCount = +document.getElementById("wizard-gpu-count").value;
+        wizardStep = 3;
+        renderWizardStep();
+      });
+    } else if (wizardStep === 3) {
+      box.innerHTML = `
+        <h2>Quick-Start Setup</h2>
+        <div class="step-indicator">Step 3 of 3 — Workload Template</div>
+        <div class="workload-templates" id="wizard-workloads"></div>
+        <div class="wizard-nav">
+          <button class="btn-back" id="wizard-back">Back</button>
+          <button class="btn-next" id="wizard-calc" disabled>Calculate</button>
+        </div>
+      `;
+      const wlContainer = box.querySelector("#wizard-workloads");
+      for (const [id, wl] of Object.entries(WORKLOAD_TEMPLATES)) {
+        const card = document.createElement("div");
+        card.className = "workload-template-card";
+        card.dataset.id = id;
+        card.innerHTML = `<div class="template-name">${wl.name}</div><div class="template-desc">${wl.desc}</div>`;
+        card.addEventListener("click", () => {
+          wlContainer.querySelectorAll(".workload-template-card").forEach(c => c.classList.remove("selected"));
+          card.classList.add("selected");
+          wizardState.workloadId = id;
+          box.querySelector("#wizard-calc").disabled = false;
+        });
+        wlContainer.appendChild(card);
+      }
+      box.querySelector("#wizard-back").addEventListener("click", () => { wizardStep = 2; renderWizardStep(); });
+      box.querySelector("#wizard-calc").addEventListener("click", () => applyWizard());
+    }
+  }
+
+  function renderWizardModels(filter) {
+    const grid = document.getElementById("wizard-models-grid");
+    if (!grid) return;
+    const lower = filter.toLowerCase();
+    const filtered = MODEL_LIBRARY.filter(m => !lower || m.name.toLowerCase().includes(lower) || m.family.toLowerCase().includes(lower));
+    grid.innerHTML = filtered.map(m => `
+      <div class="wizard-model-card ${wizardState.modelId === m.id ? "selected" : ""}" data-id="${m.id}">
+        <div class="model-family">${m.family}</div>
+        <div class="model-name">${m.name}</div>
+        <div class="model-info">${(m.params.parameter_count / 1e9).toFixed(1)}B params</div>
+      </div>
+    `).join("");
+    grid.querySelectorAll(".wizard-model-card").forEach(card => {
+      card.addEventListener("click", () => {
+        grid.querySelectorAll(".wizard-model-card").forEach(c => c.classList.remove("selected"));
+        card.classList.add("selected");
+        wizardState.modelId = card.dataset.id;
+        const nextBtn = document.getElementById("wizard-next");
+        if (nextBtn) nextBtn.disabled = false;
+      });
+    });
+  }
+
+  function applyWizard() {
+    const model = MODEL_LIBRARY.find(m => m.id === wizardState.modelId);
+    const gpu = GPU_SPECS.find(g => g.id === wizardState.gpuSpec);
+    const workload = WORKLOAD_TEMPLATES[wizardState.workloadId];
+    if (!model || !gpu || !workload) return;
+
+    const modelWeightGb = (model.params.parameter_count * (model.params.weight_dtype_bytes || 2)) / BYTES_PER_GB;
+    const tpSize = Math.max(1, Math.ceil(modelWeightGb / (0.7 * gpu.memory_gb)));
+    const cardsPerMachine = Math.min(wizardState.gpuCount, 8);
+
+    document.getElementById("model-preset-select").value = model.id;
+    loadModelPreset(model.id);
+    document.getElementById("tp_size").value = tpSize;
+    document.getElementById("pp_size").value = 1;
+
+    document.getElementById("concurrent_agents").value = workload.concurrent_agents;
+    document.getElementById("shared_prefix_tokens").value = workload.shared_prefix_tokens;
+    document.getElementById("avg_new_tokens_per_turn").value = workload.avg_new_tokens_per_turn;
+    document.getElementById("avg_turns_per_session").value = workload.avg_turns_per_session;
+    document.getElementById("private_window_tokens").value = workload.private_window_tokens;
+
+    document.getElementById("accelerator_count").value = wizardState.gpuCount;
+    document.getElementById("cards_per_machine").value = cardsPerMachine;
+    document.getElementById("machine_spec").value = gpu.id;
+    document.getElementById("gpu_memory_gb_per_card").value = gpu.memory_gb;
+    document.getElementById("total_tps").value = wizardState.gpuCount;
+    document.getElementById("baseline_per_card_tps").value = 1.0;
+    document.getElementById("planning_target_total_tps").value = wizardState.gpuCount * 2;
+    document.getElementById("deploy_label").value = `${Math.ceil(wizardState.gpuCount / cardsPerMachine)}x${cardsPerMachine}-${gpu.id}`;
+
+    const container = document.getElementById("tiers-container");
+    container.innerHTML = "";
+    addTierRow("HBM+1T per Machine", 1024);
+
+    document.getElementById("preset-select").value = "custom";
+    closeWizard();
+    recalculate();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Export & Share
+  // ═══════════════════════════════════════════════════════════════════
+  function exportMarkdown() {
+    const config = getFormConfig();
+    harmonicCache.clear();
+    const result = analyzeMultiAgentHeuristic(config);
+    const s = result.summary;
+    let md = `# KVCache Analysis Results\n\n`;
+    md += `## Summary\n`;
+    md += `| Metric | Value |\n|--------|-------|\n`;
+    md += `| Content Hit Rate | ${formatRate(s.contentHitRate)} |\n`;
+    md += `| Avg Request Tokens | ${formatTokens(s.avgRequest)} |\n`;
+    md += `| Working Set Tokens | ${formatTokens(s.totalWorkingSet)} |\n`;
+    md += `| KV Bytes/Token | ${formatNum(s.kbpt, 0)} B |\n`;
+    md += `| HBM KV/Card | ${formatNum(s.hbmKvGbPerCard, 1)} GB |\n`;
+    md += `| Strict Saturation | ${formatNum(s.strictSatGb, 1)} GB |\n`;
+    md += `| LRU Saturation | ${formatNum(s.lruSatGb, 1)} GB |\n\n`;
+    md += `## Tier Analysis\n`;
+    md += `| Tier | Total KV (GB) | Strict Prefix | LRU-like | Bottleneck |\n`;
+    md += `|------|--------------|---------------|----------|------------|\n`;
+    for (const r of result.rows) {
+      md += `| ${r.tierLabel} | ${formatNum(r.totalKvGb, 1)} | ${formatRate(r.strictPrefixHitRate)} | ${formatRate(r.lruLikeHitRate)} | ${r.bottleneck} |\n`;
+    }
+    navigator.clipboard.writeText(md).then(() => {
+      showToast("Copied to clipboard!");
+    });
+  }
+
+  function exportPng() {
+    const canvas = document.getElementById("hit-rate-chart");
+    const link = document.createElement("a");
+    link.download = "kvcache-hit-rate.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
+
+  function exportJson() {
+    const config = getFormConfig();
+    harmonicCache.clear();
+    const result = analyzeMultiAgentHeuristic(config);
+    const blob = new Blob([JSON.stringify({ config, result }, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.download = "kvcache-analysis.json";
+    link.href = URL.createObjectURL(blob);
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function exportShare() {
+    const config = getFormConfig();
+    const json = JSON.stringify(config);
+    let encoded;
+    if (json.length > 2048 && typeof LZString !== "undefined") {
+      encoded = "lz:" + LZString.compressToEncodedURIComponent(json);
+    } else {
+      encoded = btoa(unescape(encodeURIComponent(json)));
+    }
+    const url = window.location.origin + window.location.pathname + "#config=" + encoded;
+    navigator.clipboard.writeText(url).then(() => {
+      showToast("Shareable URL copied!");
+    });
+  }
+
+  function loadFromUrlHash() {
+    const hash = window.location.hash;
+    if (!hash.startsWith("#config=")) return false;
+    try {
+      const encoded = hash.substring(8);
+      let json;
+      if (encoded.startsWith("lz:") && typeof LZString !== "undefined") {
+        json = LZString.decompressFromEncodedURIComponent(encoded.substring(3));
+      } else {
+        json = decodeURIComponent(escape(atob(encoded)));
+      }
+      const config = JSON.parse(json);
+      applyConfigToForm(config);
+      return true;
+    } catch (e) {
+      console.error("Failed to load config from URL:", e);
+      return false;
+    }
+  }
+
+  function applyConfigToForm(config) {
+    const m = config.model_profile;
+    if (m) {
+      document.getElementById("n_layers").value = m.n_layers || "";
+      document.getElementById("kv_cache_layer_count").value = m.kv_cache_layer_count || "";
+      document.getElementById("n_kv_heads").value = m.n_kv_heads || "";
+      document.getElementById("head_dim").value = m.head_dim || "";
+      document.getElementById("dtype_bytes").value = m.dtype_bytes || "";
+      document.getElementById("parameter_count").value = m.parameter_count || "";
+      document.getElementById("weight_dtype_bytes").value = m.weight_dtype_bytes || "";
+      document.getElementById("tp_size").value = m.tp_size || 1;
+      document.getElementById("pp_size").value = m.pp_size || 1;
+      document.getElementById("block_size").value = m.block_size || 16;
+    }
+    const h = config.heuristic_multi_agent;
+    if (h) {
+      document.getElementById("concurrent_agents").value = h.concurrent_agents || "";
+      document.getElementById("shared_prefix_tokens").value = h.shared_prefix_tokens || "";
+      document.getElementById("avg_new_tokens_per_turn").value = h.avg_new_tokens_per_turn || "";
+      document.getElementById("avg_turns_per_session").value = h.avg_turns_per_session || "";
+      document.getElementById("private_window_tokens").value = h.private_window_tokens || "";
+      document.getElementById("curve_mode").value = h.curve_mode || "zipf_harmonic";
+      document.getElementById("zipf_s").value = h.zipf_s || 1.3;
+      document.getElementById("zipf_population_blocks").value = h.zipf_population_blocks || 4096;
+      if (h.policy_efficiency) {
+        document.getElementById("strict_prefix_efficiency").value = h.policy_efficiency.strict_prefix_upper_bound || 1.0;
+        document.getElementById("lru_like_efficiency").value = h.policy_efficiency.lru_like || 0.6;
+      }
+    }
+    const d = config.deployment;
+    if (d) {
+      document.getElementById("deploy_label").value = d.label || "";
+      document.getElementById("accelerator_count").value = d.accelerator_count || "";
+      document.getElementById("cards_per_machine").value = d.cards_per_machine || "";
+      document.getElementById("machine_spec").value = d.machine_spec || "";
+      document.getElementById("gpu_memory_gb_per_card").value = d.gpu_memory_gb_per_card || "";
+      document.getElementById("total_tps").value = d.total_tps || "";
+      document.getElementById("total_tps_unit").value = d.total_tps_unit || "cluster_total";
+      document.getElementById("baseline_per_card_tps").value = d.baseline_per_card_tps || "";
+      document.getElementById("planning_target_total_tps").value = d.planning_target_total_tps || "";
+      const container = document.getElementById("tiers-container");
+      container.innerHTML = "";
+      (d.extra_capacity_tiers || []).forEach(t => addTierRow(t.label, t.kv_gb_per_machine));
+    }
+    if (config.prefill_savings_alpha != null) {
+      document.getElementById("prefill_savings_alpha").value = config.prefill_savings_alpha;
+    }
+    updateCurveModeVisibility();
+  }
+
+  function showToast(msg) {
+    const toast = document.createElement("div");
+    toast.style.cssText = "position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--accent2);color:#fff;padding:8px 20px;border-radius:6px;font-size:.85rem;z-index:300;box-shadow:var(--shadow);";
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Scenario Comparison
+  // ═══════════════════════════════════════════════════════════════════
+  function startComparison() {
+    harmonicCache.clear();
+    const config = getFormConfig();
+    scenarioA = analyzeMultiAgentHeuristic(config);
+    scenarioA.config = config;
+    document.getElementById("compare-btn").textContent = "Comparing...";
+    document.getElementById("compare-panel").style.display = "";
+    recalculate();
+  }
+
+  function exitComparison() {
+    scenarioA = null;
+    document.getElementById("compare-btn").textContent = "Compare";
+    document.getElementById("compare-panel").style.display = "none";
+    recalculate();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Dark/Light Theme
+  // ═══════════════════════════════════════════════════════════════════
+  function initTheme() {
+    const saved = localStorage.getItem("kvcache-theme");
+    if (saved === "light") document.documentElement.classList.add("light");
+    updateThemeIcon();
+  }
+
+  function toggleTheme() {
+    document.documentElement.classList.toggle("light");
+    const isLight = document.documentElement.classList.contains("light");
+    localStorage.setItem("kvcache-theme", isLight ? "light" : "dark");
+    updateThemeIcon();
+  }
+
+  function updateThemeIcon() {
+    const btn = document.getElementById("theme-toggle");
+    const isLight = document.documentElement.classList.contains("light");
+    btn.innerHTML = isLight ? "&#9788;" : "&#9790;";
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Model Search & Dropdown Population
+  // ═══════════════════════════════════════════════════════════════════
+  function populateModelDropdown(filter = "") {
+    const select = document.getElementById("model-preset-select");
+    const current = select.value;
+    const lower = filter.toLowerCase();
+    const families = {};
+    for (const m of MODEL_LIBRARY) {
+      if (lower && !m.name.toLowerCase().includes(lower) && !m.family.toLowerCase().includes(lower)) continue;
+      if (!families[m.family]) families[m.family] = [];
+      families[m.family].push(m);
+    }
+    select.innerHTML = '<option value="custom">Custom (manual entry)</option>';
+    for (const [family, models] of Object.entries(families)) {
+      const group = document.createElement("optgroup");
+      group.label = family;
+      for (const m of models) {
+        const opt = document.createElement("option");
+        opt.value = m.id;
+        opt.textContent = m.name;
+        group.appendChild(opt);
+      }
+      select.appendChild(group);
+    }
+    if (select.querySelector(`option[value="${current}"]`)) select.value = current;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // Initialization
+  // ═══════════════════════════════════════════════════════════════════
   document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("preset-select").addEventListener("change", (e) => loadPreset(e.target.value));
+    initTheme();
+    populateModelDropdown();
+
+    // Check URL hash first
+    if (!loadFromUrlHash()) {
+      loadPreset("qwen3-27b-8xh20");
+    } else {
+      recalculate();
+    }
+
+    // Event wiring
+    document.getElementById("preset-select").addEventListener("change", (e) => {
+      if (e.target.value !== "custom") loadPreset(e.target.value);
+    });
+    document.getElementById("model-preset-select").addEventListener("change", (e) => {
+      if (e.target.value !== "custom") loadModelPreset(e.target.value);
+    });
+    document.getElementById("model-search").addEventListener("input", (e) => {
+      populateModelDropdown(e.target.value);
+    });
     document.getElementById("curve_mode").addEventListener("change", () => { updateCurveModeVisibility(); scheduleRecalc(); });
     document.getElementById("add-tier-btn").addEventListener("click", () => { addTierRow("", ""); scheduleRecalc(); });
+    document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
+    document.getElementById("wizard-btn").addEventListener("click", openWizard);
+
+    // Export buttons
+    document.getElementById("export-md").addEventListener("click", exportMarkdown);
+    document.getElementById("export-png").addEventListener("click", exportPng);
+    document.getElementById("export-json").addEventListener("click", exportJson);
+    document.getElementById("export-share").addEventListener("click", exportShare);
+
+    // Comparison
+    document.getElementById("compare-btn").addEventListener("click", () => {
+      if (scenarioA) exitComparison();
+      else startComparison();
+    });
+    document.getElementById("compare-exit").addEventListener("click", exitComparison);
+
+    // Wizard overlay close on outside click
+    document.getElementById("wizard-overlay").addEventListener("click", (e) => {
+      if (e.target === e.currentTarget) closeWizard();
+    });
 
     // Wire all inputs for recalculation
     document.querySelectorAll("input, select").forEach(el => {
-      if (el.id === "preset-select") return;
+      if (el.id === "preset-select" || el.id === "model-preset-select" || el.id === "model-search") return;
       el.addEventListener("input", scheduleRecalc);
       el.addEventListener("change", scheduleRecalc);
     });
-
-    // Load default preset
-    loadPreset("qwen3-27b-8xh20");
   });
   </script>
 </body>

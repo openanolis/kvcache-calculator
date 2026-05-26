@@ -45,37 +45,22 @@ const MODEL_LIBRARY = [
 
 ### Models to Include
 
-**Priority models (user-requested):**
 
-| Family | Model | Params (B) | KV Heads | Head Dim | KV Layers (full attn) | Architecture Note |
-|--------|-------|-----------|----------|----------|-----------|-------------------|
-| DeepSeek | DeepSeek-V3.2 671B | 671 | 1 (MLA) | 576 (kv_lora_rank=512 + rope=64) | 61 | MLA + MoE, kv_lora_rank=512, v_head_dim=128 |
-| Qwen | Qwen3.5-397B-A17B | 397 | 2 | 256 | 15 (of 60 total) | Hybrid: linear_attention + full_attention, MoE 512 experts |
-| Qwen | Qwen3.5-27B | 27 | 4 | 256 | 16 (of 64 total) | Hybrid: linear_attention + full_attention |
-| Qwen | Qwen3.6-27B | 27 | 4 | 256 | 16 (of 64 total) | Same arch as Qwen3.5-27B with Gated Delta Networks |
-| GLM | GLM5-5 | TBD | TBD | TBD | TBD | Not yet publicly available — add when config is released |
-| DeepSeek | DeepSeek-V4 | TBD | TBD | TBD | TBD | Not yet publicly available — add when config is released |
+| Family   | Model            | Params (B) | KV Heads | Head Dim | KV Layers | Architecture Note                                                                  |
+| -------- | ---------------- | ---------- | -------- | -------- | --------- | ---------------------------------------------------------------------------------- |
+| Qwen     | Qwen3-27B        | 27.8       | 4        | 256      | 16        | MLA                                                                                |
+| Qwen     | Qwen2.5-72B      | 72.7       | 8        | 128      | 80        | GQA                                                                                |
+| Qwen     | Qwen2.5-7B       | 7.6        | 4        | 128      | 28        | GQA                                                                                |
+| Llama    | Llama 3.1 70B    | 70.6       | 8        | 128      | 80        | GQA                                                                                |
+| Llama    | Llama 3.1 8B     | 8.0        | 8        | 128      | 32        | GQA                                                                                |
+| Llama    | Llama 3.3 70B    | 70.6       | 8        | 128      | 80        | GQA                                                                                |
+| DeepSeek | DeepSeek-V2 236B | 236        | 128      | 128      | 60        | MLA + MoE (compressed KV — use effective n_kv_heads=16, head_dim=512 for kv_bytes) |
+| DeepSeek | DeepSeek-V3 671B | 671        | 128      | 128      | 61        | MLA + MoE (compressed KV — same note)                                              |
+| Mistral  | Mixtral 8x22B    | 141        | 8        | 128      | 56        | MoE, GQA                                                                           |
+| Mistral  | Mistral 7B       | 7.2        | 8        | 128      | 32        | GQA                                                                                |
+| GLM      | GLM-4 9B         | 9.4        | 2        | 128      | 40        | MQA                                                                                |
+| Yi       | Yi-1.5 34B       | 34.4       | 8        | 128      | 60        | GQA                                                                                |
 
-**Additional models:**
-
-| Family | Model | Params (B) | KV Heads | Head Dim | KV Layers | Architecture Note |
-|--------|-------|-----------|----------|----------|-----------|-------------------|
-| Qwen | Qwen3-27B | 27.8 | 4 | 256 | 16 | MLA (already in project) |
-| Llama | Llama 3.1 70B | 70.6 | 8 | 128 | 80 | GQA |
-| Llama | Llama 3.1 8B | 8.0 | 8 | 128 | 32 | GQA |
-| GLM | GLM-4 9B | 9.4 | 2 | 128 | 40 | MQA |
-| Mistral | Mixtral 8x22B | 141 | 8 | 128 | 56 | MoE, GQA |
-
-**Notes on MLA/Hybrid models and KV cache sizing:**
-
-For DeepSeek V3.2 (MLA architecture), the effective KV cache per token is:
-- Per layer: `kv_lora_rank + qk_rope_head_dim` = 512 + 64 = 576 elements × dtype_bytes
-- This replaces the standard `2 × n_kv_heads × head_dim` formula
-- In the calculator, model this as: n_kv_heads=1, head_dim=576, to get correct kv_bytes_per_token
-
-For Qwen3.5/3.6 (Hybrid attention), only "full_attention" layers maintain standard KV cache:
-- Use `kv_cache_layer_count` = number of full_attention layers (e.g., 16 for 27B)
-- Linear attention layers use a fixed-size state that doesn't scale with sequence length
 
 ### UX
 
@@ -189,12 +174,12 @@ For Qwen3.5/3.6 (Hybrid attention), only "full_attention" layers maintain standa
 2. **Download Chart (PNG)** — per-chart download button using Chart.js `toBase64Image()`
 3. **Download Results (JSON)** — full analysis output including all tier rows, summary, and input config
 4. **Share via URL** — encode full configuration in URL hash:
-   ```
+  ```
    calculator.html#config=eyJtb2RlbF9wcm9maWxlIjp7...}
-   ```
-   - Base64-encoded JSON of all form parameters
-   - Loading page with hash auto-fills all fields and runs calculation
-   - Length limit: if config > 2KB encoded, offer "Copy shareable link" that uses compression (lz-string)
+  ```
+  - Base64-encoded JSON of all form parameters
+  - Loading page with hash auto-fills all fields and runs calculation
+  - Length limit: if config > 2KB encoded, offer "Copy shareable link" that uses compression (lz-string)
 
 ### UI Placement
 
@@ -207,16 +192,19 @@ For Qwen3.5/3.6 (Hybrid attention), only "full_attention" layers maintain standa
 
 ### Input Validation
 
-| Rule | Display |
-|------|---------|
-| tp_size × pp_size must divide evenly into n_kv_heads | Red border + "TP×PP must divide n_kv_heads" |
-| accelerator_count must be divisible by cards_per_machine | Red border + "GPU count must be N × cards_per_machine" |
-| Numeric fields must be > 0 | Red border + "Must be positive" |
-| parameter_count unrealistically small (< 1B for > 32 layers) | Yellow warning |
+
+| Rule                                                         | Display                                                |
+| ------------------------------------------------------------ | ------------------------------------------------------ |
+| tp_size × pp_size must divide evenly into n_kv_heads         | Red border + "TP×PP must divide n_kv_heads"            |
+| accelerator_count must be divisible by cards_per_machine     | Red border + "GPU count must be N × cards_per_machine" |
+| Numeric fields must be > 0                                   | Red border + "Must be positive"                        |
+| parameter_count unrealistically small (< 1B for > 32 layers) | Yellow warning                                         |
+
 
 ### Tooltips
 
 Every input field gets a `title` attribute with a 1-line explanation:
+
 - `concurrent_agents`: "Number of simultaneous agent sessions sharing the cache pool"
 - `shared_prefix_tokens`: "System prompt tokens shared identically across all agents"
 - etc.
@@ -238,6 +226,7 @@ Every input field gets a `title` attribute with a 1-line explanation:
 ## File Structure
 
 All changes remain in `website/calculator.html` (single file, no build step). The embedded JS grows but stays under 2000 LOC total. If it exceeds this, split into:
+
 - `website/calculator.html` (HTML + CSS)
 - `website/js/engine.js` (calculation engine)
 - `website/js/models.js` (preset library)
@@ -256,3 +245,4 @@ For now, keep everything in one file for simplicity.
 5. Scenario Comparison (high value, high complexity)
 6. UX Polish (ongoing, can be incremental)
 7. Sensitivity Chart (nice-to-have, medium complexity)
+
