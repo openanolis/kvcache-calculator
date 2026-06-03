@@ -552,17 +552,42 @@
   // Model Preset Library
   // ═══════════════════════════════════════════════════════════════════
   const MODEL_LIBRARY = [
+    // Qwen3 series
+    { id: "qwen3-235b", family: "Qwen", name: "Qwen3-235B-A22B (MoE)", params: { n_layers: 94, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 128, dtype_bytes: 2, parameter_count: 235093634560, weight_dtype_bytes: 2, block_size: 16 }, notes: "MoE (128 experts, 8 active)" },
+    { id: "qwen3-32b", family: "Qwen", name: "Qwen3-32B", params: { n_layers: 64, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 32762123264, weight_dtype_bytes: 2, block_size: 16 }, notes: "Dense, GQA" },
     { id: "qwen3-27b", family: "Qwen", name: "Qwen3-27B (MLA)", params: { n_layers: 64, kv_cache_layer_count: 16, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27781419504, weight_dtype_bytes: 2, block_size: 16 }, notes: "Multi-head Latent Attention — only 16 KV layers" },
+    { id: "qwen3-14b", family: "Qwen", name: "Qwen3-14B", params: { n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 14768307200, weight_dtype_bytes: 2, block_size: 16 }, notes: "Dense, GQA" },
+    { id: "qwen3-8b", family: "Qwen", name: "Qwen3-8B", params: { n_layers: 36, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 8190735360, weight_dtype_bytes: 2, block_size: 16 }, notes: "Dense, GQA" },
+    { id: "qwen3-4b", family: "Qwen", name: "Qwen3-4B", params: { n_layers: 36, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 4022468096, weight_dtype_bytes: 2, block_size: 16 }, notes: "Dense, GQA" },
+    { id: "qwen3-1.7b", family: "Qwen", name: "Qwen3-1.7B", params: { n_layers: 28, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 2031739904, weight_dtype_bytes: 2, block_size: 16 }, notes: "Dense, GQA" },
+    // Qwen2.5 series
     { id: "qwen2.5-72b", family: "Qwen", name: "Qwen2.5-72B", params: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 72700000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
     { id: "qwen2.5-7b", family: "Qwen", name: "Qwen2.5-7B", params: { n_layers: 28, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 128, dtype_bytes: 2, parameter_count: 7600000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+    // Llama 4 series
+    { id: "llama4-scout", family: "Llama", name: "Llama 4 Scout (17Bx16E)", params: { n_layers: 48, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 108641793536, weight_dtype_bytes: 2, block_size: 16 }, notes: "MoE (16 experts, 1 active), 10M context" },
+    { id: "llama4-maverick", family: "Llama", name: "Llama 4 Maverick (17Bx128E)", params: { n_layers: 48, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 401583781376, weight_dtype_bytes: 2, block_size: 16 }, notes: "MoE (128 experts, 1 active), 1M context" },
+    // Llama 3.x series
+    { id: "llama3.3-70b", family: "Llama", name: "Llama 3.3 70B", params: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70600000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
     { id: "llama3.1-70b", family: "Llama", name: "Llama 3.1 70B", params: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70600000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
     { id: "llama3.1-8b", family: "Llama", name: "Llama 3.1 8B", params: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 8000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
-    { id: "llama3.3-70b", family: "Llama", name: "Llama 3.3 70B", params: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70600000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
-    { id: "deepseek-v2-236b", family: "DeepSeek", name: "DeepSeek-V2 236B", params: { n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 236000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE (compressed KV: effective n_kv_heads=16, head_dim=512)" },
+    // DeepSeek series
+    { id: "deepseek-r1", family: "DeepSeek", name: "DeepSeek-R1 685B", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 684531386000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE (256 experts), same KV arch as V3" },
     { id: "deepseek-v3-671b", family: "DeepSeek", name: "DeepSeek-V3 671B", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 671000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE (compressed KV: effective n_kv_heads=16, head_dim=512)" },
+    { id: "deepseek-v2-236b", family: "DeepSeek", name: "DeepSeek-V2 236B", params: { n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 236000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE (compressed KV: effective n_kv_heads=16, head_dim=512)" },
+    // Mistral series
+    { id: "mistral-small-24b", family: "Mistral", name: "Mistral Small 24B", params: { n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 23572403200, weight_dtype_bytes: 2, block_size: 16 }, notes: "Dense, GQA" },
+    { id: "mistral-nemo-12b", family: "Mistral", name: "Mistral Nemo 12B", params: { n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 12247782400, weight_dtype_bytes: 2, block_size: 16 }, notes: "Dense, GQA" },
     { id: "mixtral-8x22b", family: "Mistral", name: "Mixtral 8x22B", params: { n_layers: 56, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 141000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MoE, GQA" },
     { id: "mistral-7b", family: "Mistral", name: "Mistral 7B", params: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 7200000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+    // Microsoft Phi
+    { id: "phi-4-14b", family: "Phi", name: "Phi-4 14B", params: { n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 10, head_dim: 96, dtype_bytes: 2, parameter_count: 14659507200, weight_dtype_bytes: 2, block_size: 16 }, notes: "Dense, GQA" },
+    { id: "phi-3-medium-14b", family: "Phi", name: "Phi-3 Medium 14B", params: { n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 10, head_dim: 96, dtype_bytes: 2, parameter_count: 13960238080, weight_dtype_bytes: 2, block_size: 16 }, notes: "Dense, GQA" },
+    // InternLM
+    { id: "internlm2.5-20b", family: "InternLM", name: "InternLM2.5-20B", params: { n_layers: 48, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 19861149696, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+    { id: "internlm2.5-7b", family: "InternLM", name: "InternLM2.5-7B", params: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 7737708544, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+    // GLM
     { id: "glm4-9b", family: "GLM", name: "GLM-4 9B", params: { n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 2, head_dim: 128, dtype_bytes: 2, parameter_count: 9400000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MQA" },
+    // Yi
     { id: "yi1.5-34b", family: "Yi", name: "Yi-1.5 34B", params: { n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 34400000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
   ];
 
