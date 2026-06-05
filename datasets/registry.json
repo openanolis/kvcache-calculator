@@ -1,0 +1,500 @@
+{
+  "version": 1,
+  "datasets": [
+    {
+      "id": "bailian-traceA",
+      "name": "Qwen-Bailian Trace A",
+      "description": "Production Qwen3-27B serving trace from Alibaba Bailian platform with native block hash_ids",
+      "source": "https://github.com/alibaba-edu/qwen-bailian-usagetraces-anon",
+      "trace_url": "https://media.githubusercontent.com/media/alibaba-edu/qwen-bailian-usagetraces-anon/main/qwen_traceA_blksz_16.jsonl",
+      "format": "native",
+      "tier": "production-traces",
+      "model_id": "qwen3-27b",
+      "model_profile": {
+        "n_layers": 64,
+        "kv_cache_layer_count": 16,
+        "n_kv_heads": 4,
+        "head_dim": 256,
+        "dtype_bytes": 2,
+        "parameter_count": 27781419504,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "8xH20",
+        "accelerator_count": 8,
+        "cards_per_machine": 8,
+        "machine_spec": "h20",
+        "gpu_memory_gb_per_card": 96,
+        "baseline_per_card_tps": 1.0
+      },
+      "default_heuristic": {
+        "concurrent_agents": 2048,
+        "shared_prefix_tokens": 4096,
+        "avg_new_tokens_per_turn": 4096,
+        "avg_turns_per_session": 8,
+        "private_window_tokens": 65536,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 4096,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.6
+        }
+      },
+      "tags": ["production", "MLA", "multi-turn", "prefix-caching"],
+      "request_count": null,
+      "paper": null
+    },
+    {
+      "id": "mooncake-kimi",
+      "name": "Mooncake/Kimi Production Trace",
+      "description": "Production Kimi (Moonshot AI) serving trace with native prefix block IDs, from FAST 2025 Best Paper",
+      "source": "https://github.com/kvcache-ai/Mooncake",
+      "trace_url": "https://raw.githubusercontent.com/kvcache-ai/Mooncake/main/FAST25-release/arxiv-trace/mooncake_trace.jsonl",
+      "format": "native",
+      "tier": "production-traces",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": null,
+        "weight_dtype_bytes": 2,
+        "block_size": 512
+      },
+      "default_deployment": {
+        "label": "8xH100",
+        "accelerator_count": 8,
+        "cards_per_machine": 8,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 1024,
+        "shared_prefix_tokens": 2048,
+        "avg_new_tokens_per_turn": 4096,
+        "avg_turns_per_session": 6,
+        "private_window_tokens": 32768,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 4096,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.55
+        }
+      },
+      "tags": ["production", "prefix-caching", "long-context"],
+      "request_count": 23608,
+      "paper": "Mooncake: A KVCache-centric Disaggregated Architecture for LLM Serving (FAST 2025)"
+    },
+    {
+      "id": "ragpulse",
+      "name": "RAGPulse University QA Trace",
+      "description": "RAG serving trace from a university Q&A service (Qwen2.5-14B) with component-level structured hash_ids",
+      "source": "https://github.com/flashserve/RAGPulse",
+      "trace_url": "https://raw.githubusercontent.com/flashserve/RAGPulse/main/data/0_trace.jsonl",
+      "format": "native-structured",
+      "tier": "production-traces",
+      "model_id": "qwen2.5-14b",
+      "model_profile": {
+        "n_layers": 48,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 4,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 14768307200,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "1xH100",
+        "accelerator_count": 1,
+        "cards_per_machine": 1,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 128,
+        "shared_prefix_tokens": 2048,
+        "avg_new_tokens_per_turn": 2048,
+        "avg_turns_per_session": 4,
+        "private_window_tokens": 8192,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 2048,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.6
+        }
+      },
+      "tags": ["production", "RAG", "structured-prefix", "university"],
+      "request_count": 7106,
+      "paper": null
+    },
+    {
+      "id": "wildchat-1m",
+      "name": "WildChat-1M",
+      "description": "838K real user-ChatGPT conversations with timestamps from Allen AI (requires HuggingFace download + conversion)",
+      "source": "https://huggingface.co/datasets/allenai/WildChat-1M",
+      "trace_url": null,
+      "format": "conversation",
+      "tier": "conversation-datasets",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 96,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 175000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "8xA100-80G",
+        "accelerator_count": 8,
+        "cards_per_machine": 8,
+        "machine_spec": "a100-80",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 0.8
+      },
+      "default_heuristic": {
+        "concurrent_agents": 512,
+        "shared_prefix_tokens": 1024,
+        "avg_new_tokens_per_turn": 2048,
+        "avg_turns_per_session": 4,
+        "private_window_tokens": 16384,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 4096,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.55
+        }
+      },
+      "tags": ["conversation", "real-users", "timestamps", "multi-turn"],
+      "request_count": 838000,
+      "paper": null
+    },
+    {
+      "id": "oasst2",
+      "name": "OpenAssistant OASST2",
+      "description": "135K messages in tree-structured conversations with branching paths (requires HuggingFace download + conversion)",
+      "source": "https://huggingface.co/datasets/OpenAssistant/oasst2",
+      "trace_url": null,
+      "format": "conversation",
+      "tier": "conversation-datasets",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 40,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 40,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 12000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "1xA100-80G",
+        "accelerator_count": 1,
+        "cards_per_machine": 1,
+        "machine_spec": "a100-80",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 0.8
+      },
+      "default_heuristic": {
+        "concurrent_agents": 256,
+        "shared_prefix_tokens": 512,
+        "avg_new_tokens_per_turn": 1024,
+        "avg_turns_per_session": 6,
+        "private_window_tokens": 8192,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 2048,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.55
+        }
+      },
+      "tags": ["conversation", "tree-structure", "branching", "crowdsourced"],
+      "request_count": 135000,
+      "paper": null
+    },
+    {
+      "id": "lmsys-chat-1m",
+      "name": "LMSYS-Chat-1M",
+      "description": "1M real conversations from LMSYS Chatbot Arena (requires HuggingFace download + conversion)",
+      "source": "https://huggingface.co/datasets/lmsys/lmsys-chat-1m",
+      "trace_url": null,
+      "format": "conversation",
+      "tier": "conversation-datasets",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 70000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "4xA100-80G",
+        "accelerator_count": 4,
+        "cards_per_machine": 4,
+        "machine_spec": "a100-80",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 0.8
+      },
+      "default_heuristic": {
+        "concurrent_agents": 1024,
+        "shared_prefix_tokens": 512,
+        "avg_new_tokens_per_turn": 2048,
+        "avg_turns_per_session": 3,
+        "private_window_tokens": 16384,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 4096,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.55
+        }
+      },
+      "tags": ["conversation", "real-users", "multi-model", "arena"],
+      "request_count": 1000000,
+      "paper": "LMSYS-Chat-1M: A Large-Scale Real-World LLM Conversation Dataset"
+    },
+    {
+      "id": "simia-tau-90k",
+      "name": "Simia-Tau Customer Service Agent",
+      "description": "91K customer service agent trajectories (2-58 turns) with shared policy prompts and tool calling in Airline/Retail domains",
+      "source": "https://huggingface.co/datasets/Simia-Agent/Simia-Tau-SFT-90k-Hermes",
+      "trace_url": null,
+      "format": "agent-trajectory",
+      "tier": "agent-workloads",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 70000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "4xH100",
+        "accelerator_count": 4,
+        "cards_per_machine": 4,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 512,
+        "shared_prefix_tokens": 8192,
+        "avg_new_tokens_per_turn": 1024,
+        "avg_turns_per_session": 12,
+        "private_window_tokens": 32768,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 4096,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.6
+        }
+      },
+      "tags": ["agent", "tool-calling", "customer-service", "multi-turn", "shared-prefix"],
+      "request_count": 91204,
+      "paper": null
+    },
+    {
+      "id": "swe-smith",
+      "name": "SWE-smith Coding Agent Trajectories",
+      "description": "76K coding agent trajectories from SWE-bench with deep multi-turn tool use (bash, file editing) up to 664K chars",
+      "source": "https://huggingface.co/datasets/SWE-bench/SWE-smith-trajectories",
+      "trace_url": null,
+      "format": "agent-trajectory",
+      "tier": "agent-workloads",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 70000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "4xH100",
+        "accelerator_count": 4,
+        "cards_per_machine": 4,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 256,
+        "shared_prefix_tokens": 16384,
+        "avg_new_tokens_per_turn": 4096,
+        "avg_turns_per_session": 16,
+        "private_window_tokens": 65536,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 8192,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.5
+        }
+      },
+      "tags": ["agent", "coding", "tool-use", "long-context", "SWE-bench"],
+      "request_count": 76002,
+      "paper": "SWE-smith: Scaling Data for Software Engineering Agents"
+    },
+    {
+      "id": "toolbench",
+      "name": "ToolBench API Orchestration",
+      "description": "189K multi-step API orchestration trajectories across 16K+ real-world APIs with chain-of-thought reasoning",
+      "source": "https://huggingface.co/datasets/tuandunghcmut/toolbench-v1",
+      "trace_url": null,
+      "format": "agent-trajectory",
+      "tier": "agent-workloads",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 70000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "4xH100",
+        "accelerator_count": 4,
+        "cards_per_machine": 4,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 256,
+        "shared_prefix_tokens": 4096,
+        "avg_new_tokens_per_turn": 2048,
+        "avg_turns_per_session": 8,
+        "private_window_tokens": 32768,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 4096,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.55
+        }
+      },
+      "tags": ["agent", "tool-calling", "API-orchestration", "multi-step", "chain-of-thought"],
+      "request_count": 189404,
+      "paper": "ToolLLM: Facilitating Large Language Models to Master 16000+ Real-world APIs"
+    },
+    {
+      "id": "telos-agent",
+      "name": "Telos Agent Trajectories",
+      "description": "19.5K agent trajectories across 23 domains with up to 48 reasoning frames in dual format (Telos + ChatML)",
+      "source": "https://huggingface.co/datasets/kosiasuzu/telos-agent-trajectory-dataset",
+      "trace_url": null,
+      "format": "agent-trajectory",
+      "tier": "agent-workloads",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 70000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "4xH100",
+        "accelerator_count": 4,
+        "cards_per_machine": 4,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 128,
+        "shared_prefix_tokens": 4096,
+        "avg_new_tokens_per_turn": 2048,
+        "avg_turns_per_session": 10,
+        "private_window_tokens": 32768,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 4096,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.55
+        }
+      },
+      "tags": ["agent", "multi-domain", "reasoning-frames", "dual-format"],
+      "request_count": 19465,
+      "paper": null
+    },
+    {
+      "id": "mcp-agent",
+      "name": "MCP Agent Trajectory Benchmark",
+      "description": "49 real MCP protocol agent trajectories with structured tool calls (3-32 calls per session) and session IDs",
+      "source": "https://huggingface.co/datasets/obaydata/mcp-agent-trajectory-benchmark",
+      "trace_url": null,
+      "format": "agent-trajectory",
+      "tier": "agent-workloads",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 70000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "1xH100",
+        "accelerator_count": 1,
+        "cards_per_machine": 1,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 32,
+        "shared_prefix_tokens": 8192,
+        "avg_new_tokens_per_turn": 2048,
+        "avg_turns_per_session": 12,
+        "private_window_tokens": 32768,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 2048,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.55
+        }
+      },
+      "tags": ["agent", "MCP", "tool-calling", "structured", "session-aware"],
+      "request_count": 49,
+      "paper": null
+    }
+  ]
+}
