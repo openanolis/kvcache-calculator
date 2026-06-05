@@ -386,6 +386,18 @@
               <optgroup label="Mistral — L40S">
                 <option value="mistral-7b-1xl40s">Mistral 7B (1xL40S, TP=1)</option>
               </optgroup>
+              <optgroup label="── Public Datasets: Production Traces ──">
+                <option value="dataset:bailian-traceA">Qwen-Bailian Trace A (8xH20)</option>
+                <option value="dataset:mooncake-kimi">Mooncake/Kimi Trace (8xH100)</option>
+                <option value="dataset:ragpulse">RAGPulse University QA (1xH100)</option>
+              </optgroup>
+              <optgroup label="── Public Datasets: Agent Workloads ──">
+                <option value="dataset:simia-tau-90k">Simia-Tau Customer Service (4xH100)</option>
+                <option value="dataset:swe-smith">SWE-smith Coding Agent (4xH100)</option>
+                <option value="dataset:toolbench">ToolBench API Orchestration (4xH100)</option>
+                <option value="dataset:telos-agent">Telos Agent 23 Domains (4xH100)</option>
+                <option value="dataset:mcp-agent">MCP Agent Benchmark (1xH100)</option>
+              </optgroup>
             </select>
           </div>
         </div>
@@ -635,6 +647,57 @@
     { id: "a800",     name: "A800 (80GB)",     memory_gb: 80,  typical_cards_per_machine: 8, max_cards_per_machine: 8,  baseline_tps_per_card: 0.7 },
     { id: "l40s",     name: "L40S (48GB)",     memory_gb: 48,  typical_cards_per_machine: 4, max_cards_per_machine: 8,  baseline_tps_per_card: 0.5 },
     { id: "l20",      name: "L20 (48GB)",      memory_gb: 48,  typical_cards_per_machine: 4, max_cards_per_machine: 8,  baseline_tps_per_card: 0.4 },
+  ];
+
+  const DATASET_REGISTRY = [
+    { id: "bailian-traceA", name: "Qwen-Bailian Trace A", tier: "production-traces", description: "Production Qwen3-27B serving trace from Alibaba Bailian platform", source: "https://github.com/alibaba-edu/qwen-bailian-usagetraces-anon", trace_url: "https://media.githubusercontent.com/media/alibaba-edu/qwen-bailian-usagetraces-anon/main/qwen_traceA_blksz_16.jsonl", format: "native", tags: ["production", "MLA", "multi-turn"], request_count: null,
+      model_profile: { n_layers: 64, kv_cache_layer_count: 16, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27781419504, weight_dtype_bytes: 2, tp_size: 8, pp_size: 1, block_size: 16 },
+      deployment: { label: "8xH20", accelerator_count: 8, cards_per_machine: 8, machine_spec: "h20", gpu_memory_gb_per_card: 96, total_tps: 8.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.0, planning_target_total_tps: 8.0, extra_capacity_tiers: [{ label: "HBM+1T per Machine", kv_gb_per_machine: 1024 }] },
+      heuristic_multi_agent: { concurrent_agents: 2048, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 8, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
+      prefill_savings_alpha: 0.8
+    },
+    { id: "mooncake-kimi", name: "Mooncake/Kimi Trace", tier: "production-traces", description: "Production Kimi serving trace with native prefix block IDs (FAST 2025 Best Paper)", source: "https://github.com/kvcache-ai/Mooncake", trace_url: "https://raw.githubusercontent.com/kvcache-ai/Mooncake/main/FAST25-release/arxiv-trace/mooncake_trace.jsonl", format: "native", tags: ["production", "prefix-caching"], request_count: 23608,
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: null, weight_dtype_bytes: 2, tp_size: 8, pp_size: 1, block_size: 512 },
+      deployment: { label: "8xH100", accelerator_count: 8, cards_per_machine: 8, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 12.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 12.0, extra_capacity_tiers: [] },
+      heuristic_multi_agent: { concurrent_agents: 1024, shared_prefix_tokens: 2048, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 6, private_window_tokens: 32768, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.55 } },
+      prefill_savings_alpha: 0.8
+    },
+    { id: "ragpulse", name: "RAGPulse University QA", tier: "production-traces", description: "RAG serving trace from university Q&A service (Qwen2.5-14B) with component-level hash_ids", source: "https://github.com/flashserve/RAGPulse", trace_url: "https://raw.githubusercontent.com/flashserve/RAGPulse/main/data/0_trace.jsonl", format: "native-structured", tags: ["production", "RAG", "structured-prefix"], request_count: 7106,
+      model_profile: { n_layers: 48, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 128, dtype_bytes: 2, parameter_count: 14768307200, weight_dtype_bytes: 2, tp_size: 1, pp_size: 1, block_size: 16 },
+      deployment: { label: "1xH100", accelerator_count: 1, cards_per_machine: 1, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 1.5, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 1.5, extra_capacity_tiers: [] },
+      heuristic_multi_agent: { concurrent_agents: 128, shared_prefix_tokens: 2048, avg_new_tokens_per_turn: 2048, avg_turns_per_session: 4, private_window_tokens: 8192, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 2048, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
+      prefill_savings_alpha: 0.8
+    },
+    { id: "simia-tau-90k", name: "Simia-Tau Customer Service Agent", tier: "agent-workloads", description: "91K customer service agent trajectories (2-58 turns) with tool calling", source: "https://huggingface.co/datasets/Simia-Agent/Simia-Tau-SFT-90k-Hermes", trace_url: null, format: "agent-trajectory", tags: ["agent", "tool-calling", "customer-service"], request_count: 91204,
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70000000000, weight_dtype_bytes: 2, tp_size: 4, pp_size: 1, block_size: 16 },
+      deployment: { label: "4xH100", accelerator_count: 4, cards_per_machine: 4, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 6.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 6.0, extra_capacity_tiers: [] },
+      heuristic_multi_agent: { concurrent_agents: 512, shared_prefix_tokens: 8192, avg_new_tokens_per_turn: 1024, avg_turns_per_session: 12, private_window_tokens: 32768, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
+      prefill_savings_alpha: 0.8
+    },
+    { id: "swe-smith", name: "SWE-smith Coding Agent", tier: "agent-workloads", description: "76K coding agent trajectories with deep multi-turn tool use (SWE-bench)", source: "https://huggingface.co/datasets/SWE-bench/SWE-smith-trajectories", trace_url: null, format: "agent-trajectory", tags: ["agent", "coding", "tool-use", "long-context"], request_count: 76002,
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70000000000, weight_dtype_bytes: 2, tp_size: 4, pp_size: 1, block_size: 16 },
+      deployment: { label: "4xH100", accelerator_count: 4, cards_per_machine: 4, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 6.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 6.0, extra_capacity_tiers: [] },
+      heuristic_multi_agent: { concurrent_agents: 256, shared_prefix_tokens: 16384, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 16, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 8192, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.5 } },
+      prefill_savings_alpha: 0.8
+    },
+    { id: "toolbench", name: "ToolBench API Orchestration", tier: "agent-workloads", description: "189K multi-step API orchestration trajectories across 16K+ real-world APIs", source: "https://huggingface.co/datasets/tuandunghcmut/toolbench-v1", trace_url: null, format: "agent-trajectory", tags: ["agent", "tool-calling", "API-orchestration"], request_count: 189404,
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70000000000, weight_dtype_bytes: 2, tp_size: 4, pp_size: 1, block_size: 16 },
+      deployment: { label: "4xH100", accelerator_count: 4, cards_per_machine: 4, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 6.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 6.0, extra_capacity_tiers: [] },
+      heuristic_multi_agent: { concurrent_agents: 256, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 2048, avg_turns_per_session: 8, private_window_tokens: 32768, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.55 } },
+      prefill_savings_alpha: 0.8
+    },
+    { id: "telos-agent", name: "Telos Agent Trajectories", tier: "agent-workloads", description: "19.5K agent trajectories across 23 domains with up to 48 reasoning frames", source: "https://huggingface.co/datasets/kosiasuzu/telos-agent-trajectory-dataset", trace_url: null, format: "agent-trajectory", tags: ["agent", "multi-domain", "reasoning-frames"], request_count: 19465,
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70000000000, weight_dtype_bytes: 2, tp_size: 4, pp_size: 1, block_size: 16 },
+      deployment: { label: "4xH100", accelerator_count: 4, cards_per_machine: 4, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 6.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 6.0, extra_capacity_tiers: [] },
+      heuristic_multi_agent: { concurrent_agents: 128, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 2048, avg_turns_per_session: 10, private_window_tokens: 32768, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.55 } },
+      prefill_savings_alpha: 0.8
+    },
+    { id: "mcp-agent", name: "MCP Agent Benchmark", tier: "agent-workloads", description: "49 real MCP protocol agent trajectories with structured tool calls", source: "https://huggingface.co/datasets/obaydata/mcp-agent-trajectory-benchmark", trace_url: null, format: "agent-trajectory", tags: ["agent", "MCP", "tool-calling"], request_count: 49,
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70000000000, weight_dtype_bytes: 2, tp_size: 1, pp_size: 1, block_size: 16 },
+      deployment: { label: "1xH100", accelerator_count: 1, cards_per_machine: 1, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 1.5, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 1.5, extra_capacity_tiers: [] },
+      heuristic_multi_agent: { concurrent_agents: 32, shared_prefix_tokens: 8192, avg_new_tokens_per_turn: 2048, avg_turns_per_session: 12, private_window_tokens: 32768, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 2048, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.55 } },
+      prefill_savings_alpha: 0.8
+    },
   ];
 
   // ═══════════════════════════════════════════════════════════════════
@@ -1014,6 +1077,65 @@
     (d.extra_capacity_tiers || []).forEach(t => addTierRow(t.label, t.kv_gb_per_machine));
 
     // Also select matching model preset
+    const modelId = findModelForPreset(m);
+    if (modelId) {
+      document.getElementById("model-preset-select").value = modelId;
+      modelPresetValues = { ...m };
+    }
+
+    updateCurveModeVisibility();
+    checkModelModified();
+    recalculate();
+  }
+
+  function loadDatasetPreset(datasetId) {
+    const ds = DATASET_REGISTRY.find(d => d.id === datasetId);
+    if (!ds) return;
+    const m = ds.model_profile;
+    document.getElementById("n_layers").value = m.n_layers;
+    document.getElementById("kv_cache_layer_count").value = m.kv_cache_layer_count || "";
+    document.getElementById("n_kv_heads").value = m.n_kv_heads;
+    document.getElementById("head_dim").value = m.head_dim;
+    document.getElementById("dtype_bytes").value = m.dtype_bytes;
+    document.getElementById("parameter_count").value = m.parameter_count || "";
+    document.getElementById("weight_dtype_bytes").value = m.weight_dtype_bytes || "";
+    document.getElementById("tp_size").value = m.tp_size;
+    document.getElementById("pp_size").value = m.pp_size;
+    document.getElementById("block_size").value = m.block_size;
+
+    const h = ds.heuristic_multi_agent;
+    document.getElementById("concurrent_agents").value = h.concurrent_agents;
+    document.getElementById("shared_prefix_tokens").value = h.shared_prefix_tokens;
+    document.getElementById("avg_new_tokens_per_turn").value = h.avg_new_tokens_per_turn;
+    document.getElementById("avg_turns_per_session").value = h.avg_turns_per_session;
+    document.getElementById("private_window_tokens").value = h.private_window_tokens;
+    document.getElementById("curve_mode").value = h.curve_mode;
+    document.getElementById("zipf_s").value = h.zipf_s;
+    document.getElementById("zipf_population_blocks").value = h.zipf_population_blocks;
+    document.getElementById("strict_prefix_efficiency").value = h.policy_efficiency.strict_prefix_upper_bound;
+    document.getElementById("lru_like_efficiency").value = h.policy_efficiency.lru_like;
+
+    const d = ds.deployment;
+    document.getElementById("deploy_label").value = d.label;
+    document.getElementById("accelerator_count").value = d.accelerator_count;
+    document.getElementById("cards_per_machine").value = d.cards_per_machine;
+    document.getElementById("machine_spec").value = d.machine_spec;
+    document.getElementById("gpu_memory_gb_per_card").value = d.gpu_memory_gb_per_card;
+    document.getElementById("total_tps").value = d.total_tps;
+    document.getElementById("total_tps_unit").value = d.total_tps_unit;
+    document.getElementById("baseline_per_card_tps").value = d.baseline_per_card_tps;
+    document.getElementById("planning_target_total_tps").value = d.planning_target_total_tps || "";
+
+    const gpuSelect = document.getElementById("gpu-hardware-select");
+    const matchingGpu = GPU_SPECS.find(g => g.id === d.machine_spec);
+    gpuSelect.value = matchingGpu ? matchingGpu.id : "custom";
+
+    document.getElementById("prefill_savings_alpha").value = ds.prefill_savings_alpha;
+
+    const container = document.getElementById("tiers-container");
+    container.innerHTML = "";
+    (d.extra_capacity_tiers || []).forEach(t => addTierRow(t.label, t.kv_gb_per_machine));
+
     const modelId = findModelForPreset(m);
     if (modelId) {
       document.getElementById("model-preset-select").value = modelId;
@@ -1819,7 +1941,13 @@
 
     // Event wiring
     document.getElementById("preset-select").addEventListener("change", (e) => {
-      if (e.target.value !== "custom") loadPreset(e.target.value);
+      if (e.target.value !== "custom") {
+        if (e.target.value.startsWith("dataset:")) {
+          loadDatasetPreset(e.target.value.slice("dataset:".length));
+        } else {
+          loadPreset(e.target.value);
+        }
+      }
     });
     document.getElementById("model-preset-select").addEventListener("change", (e) => {
       if (e.target.value !== "custom") loadModelPreset(e.target.value);

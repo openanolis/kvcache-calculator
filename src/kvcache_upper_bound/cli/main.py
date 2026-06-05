@@ -5,6 +5,12 @@ import json
 from dataclasses import asdict, replace
 from pathlib import Path
 
+from kvcache_upper_bound.datasets import (
+    list_datasets,
+    resolve_bucket_config,
+    resolve_heuristic_config,
+    resolve_trace_url,
+)
 from kvcache_upper_bound.heuristic import (
     CalibrationResult,
     HeuristicAnalysisConfig,
@@ -46,8 +52,9 @@ def main() -> int:
         "analyze-buckets",
         help="Analyze bucketed KVCache upper bounds under HBM and extended capacity budgets",
     )
-    bucket_parser.add_argument("--trace", required=True, help="Local JSONL path or http(s) URL")
-    bucket_parser.add_argument("--config", required=True, help="Bucket analysis JSON config")
+    bucket_parser.add_argument("--trace", default=None, help="Local JSONL path or http(s) URL")
+    bucket_parser.add_argument("--config", default=None, help="Bucket analysis JSON config")
+    bucket_parser.add_argument("--dataset", default=None, help="Builtin dataset ID (replaces --trace and --config)")
     bucket_parser.add_argument("--output-dir", required=True, help="Directory for CSV/JSON outputs")
     bucket_parser.add_argument(
         "--max-records",
@@ -61,13 +68,22 @@ def main() -> int:
     )
     heuristic_parser.add_argument(
         "--config",
-        required=True,
+        default=None,
         help="Trace-free multi-agent heuristic JSON config",
+    )
+    heuristic_parser.add_argument(
+        "--dataset",
+        default=None,
+        help="Builtin dataset ID (replaces --config)",
     )
     heuristic_parser.add_argument(
         "--output-dir",
         required=True,
         help="Directory for CSV/JSON outputs",
+    )
+    subparsers.add_parser(
+        "list-datasets",
+        help="List available builtin datasets",
     )
     calibrate_parser = subparsers.add_parser(
         "calibrate-multi-agent",
@@ -170,6 +186,8 @@ def main() -> int:
     )
 
     args = parser.parse_args()
+    if args.command == "list-datasets":
+        return _run_list_datasets()
     if args.command == "analyze-buckets":
         return _run_analyze_buckets(args)
     if args.command == "estimate-multi-agent":
@@ -185,16 +203,43 @@ def main() -> int:
     raise ValueError(f"unsupported command: {args.command}")
 
 
+def _run_list_datasets() -> int:
+    datasets = list_datasets()
+    tiers = {}
+    for ds in datasets:
+        tiers.setdefault(ds["tier"], []).append(ds)
+    for tier, entries in tiers.items():
+        print(f"\n  {tier}")
+        print(f"  {'─' * 80}")
+        for ds in entries:
+            count = ds.get("request_count")
+            count_str = f"{count:,}" if count else "N/A"
+            print(f"  {ds['id']:22s} {ds['name']:40s} {ds['format']:20s} {count_str:>10s}")
+    print()
+    return 0
+
+
 def _run_analyze_buckets(args: argparse.Namespace) -> int:
-    config = load_bucket_analysis_config(args.config)
-    trace_result = load_request_records(args.trace, max_records=args.max_records)
+    if args.dataset and (args.trace or args.config):
+        raise ValueError("--dataset cannot be combined with --trace or --config")
+    if args.dataset:
+        config = resolve_bucket_config(args.dataset)
+        trace = resolve_trace_url(args.dataset)
+    elif args.trace and args.config:
+        config = load_bucket_analysis_config(args.config)
+        trace = args.trace
+    else:
+        raise ValueError("Either --dataset or both --trace and --config are required")
+    trace_result = load_request_records(trace, max_records=args.max_records)
     analysis_result = analyze_bucket_deployments(trace_result.records, config)
     output_dir = Path(args.output_dir)
     write_bucket_outputs(analysis_result, output_dir)
 
+    trace_label = args.trace if args.trace else f"dataset:{args.dataset}"
+    config_label = args.config if args.config else f"dataset:{args.dataset}"
     summary_payload = _build_analysis_metadata_payload(
-        trace=args.trace,
-        config_path=args.config,
+        trace=trace_label,
+        config_path=config_label,
         output_dir=output_dir,
         trace_result=trace_result,
         analysis_result=analysis_result,
@@ -205,7 +250,16 @@ def _run_analyze_buckets(args: argparse.Namespace) -> int:
 
 
 def _run_estimate_multi_agent(args: argparse.Namespace) -> int:
-    config = load_multi_agent_heuristic_config(args.config)
+    if args.dataset and args.config:
+        raise ValueError("--dataset cannot be combined with --config")
+    if args.dataset:
+        config = resolve_heuristic_config(args.dataset)
+        config_label = f"dataset:{args.dataset}"
+    elif args.config:
+        config = load_multi_agent_heuristic_config(args.config)
+        config_label = args.config
+    else:
+        raise ValueError("Either --dataset or --config is required")
     analysis_result = analyze_multi_agent_heuristic(config)
     output_dir = Path(args.output_dir)
     write_multi_agent_outputs(config, analysis_result, output_dir)
@@ -215,13 +269,13 @@ def _run_estimate_multi_agent(args: argparse.Namespace) -> int:
         output_dir=output_dir,
         context=HeuristicReportContext(
             mode="multi_agent_heuristic",
-            config_path=str(Path(args.config).resolve()),
+            config_path=str(Path(config_label).resolve()) if not config_label.startswith("dataset:") else config_label,
             output_dir=str(output_dir.resolve()),
         ),
     )
 
     payload = _build_heuristic_metadata_payload(
-        config_path=args.config,
+        config_path=config_label,
         output_dir=output_dir,
         config=config,
         analysis_result=analysis_result,
