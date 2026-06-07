@@ -495,6 +495,231 @@
       "tags": ["agent", "MCP", "tool-calling", "structured", "session-aware"],
       "request_count": 49,
       "paper": null
+    },
+    {
+      "id": "ko-agent-518k",
+      "name": "Ko-Agent Trajectories 1.0",
+      "description": "518K agent trajectories across 12 domains and 41 APIs with multi-turn tool calling and reasoning",
+      "source": "https://huggingface.co/datasets/NickKo/Ko-Agent-Trajectories-1.0",
+      "trace_url": null,
+      "format": "agent-trajectory",
+      "tier": "agent-workloads",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 70000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "4xH100",
+        "accelerator_count": 4,
+        "cards_per_machine": 4,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 1024,
+        "shared_prefix_tokens": 4096,
+        "avg_new_tokens_per_turn": 2048,
+        "avg_turns_per_session": 10,
+        "private_window_tokens": 32768,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 4096,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.55
+        }
+      },
+      "tags": ["agent", "tool-calling", "multi-domain", "large-scale"],
+      "request_count": 518000,
+      "paper": null
+    },
+    {
+      "id": "weblinx-80k",
+      "name": "WebLINX Web Navigation Agent",
+      "description": "80K real web navigation agent actions from 2337 demonstrations across 155 websites (McGill-NLP)",
+      "source": "https://huggingface.co/datasets/McGill-NLP/WebLINX",
+      "trace_url": null,
+      "format": "agent-trajectory",
+      "tier": "agent-workloads",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 70000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "4xH100",
+        "accelerator_count": 4,
+        "cards_per_machine": 4,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 256,
+        "shared_prefix_tokens": 8192,
+        "avg_new_tokens_per_turn": 1024,
+        "avg_turns_per_session": 20,
+        "private_window_tokens": 65536,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 4096,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.5
+        }
+      },
+      "tags": ["agent", "web-navigation", "GUI", "multi-step"],
+      "request_count": 80000,
+      "paper": "WebLINX: Real-World Website Navigation with Multi-Turn Dialogue"
+    },
+    {
+      "id": "swe-agent-nebius-80k",
+      "name": "SWE-agent Trajectories (Nebius)",
+      "description": "80K coding agent trajectories from Nebius with full SWE-agent reasoning and code editing actions",
+      "source": "https://huggingface.co/datasets/nebius/SWE-agent-trajectories",
+      "trace_url": null,
+      "format": "agent-trajectory",
+      "tier": "agent-workloads",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 70000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "4xH100",
+        "accelerator_count": 4,
+        "cards_per_machine": 4,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 256,
+        "shared_prefix_tokens": 16384,
+        "avg_new_tokens_per_turn": 4096,
+        "avg_turns_per_session": 16,
+        "private_window_tokens": 65536,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 8192,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.5
+        }
+      },
+      "tags": ["agent", "coding", "SWE-agent", "tool-use"],
+      "request_count": 80000,
+      "paper": null
+    },
+    {
+      "id": "xlam-function-calling-60k",
+      "name": "xLAM Function Calling 60K",
+      "description": "60K function calling trajectories from Salesforce with structured API invocations across diverse domains",
+      "source": "https://huggingface.co/datasets/Salesforce/xlam-function-calling-60k",
+      "trace_url": null,
+      "format": "agent-trajectory",
+      "tier": "agent-workloads",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 70000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "4xH100",
+        "accelerator_count": 4,
+        "cards_per_machine": 4,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 512,
+        "shared_prefix_tokens": 4096,
+        "avg_new_tokens_per_turn": 1024,
+        "avg_turns_per_session": 6,
+        "private_window_tokens": 16384,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 4096,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.6
+        }
+      },
+      "tags": ["agent", "function-calling", "structured-API", "multi-domain"],
+      "request_count": 60000,
+      "paper": null
+    },
+    {
+      "id": "hermes-function-calling",
+      "name": "Hermes Function Calling v1",
+      "description": "11.6K function calling conversations from NousResearch with structured tool use in Hermes format",
+      "source": "https://huggingface.co/datasets/NousResearch/hermes-function-calling-v1",
+      "trace_url": null,
+      "format": "agent-trajectory",
+      "tier": "agent-workloads",
+      "model_id": null,
+      "model_profile": {
+        "n_layers": 80,
+        "kv_cache_layer_count": null,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "parameter_count": 70000000000,
+        "weight_dtype_bytes": 2,
+        "block_size": 16
+      },
+      "default_deployment": {
+        "label": "4xH100",
+        "accelerator_count": 4,
+        "cards_per_machine": 4,
+        "machine_spec": "h100",
+        "gpu_memory_gb_per_card": 80,
+        "baseline_per_card_tps": 1.5
+      },
+      "default_heuristic": {
+        "concurrent_agents": 512,
+        "shared_prefix_tokens": 4096,
+        "avg_new_tokens_per_turn": 1024,
+        "avg_turns_per_session": 6,
+        "private_window_tokens": 16384,
+        "curve_mode": "zipf_harmonic",
+        "zipf_s": 1.3,
+        "zipf_population_blocks": 4096,
+        "policy_efficiency": {
+          "strict_prefix_upper_bound": 1.0,
+          "lru_like": 0.6
+        }
+      },
+      "tags": ["agent", "function-calling", "tool-use", "Hermes-format"],
+      "request_count": 11600,
+      "paper": null
     }
   ]
 }
