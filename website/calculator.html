@@ -397,6 +397,10 @@
                 <option value="dataset:toolbench">ToolBench API Orchestration (4xH100)</option>
                 <option value="dataset:telos-agent">Telos Agent 23 Domains (4xH100)</option>
                 <option value="dataset:mcp-agent">MCP Agent Benchmark (1xH100)</option>
+                <option value="dataset:ko-agent-518k">Ko-Agent 518K (4xH100)</option>
+                <option value="dataset:weblinx-80k">WebLINX Web Navigation 80K (4xH100)</option>
+                <option value="dataset:swe-agent-nebius-80k">SWE-agent Nebius 80K (4xH100)</option>
+                <option value="dataset:xlam-function-calling-60k">xLAM Function Calling 60K (4xH100)</option>
               </optgroup>
             </select>
           </div>
@@ -576,6 +580,16 @@
     { id: "mistral-7b", family: "Mistral", name: "Mistral 7B", params: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 7200000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
     { id: "glm4-9b", family: "GLM", name: "GLM-4 9B", params: { n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 2, head_dim: 128, dtype_bytes: 2, parameter_count: 9400000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MQA" },
     { id: "yi1.5-34b", family: "Yi", name: "Yi-1.5 34B", params: { n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 34400000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
+    { id: "deepseek-v3.1-685b", family: "DeepSeek", name: "DeepSeek-V3.1 685B (V3-0324)", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 685000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE 256E/8A (compressed KV: kv_lora_rank=512)" },
+    { id: "kimi-k2-1t", family: "Kimi", name: "Kimi K2 1T", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 1000000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE 384E/8A (DeepSeek-V3 architecture)" },
+    { id: "gemma3-27b", family: "Gemma", name: "Gemma 3 27B", params: { n_layers: 62, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 128, dtype_bytes: 2, parameter_count: 27000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "Hybrid sliding window (1024) + global attention (every 6th layer)" },
+    { id: "gemma3-12b", family: "Gemma", name: "Gemma 3 12B", params: { n_layers: 48, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 256, dtype_bytes: 2, parameter_count: 12000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "Hybrid sliding window (1024) + global attention (every 6th layer)" },
+    { id: "gemma3-4b", family: "Gemma", name: "Gemma 3 4B", params: { n_layers: 34, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 4000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "Hybrid sliding window (1024) + global attention (every 6th layer)" },
+    { id: "qwen3-235b-a22b", family: "Qwen", name: "Qwen3-235B-A22B", params: { n_layers: 94, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 128, dtype_bytes: 2, parameter_count: 235000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA + MoE 128E/8A" },
+    { id: "qwen3-30b-a3b", family: "Qwen", name: "Qwen3-30B-A3B", params: { n_layers: 48, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 128, dtype_bytes: 2, parameter_count: 30000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA + MoE 128E/8A" },
+    { id: "glm-z1-32b", family: "GLM", name: "GLM-Z1 32B", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 2, head_dim: 128, dtype_bytes: 2, parameter_count: 32000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA 24:1 ratio" },
+    { id: "phi4-mini-3.8b", family: "Phi", name: "Phi-4-mini 3.8B", params: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 3800000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA + LongRoPE" },
+    { id: "mistral-small-3.1-24b", family: "Mistral", name: "Mistral Small 3.1 24B", params: { n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 24000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA, multimodal" },
   ];
 
   // ═══════════════════════════════════════════════════════════════════
@@ -696,6 +710,30 @@
       model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70000000000, weight_dtype_bytes: 2, tp_size: 1, pp_size: 1, block_size: 16 },
       deployment: { label: "1xH100", accelerator_count: 1, cards_per_machine: 1, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 1.5, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 1.5, extra_capacity_tiers: [] },
       heuristic_multi_agent: { concurrent_agents: 32, shared_prefix_tokens: 8192, avg_new_tokens_per_turn: 2048, avg_turns_per_session: 12, private_window_tokens: 32768, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 2048, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.55 } },
+      prefill_savings_alpha: 0.8
+    },
+    { id: "ko-agent-518k", name: "Ko-Agent Trajectories 1.0 (518K)", tier: "agent-workloads", description: "518K agent trajectories across 12 domains and 41 APIs", source: "https://huggingface.co/datasets/NickKo/Ko-Agent-Trajectories-1.0", trace_url: null, format: "agent-trajectory", tags: ["agent", "tool-calling", "multi-domain", "large-scale"], request_count: 518000,
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70000000000, weight_dtype_bytes: 2, tp_size: 4, pp_size: 1, block_size: 16 },
+      deployment: { label: "4xH100", accelerator_count: 4, cards_per_machine: 4, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 6.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 6.0, extra_capacity_tiers: [] },
+      heuristic_multi_agent: { concurrent_agents: 1024, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 2048, avg_turns_per_session: 10, private_window_tokens: 32768, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.55 } },
+      prefill_savings_alpha: 0.8
+    },
+    { id: "weblinx-80k", name: "WebLINX Web Navigation (80K)", tier: "agent-workloads", description: "80K web navigation actions from 2337 demonstrations across 155 websites", source: "https://huggingface.co/datasets/McGill-NLP/WebLINX", trace_url: null, format: "agent-trajectory", tags: ["agent", "web-navigation", "GUI", "multi-step"], request_count: 80000,
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70000000000, weight_dtype_bytes: 2, tp_size: 4, pp_size: 1, block_size: 16 },
+      deployment: { label: "4xH100", accelerator_count: 4, cards_per_machine: 4, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 6.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 6.0, extra_capacity_tiers: [] },
+      heuristic_multi_agent: { concurrent_agents: 256, shared_prefix_tokens: 8192, avg_new_tokens_per_turn: 1024, avg_turns_per_session: 20, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.5 } },
+      prefill_savings_alpha: 0.8
+    },
+    { id: "swe-agent-nebius-80k", name: "SWE-agent Nebius (80K)", tier: "agent-workloads", description: "80K coding agent trajectories from Nebius with SWE-agent reasoning", source: "https://huggingface.co/datasets/nebius/SWE-agent-trajectories", trace_url: null, format: "agent-trajectory", tags: ["agent", "coding", "SWE-agent", "tool-use"], request_count: 80000,
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70000000000, weight_dtype_bytes: 2, tp_size: 4, pp_size: 1, block_size: 16 },
+      deployment: { label: "4xH100", accelerator_count: 4, cards_per_machine: 4, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 6.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 6.0, extra_capacity_tiers: [] },
+      heuristic_multi_agent: { concurrent_agents: 256, shared_prefix_tokens: 16384, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 16, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 8192, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.5 } },
+      prefill_savings_alpha: 0.8
+    },
+    { id: "xlam-function-calling-60k", name: "xLAM Function Calling (60K)", tier: "agent-workloads", description: "60K function calling trajectories from Salesforce across diverse domains", source: "https://huggingface.co/datasets/Salesforce/xlam-function-calling-60k", trace_url: null, format: "agent-trajectory", tags: ["agent", "function-calling", "structured-API"], request_count: 60000,
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70000000000, weight_dtype_bytes: 2, tp_size: 4, pp_size: 1, block_size: 16 },
+      deployment: { label: "4xH100", accelerator_count: 4, cards_per_machine: 4, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 6.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 6.0, extra_capacity_tiers: [] },
+      heuristic_multi_agent: { concurrent_agents: 512, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 1024, avg_turns_per_session: 6, private_window_tokens: 16384, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
       prefill_savings_alpha: 0.8
     },
   ];
