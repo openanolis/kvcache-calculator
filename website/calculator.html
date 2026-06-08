@@ -361,6 +361,81 @@
     .sensitivity-bar .bar-container { flex: 1; height: 16px; background: var(--surface2); border-radius: 3px; position: relative; overflow: hidden; }
     .sensitivity-bar .bar-fill { height: 100%; border-radius: 3px; }
     .sensitivity-bar .bar-value { width: 50px; font-size: .72rem; color: var(--text-muted); }
+
+    /* Cost Estimation Card */
+    .cost-card {
+      border-left: 3px solid #2ea043;
+      animation: heroFadeIn 0.5s ease-out;
+    }
+    .cost-card .cost-title {
+      font-size: .95rem;
+      font-weight: 700;
+      color: #2ea043;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cost-card .cost-title .cost-icon { font-size: 1.1rem; }
+    .cost-card .cost-headline {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: #2ea043;
+      margin-bottom: 4px;
+    }
+    .cost-card .cost-subline {
+      font-size: .82rem;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    .cost-card .cost-subline strong { color: var(--text); }
+    .cost-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: .8rem;
+      margin-bottom: 12px;
+    }
+    .cost-table th {
+      text-align: left;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: .72rem;
+      text-transform: uppercase;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .cost-table td {
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    .cost-table tr:hover td { background: var(--surface2); }
+    .cost-table .best-price { color: #2ea043; font-weight: 600; }
+    .cost-savings {
+      background: rgba(46, 160, 67, 0.08);
+      border: 1px solid rgba(46, 160, 67, 0.3);
+      border-radius: 6px;
+      padding: 10px 14px;
+      margin-bottom: 10px;
+    }
+    .cost-savings .savings-label { font-size: .78rem; color: var(--text-muted); }
+    .cost-savings .savings-value { font-size: 1rem; font-weight: 700; color: #2ea043; }
+    .cost-disclaimer {
+      font-size: .68rem;
+      color: var(--text-muted);
+      font-style: italic;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+    .cost-unavailable {
+      font-size: .85rem;
+      color: var(--text-muted);
+      padding: 16px 0;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -567,6 +642,12 @@
         <div class="rec-text" id="rec-text"></div>
       </div>
 
+      <!-- Cost Estimation -->
+      <div class="card cost-card" id="cost-card" style="display:none;">
+        <div class="cost-title"><span class="cost-icon">$</span> Cloud GPU Cost Estimate</div>
+        <div id="cost-content"></div>
+      </div>
+
       <!-- Summary Metrics -->
       <div class="card">
         <div class="card-title">Summary Metrics</div>
@@ -718,6 +799,21 @@
     { id: "l40s",     name: "L40S (48GB)",     memory_gb: 48,  typical_cards_per_machine: 4, max_cards_per_machine: 8,  baseline_tps_per_card: 0.5 },
     { id: "l20",      name: "L20 (48GB)",      memory_gb: 48,  typical_cards_per_machine: 4, max_cards_per_machine: 8,  baseline_tps_per_card: 0.4 },
   ];
+
+  // =====================================================================
+  // Cloud GPU Pricing (approximate on-demand $/hr per GPU, 2024-2025)
+  // =====================================================================
+  const GPU_PRICING = {
+    "h100":     { aws: 4.76, gcp: 4.28, azure: 3.67, label: "H100 80GB" },
+    "h100-nvl": { aws: 5.12, gcp: null, azure: 4.28, label: "H100 NVL 94GB" },
+    "h200":     { aws: 6.98, gcp: 5.67, azure: null, label: "H200 141GB" },
+    "a100-80":  { aws: 3.06, gcp: 2.94, azure: 2.48, label: "A100 80GB" },
+    "a100-40":  { aws: 1.53, gcp: 1.47, azure: 1.24, label: "A100 40GB" },
+    "a800":     { aws: null, gcp: null, azure: null, label: "A800 80GB" },
+    "h20":      { aws: null, gcp: null, azure: null, label: "H20 96GB" },
+    "l40s":     { aws: 1.84, gcp: 1.70, azure: 1.53, label: "L40S 48GB" },
+    "l20":      { aws: null, gcp: null, azure: null, label: "L20 48GB" },
+  };
 
   const DATASET_REGISTRY = [
     { id: "bailian-traceA", name: "Qwen-Bailian Trace A", tier: "production-traces", description: "Production Qwen3-27B serving trace from Alibaba Bailian platform", source: "https://github.com/alibaba-edu/qwen-bailian-usagetraces-anon", trace_url: "https://media.githubusercontent.com/media/alibaba-edu/qwen-bailian-usagetraces-anon/main/qwen_traceA_blksz_16.jsonl", format: "native", tags: ["production", "MLA", "multi-turn"], request_count: null,
@@ -1653,6 +1749,91 @@
     `;
   }
 
+  function formatCurrency(v) {
+    if (v == null) return "—";
+    if (v >= 1000000) return "$" + (v / 1000000).toFixed(2) + "M";
+    if (v >= 1000) return "$" + (v / 1000).toFixed(1) + "K";
+    return "$" + v.toFixed(2);
+  }
+
+  function renderCostEstimate(summary, config) {
+    const card = document.getElementById("cost-card");
+    const container = document.getElementById("cost-content");
+    if (!summary || !config) { card.style.display = "none"; return; }
+
+    const gpuType = (config.deployment.machine_spec || "").toLowerCase();
+    const pricing = GPU_PRICING[gpuType];
+    const gpuCount = config.deployment.accelerator_count;
+    const agents = config.heuristic_multi_agent.concurrent_agents;
+    const alpha = config.prefill_savings_alpha || 0.8;
+    const hitRate = summary.contentHitRate;
+    const HOURS_PER_MONTH = 730;
+
+    if (!pricing || (!pricing.aws && !pricing.gcp && !pricing.azure)) {
+      card.style.display = "";
+      container.innerHTML = '<div class="cost-unavailable">Pricing not available for this GPU type. Contact your cloud provider.</div>' +
+        '<div class="cost-disclaimer">Estimates based on on-demand pricing. Actual costs vary by region, commitment, and spot availability.</div>';
+      return;
+    }
+
+    const providers = [
+      { name: "AWS", price: pricing.aws },
+      { name: "GCP", price: pricing.gcp },
+      { name: "Azure", price: pricing.azure },
+    ].filter(p => p.price != null);
+
+    const bestPrice = Math.min(...providers.map(p => p.price));
+
+    // Compute monthly costs per provider
+    const rows = providers.map(p => {
+      const monthly = gpuCount * p.price * HOURS_PER_MONTH;
+      const perThousandAgents = agents > 0 ? (monthly / agents * 1000) : null;
+      return { ...p, monthly, perThousandAgents, isBest: p.price === bestPrice };
+    });
+
+    // Compute savings from KV caching
+    const gain = tpsGain(hitRate, alpha);
+    let savingsHtml = "";
+    if (gain != null && isFinite(gain) && gain > 1.01) {
+      // Without caching, you would need more GPUs for the same throughput
+      const gpusWithoutCaching = Math.ceil(gpuCount * gain);
+      const extraGpus = gpusWithoutCaching - gpuCount;
+      const bestMonthly = gpuCount * bestPrice * HOURS_PER_MONTH;
+      const withoutCachingMonthly = gpusWithoutCaching * bestPrice * HOURS_PER_MONTH;
+      const savedMonthly = withoutCachingMonthly - bestMonthly;
+      const savedPct = ((1 - 1 / gain) * 100).toFixed(0);
+      savingsHtml = '<div class="cost-savings">' +
+        '<div class="savings-label">Estimated savings from KV caching (vs. ' + gpusWithoutCaching + ' GPUs without caching)</div>' +
+        '<div class="savings-value">' + formatCurrency(savedMonthly) + '/month saved (' + savedPct + '% reduction)</div>' +
+        '</div>';
+    }
+
+    // Build table
+    let tableHtml = '<table class="cost-table"><thead><tr>' +
+      '<th>Provider</th><th>$/hr/GPU</th><th>Monthly Total</th><th>Per 1K Agents/mo</th>' +
+      '</tr></thead><tbody>';
+    for (const r of rows) {
+      const cls = r.isBest ? ' class="best-price"' : '';
+      tableHtml += '<tr>' +
+        '<td' + cls + '>' + r.name + (r.isBest ? ' (best)' : '') + '</td>' +
+        '<td' + cls + '>$' + r.price.toFixed(2) + '</td>' +
+        '<td' + cls + '>' + formatCurrency(r.monthly) + '</td>' +
+        '<td' + cls + '>' + (r.perThousandAgents != null ? formatCurrency(r.perThousandAgents) : '—') + '</td>' +
+        '</tr>';
+    }
+    tableHtml += '</tbody></table>';
+
+    const bestMonthly = gpuCount * bestPrice * HOURS_PER_MONTH;
+    container.innerHTML =
+      '<div class="cost-headline">' + formatCurrency(bestMonthly) + '/month (best available)</div>' +
+      '<div class="cost-subline"><strong>' + gpuCount + 'x ' + (pricing.label || gpuType) + '</strong> at ' + HOURS_PER_MONTH + ' hours/month on-demand</div>' +
+      savingsHtml +
+      tableHtml +
+      '<div class="cost-disclaimer">Estimates based on on-demand pricing. Actual costs vary by region, commitment, and spot availability.</div>';
+
+    card.style.display = "";
+  }
+
   function recalculate() {
     try {
       harmonicCache.clear();
@@ -1660,6 +1841,7 @@
       const result = analyzeMultiAgentHeuristic(config);
       renderHeroAnswer(result.summary, config);
       renderRecommendation(result.summary, config);
+      renderCostEstimate(result.summary, config);
       renderMetrics(result.summary);
       renderTable(result.rows);
       renderTpsTable(result.rows);
@@ -1848,6 +2030,20 @@
               Working set: ${formatTokens(s.totalWorkingSet)} tokens
             </span>
           </div>
+          ${(() => {
+            const gpuType = (config.deployment.machine_spec || "").toLowerCase();
+            const pricing = GPU_PRICING[gpuType];
+            if (pricing && (pricing.aws || pricing.gcp || pricing.azure)) {
+              const prices = [pricing.aws, pricing.gcp, pricing.azure].filter(p => p != null);
+              const best = Math.min(...prices);
+              const monthly = gpuCount * best * 730;
+              return '<div style="margin-top:12px;padding:10px 14px;background:rgba(46,160,67,0.08);border:1px solid rgba(46,160,67,0.3);border-radius:6px;">' +
+                '<div style="font-size:.78rem;color:var(--text-muted);">Estimated cloud cost (best on-demand)</div>' +
+                '<div style="font-size:1rem;font-weight:700;color:#2ea043;">' + formatCurrency(monthly) + '/month</div>' +
+                '</div>';
+            }
+            return '';
+          })()}
         </div>
         <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:16px;">
           Want to explore further? Try different configurations below.
