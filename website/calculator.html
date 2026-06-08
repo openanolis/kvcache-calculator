@@ -157,7 +157,50 @@
       text-align: center;
     }
     .metric-box .value { font-size: 1.1rem; font-weight: 700; color: var(--accent2); }
-    .metric-box .label { font-size: .7rem; color: var(--text-muted); margin-top: 2px; }
+    .metric-box .label { font-size: .7rem; color: var(--text-muted); margin-top: 2px; display: inline; }
+    .metric-box .tooltip-icon {
+      display: inline-block; width: 14px; height: 14px; line-height: 14px; text-align: center;
+      border-radius: 50%; background: var(--surface); border: 1px solid var(--border);
+      font-size: .6rem; color: var(--text-muted); cursor: help; margin-left: 4px; vertical-align: middle;
+      position: relative;
+    }
+    .metric-box .tooltip-icon:hover::after {
+      content: attr(data-tip);
+      position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+      padding: 8px 10px; font-size: .72rem; color: var(--text); white-space: normal;
+      width: 220px; text-align: left; box-shadow: var(--shadow); z-index: 10;
+      font-weight: 400;
+    }
+
+    /* Hero Answer Section */
+    .hero-answer {
+      background: linear-gradient(135deg, var(--surface) 0%, var(--surface2) 100%);
+      border: 2px solid var(--accent); border-radius: 10px; padding: 24px 28px;
+      animation: heroFadeIn 0.4s ease-out;
+    }
+    @keyframes heroFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .hero-answer .hero-primary { font-size: 1.25rem; font-weight: 700; color: var(--text); line-height: 1.5; margin-bottom: 8px; }
+    .hero-answer .hero-primary strong { color: var(--accent2); }
+    .hero-answer .hero-secondary { font-size: .9rem; color: var(--text-muted); margin-bottom: 12px; }
+    .hero-answer .hero-secondary strong { color: var(--accent); }
+    .hero-answer .hero-badges { display: flex; gap: 8px; flex-wrap: wrap; }
+    .hero-badge {
+      display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: .75rem; font-weight: 600;
+    }
+    .hero-badge.capacity { background: rgba(248,81,73,.15); color: var(--danger); border: 1px solid var(--danger); }
+    .hero-badge.policy { background: rgba(240,136,62,.15); color: var(--warn); border: 1px solid var(--warn); }
+    .hero-badge.balanced { background: rgba(63,185,80,.15); color: var(--accent2); border: 1px solid var(--accent2); }
+    .hero-badge.info { background: rgba(88,166,255,.15); color: var(--accent); border: 1px solid var(--accent); }
+
+    /* Recommendation Panel */
+    .recommendation-panel {
+      border-left: 3px solid var(--accent); padding: 14px 18px;
+      animation: heroFadeIn 0.5s ease-out;
+    }
+    .recommendation-panel .rec-title { font-size: .85rem; font-weight: 600; color: var(--accent); margin-bottom: 6px; }
+    .recommendation-panel .rec-text { font-size: .82rem; color: var(--text-muted); line-height: 1.6; }
+    .recommendation-panel .rec-text strong { color: var(--text); }
 
     .results-table-wrap { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; font-size: .8rem; }
@@ -509,6 +552,19 @@
       <div class="card" id="compare-panel" style="display:none;">
         <div class="card-title">Scenario Comparison <button class="btn-sm" id="compare-exit" style="margin-left:auto;">Exit Compare</button></div>
         <div class="compare-columns" id="compare-content"></div>
+      </div>
+
+      <!-- Hero Answer -->
+      <div class="card hero-answer" id="hero-answer" style="display:none;">
+        <div class="hero-primary" id="hero-primary"></div>
+        <div class="hero-secondary" id="hero-secondary"></div>
+        <div class="hero-badges" id="hero-badges"></div>
+      </div>
+
+      <!-- Recommendation -->
+      <div class="card recommendation-panel" id="recommendation-panel" style="display:none;">
+        <div class="rec-title" id="rec-title"></div>
+        <div class="rec-text" id="rec-text"></div>
       </div>
 
       <!-- Summary Metrics -->
@@ -1267,6 +1323,91 @@
     return v.toFixed(0);
   }
 
+  const METRIC_TOOLTIPS = {
+    "Content Hit Rate": "% of KV cache blocks that can be reused across requests. Higher = more compute saved.",
+    "Avg Request Tokens": "Average input+output length per request in tokens.",
+    "Working Set Tokens": "Total unique KV cache data across all concurrent sessions.",
+    "KV Bytes/Token": "Memory cost of storing one token's KV cache for this model architecture.",
+    "HBM KV/Card": "GPU memory available for KV cache per card, after subtracting model weights and runtime overhead.",
+    "Strict Saturation": "GPU memory needed per card to achieve the maximum possible hit rate under strict prefix semantics.",
+    "LRU Saturation": "GPU memory per card at which simple LRU caching stops improving.",
+    "Avg Private Tokens": "Tokens unique to each session that cannot be shared across requests.",
+  };
+
+  function renderHeroAnswer(summary, config) {
+    const hero = document.getElementById("hero-answer");
+    const primary = document.getElementById("hero-primary");
+    const secondary = document.getElementById("hero-secondary");
+    const badges = document.getElementById("hero-badges");
+    if (!summary || summary.contentHitRate == null) { hero.style.display = "none"; return; }
+
+    const hitPct = (summary.contentHitRate * 100).toFixed(1);
+    const alpha = config.prefill_savings_alpha || 0.8;
+    const gain = tpsGain(summary.contentHitRate, alpha);
+    const gpuCount = config.deployment.accelerator_count;
+    const effectiveGpus = gain != null && isFinite(gain) ? (gpuCount * gain).toFixed(1) : null;
+    const savingsPct = gain != null && isFinite(gain) ? ((1 - 1/gain) * 100).toFixed(0) : null;
+    const agents = config.heuristic_multi_agent.concurrent_agents;
+
+    primary.innerHTML = `Your <strong>${gpuCount} GPU</strong> deployment can serve <strong>${agents.toLocaleString()} concurrent agents</strong> with <strong>${hitPct}%</strong> KV cache hit rate`;
+
+    if (effectiveGpus && savingsPct > 0) {
+      secondary.innerHTML = `KV caching saves ~<strong>${savingsPct}%</strong> prefill compute — equivalent to <strong>${effectiveGpus} GPUs</strong> without caching`;
+    } else {
+      secondary.textContent = "Minimal prefill savings at this hit rate level.";
+    }
+
+    const totalHbm = summary.hbmKvGbPerCard * gpuCount;
+    const strictNeed = summary.strictSatGb * gpuCount;
+    let bottleneck, bottleneckClass;
+    if (totalHbm < strictNeed * 0.5) {
+      bottleneck = "Capacity-bound"; bottleneckClass = "capacity";
+    } else if (summary.lruSatGb < summary.strictSatGb * 0.7) {
+      bottleneck = "Policy-bound"; bottleneckClass = "policy";
+    } else {
+      bottleneck = "Well-balanced"; bottleneckClass = "balanced";
+    }
+    const hitLevel = summary.contentHitRate > 0.8 ? "High reuse" : summary.contentHitRate > 0.4 ? "Moderate reuse" : summary.contentHitRate > 0.2 ? "Low reuse" : "Minimal reuse";
+    const hitClass = summary.contentHitRate > 0.6 ? "balanced" : summary.contentHitRate > 0.2 ? "policy" : "capacity";
+    badges.innerHTML = `<span class="hero-badge ${bottleneckClass}">${bottleneck}</span><span class="hero-badge ${hitClass}">${hitLevel}</span>`;
+    hero.style.display = "";
+  }
+
+  function renderRecommendation(summary, config) {
+    const panel = document.getElementById("recommendation-panel");
+    const title = document.getElementById("rec-title");
+    const text = document.getElementById("rec-text");
+    if (!summary || summary.contentHitRate == null) { panel.style.display = "none"; return; }
+
+    const gpuCount = config.deployment.accelerator_count;
+    const totalHbm = summary.hbmKvGbPerCard * gpuCount;
+    const strictNeed = summary.strictSatGb * gpuCount;
+    const hitPct = summary.contentHitRate * 100;
+    let recTitle, recText;
+
+    if (hitPct < 20) {
+      recTitle = "Limited Cache Reuse";
+      recText = `This workload shows only <strong>${hitPct.toFixed(1)}%</strong> cache reuse. Sessions are too diverse for significant prefix sharing. Consider increasing <strong>shared prefix tokens</strong> (larger system prompts) or restructuring prompts to share more common context.`;
+    } else if (totalHbm < strictNeed * 0.5) {
+      recTitle = "Bottleneck: GPU Memory";
+      recText = `Your GPUs need <strong>${formatNum(summary.strictSatGb, 1)} GB/card</strong> for optimal caching but only have <strong>${formatNum(summary.hbmKvGbPerCard, 1)} GB/card</strong> available. Consider: adding more GPUs, upgrading to higher-HBM cards (e.g., H200 at 141GB), or adding a host KV cache tier.`;
+    } else if (summary.lruSatGb < summary.strictSatGb * 0.7) {
+      const gap = ((summary.contentHitRate - summary.contentHitRate * 0.7) * 100).toFixed(1);
+      recTitle = "Opportunity: Smarter Cache Policy";
+      recText = `Your GPU memory is sufficient, but there's a gap between optimal and LRU caching. A smarter cache eviction policy (prefix-aware, frequency-based) could improve hit rates. The strict-prefix upper bound is higher than what LRU achieves.`;
+    } else if (hitPct > 80) {
+      recTitle = "Excellent Cache Efficiency";
+      recText = `This workload achieves <strong>${hitPct.toFixed(1)}%</strong> cache reuse — KV caching is delivering significant compute savings. Your deployment is well-sized for this workload pattern.`;
+    } else {
+      recTitle = "Deployment Analysis";
+      recText = `Your deployment shows <strong>${hitPct.toFixed(1)}%</strong> cache reuse with balanced memory utilization. The current GPU count and memory configuration are reasonable for this workload.`;
+    }
+
+    title.textContent = recTitle;
+    text.innerHTML = recText;
+    panel.style.display = "";
+  }
+
   function renderMetrics(summary) {
     const grid = document.getElementById("metrics-grid");
     const items = [
@@ -1279,7 +1420,11 @@
       { value: formatNum(summary.lruSatGb, 1) + " GB", label: "LRU Saturation" },
       { value: formatTokens(summary.avgPrivate), label: "Avg Private Tokens" },
     ];
-    grid.innerHTML = items.map(i => `<div class="metric-box"><div class="value">${i.value}</div><div class="label">${i.label}</div></div>`).join("");
+    grid.innerHTML = items.map(i => {
+      const tip = METRIC_TOOLTIPS[i.label];
+      const tipHtml = tip ? `<span class="tooltip-icon" data-tip="${tip}">i</span>` : "";
+      return `<div class="metric-box"><div class="value">${i.value}</div><div class="label">${i.label}${tipHtml}</div></div>`;
+    }).join("");
   }
 
   function renderTable(rows) {
@@ -1513,6 +1658,8 @@
       harmonicCache.clear();
       const config = getFormConfig();
       const result = analyzeMultiAgentHeuristic(config);
+      renderHeroAnswer(result.summary, config);
+      renderRecommendation(result.summary, config);
       renderMetrics(result.summary);
       renderTable(result.rows);
       renderTpsTable(result.rows);
@@ -1585,7 +1732,7 @@
     if (wizardStep === 1) {
       box.innerHTML = `
         <h2>Quick-Start Setup</h2>
-        <div class="step-indicator">Step 1 of 3 — Select Model</div>
+        <div class="step-indicator">Step 1 of 4 — Select Model</div>
         <input type="text" class="model-search" id="wizard-model-search" placeholder="Filter models..." />
         <div class="wizard-models" id="wizard-models-grid"></div>
         <div style="text-align:center;margin-top:8px;"><a href="#" id="wizard-skip" style="color:var(--text-muted);font-size:.8rem;">Skip — I'll configure manually</a></div>
@@ -1600,7 +1747,7 @@
       const modelWeightGb = model ? (model.params.parameter_count * (model.params.weight_dtype_bytes || 2)) / BYTES_PER_GB : 14;
       box.innerHTML = `
         <h2>Quick-Start Setup</h2>
-        <div class="step-indicator">Step 2 of 3 — Hardware Configuration</div>
+        <div class="step-indicator">Step 2 of 4 — Hardware Configuration</div>
         <div class="form-group" style="margin:16px 0;">
           <div class="form-field">
             <label>GPU Type</label>
@@ -1636,7 +1783,7 @@
     } else if (wizardStep === 3) {
       box.innerHTML = `
         <h2>Quick-Start Setup</h2>
-        <div class="step-indicator">Step 3 of 3 — Workload Template</div>
+        <div class="step-indicator">Step 3 of 4 — Workload Template</div>
         <div class="workload-templates" id="wizard-workloads"></div>
         <div class="wizard-nav">
           <button class="btn-back" id="wizard-back">Back</button>
@@ -1658,7 +1805,62 @@
         wlContainer.appendChild(card);
       }
       box.querySelector("#wizard-back").addEventListener("click", () => { wizardStep = 2; renderWizardStep(); });
-      box.querySelector("#wizard-calc").addEventListener("click", () => applyWizard());
+      box.querySelector("#wizard-calc").addEventListener("click", () => {
+        wizardState.gpuSpec = wizardState.gpuSpec || document.getElementById("wizard-gpu-type")?.value;
+        applyWizardFields();
+        wizardStep = 4;
+        renderWizardStep();
+      });
+    } else if (wizardStep === 4) {
+      const config = getFormConfig();
+      harmonicCache.clear();
+      const result = analyzeMultiAgentHeuristic(config);
+      const s = result.summary;
+      const hitPct = (s.contentHitRate * 100).toFixed(1);
+      const alpha = config.prefill_savings_alpha || 0.8;
+      const gain = tpsGain(s.contentHitRate, alpha);
+      const effectiveGpus = gain && isFinite(gain) ? (config.deployment.accelerator_count * gain).toFixed(1) : "—";
+      const savingsPct = gain && isFinite(gain) ? ((1 - 1/gain) * 100).toFixed(0) : "0";
+      const gpuCount = config.deployment.accelerator_count;
+      const agents = config.heuristic_multi_agent.concurrent_agents;
+
+      box.innerHTML = `
+        <h2>Analysis Results</h2>
+        <div class="step-indicator">Step 4 of 4 — Your Results</div>
+        <div style="background:var(--surface2);border:2px solid var(--accent);border-radius:10px;padding:20px;margin:16px 0;">
+          <div style="font-size:1.15rem;font-weight:700;line-height:1.5;color:var(--text);">
+            Your <span style="color:var(--accent2)">${gpuCount} GPU</span> deployment serves
+            <span style="color:var(--accent2)">${agents.toLocaleString()}</span> concurrent agents with
+            <span style="color:var(--accent2)">${hitPct}%</span> cache hit rate
+          </div>
+          <div style="font-size:.85rem;color:var(--text-muted);margin-top:8px;">
+            KV caching saves ~<strong style="color:var(--accent)">${savingsPct}%</strong> prefill compute —
+            equivalent to <strong style="color:var(--accent)">${effectiveGpus} GPUs</strong> without caching
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+            <span style="display:inline-block;padding:3px 10px;border-radius:16px;font-size:.72rem;font-weight:600;background:rgba(63,185,80,.15);color:var(--accent2);border:1px solid var(--accent2);">
+              KV: ${formatNum(s.kbpt, 0)} B/token
+            </span>
+            <span style="display:inline-block;padding:3px 10px;border-radius:16px;font-size:.72rem;font-weight:600;background:rgba(88,166,255,.15);color:var(--accent);border:1px solid var(--accent);">
+              HBM: ${formatNum(s.hbmKvGbPerCard, 1)} GB/card
+            </span>
+            <span style="display:inline-block;padding:3px 10px;border-radius:16px;font-size:.72rem;font-weight:600;background:rgba(188,140,255,.15);color:var(--purple);border:1px solid var(--purple);">
+              Working set: ${formatTokens(s.totalWorkingSet)} tokens
+            </span>
+          </div>
+        </div>
+        <div style="font-size:.8rem;color:var(--text-muted);margin-bottom:16px;">
+          Want to explore further? Try different configurations below.
+        </div>
+        <div class="wizard-nav" style="flex-wrap:wrap;gap:8px;">
+          <button class="btn-back" id="wizard-try-gpu">Try Different GPU</button>
+          <button class="btn-back" id="wizard-try-workload">Try Different Workload</button>
+          <button class="btn-next" id="wizard-details">See Full Details</button>
+        </div>
+      `;
+      box.querySelector("#wizard-try-gpu").addEventListener("click", () => { wizardStep = 2; renderWizardStep(); });
+      box.querySelector("#wizard-try-workload").addEventListener("click", () => { wizardStep = 3; renderWizardStep(); });
+      box.querySelector("#wizard-details").addEventListener("click", () => { closeWizard(); recalculate(); });
     }
   }
 
@@ -1685,7 +1887,7 @@
     });
   }
 
-  function applyWizard() {
+  function applyWizardFields() {
     const model = MODEL_LIBRARY.find(m => m.id === wizardState.modelId);
     const gpu = GPU_SPECS.find(g => g.id === wizardState.gpuSpec);
     const workload = WORKLOAD_TEMPLATES[wizardState.workloadId];
@@ -1721,6 +1923,10 @@
     addTierRow("HBM+1T per Machine", 1024);
 
     document.getElementById("preset-select").value = "custom";
+  }
+
+  function applyWizard() {
+    applyWizardFields();
     closeWizard();
     recalculate();
   }
