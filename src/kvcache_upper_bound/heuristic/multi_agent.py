@@ -88,6 +88,34 @@ class MultiAgentHeuristicConfig:
         hit_tokens = self.shared_prefix_tokens + self.average_reusable_private_tokens_per_agent()
         return min(1.0, hit_tokens / average_request_tokens)
 
+    def per_turn_reusable_private_tokens(self) -> list[float]:
+        """Return reusable private tokens at each turn step."""
+        return [
+            min(self.private_window_tokens, step * self.avg_new_tokens_per_turn)
+            for step in range(self.avg_turns_per_session)
+        ]
+
+    def per_turn_content_hit_rates(self) -> list[float]:
+        """Return content hit rate at each turn step."""
+        rates = []
+        for step in range(self.avg_turns_per_session):
+            private_reuse = min(self.private_window_tokens, step * self.avg_new_tokens_per_turn)
+            request_tokens = self.shared_prefix_tokens + self.avg_new_tokens_per_turn + private_reuse
+            if request_tokens <= 0:
+                rates.append(0.0)
+            else:
+                hit = self.shared_prefix_tokens + private_reuse
+                rates.append(min(1.0, hit / request_tokens))
+        return rates
+
+    def per_turn_working_set_tokens(self) -> list[float]:
+        """Return cumulative working set tokens at each turn step."""
+        results = []
+        for step in range(self.avg_turns_per_session):
+            private_reuse = min(self.private_window_tokens, step * self.avg_new_tokens_per_turn)
+            results.append(self.shared_prefix_tokens + private_reuse + self.avg_new_tokens_per_turn)
+        return results
+
     def strict_saturation_capacity_tokens(self) -> float:
         return self.shared_prefix_tokens + self.total_private_working_set_tokens()
 

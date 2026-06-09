@@ -156,6 +156,28 @@ for (const vector of vectors) {
     if (er.lru_min_cards !== null) check(`${prefix}.lru_min_cards`, ar.lruMinCards, er.lru_min_cards, INT_TOL);
     if (er.lru_min_machines !== null) check(`${prefix}.lru_min_machines`, ar.lruMinMachines, er.lru_min_machines, INT_TOL);
   }
+
+  // Per-turn analysis checks
+  if (vector.per_turn_hit_rates && vector.per_turn_private_tokens) {
+    const heuristicCfg = config.heuristic_multi_agent;
+    const createHeuristic = new Script("(function(cfg) { return new MultiAgentHeuristic(cfg); })");
+    const factory = createHeuristic.runInContext(ctx);
+    const heuristicObj = factory(heuristicCfg);
+    const jsHitRates = heuristicObj.perTurnContentHitRates();
+    const jsPrivateTokens = heuristicObj.perTurnReusablePrivateTokens();
+    const expectedHitRates = vector.per_turn_hit_rates;
+    const expectedPrivateTokens = vector.per_turn_private_tokens;
+
+    check("per_turn_hit_rates.length", jsHitRates.length, expectedHitRates.length, INT_TOL);
+    check("per_turn_private_tokens.length", jsPrivateTokens.length, expectedPrivateTokens.length, INT_TOL);
+
+    for (let t = 0; t < expectedHitRates.length; t++) {
+      check(`per_turn_hit_rates[${t}]`, jsHitRates[t], expectedHitRates[t], RATE_TOL);
+    }
+    for (let t = 0; t < expectedPrivateTokens.length; t++) {
+      check(`per_turn_private_tokens[${t}]`, jsPrivateTokens[t], expectedPrivateTokens[t], TOKEN_TOL);
+    }
+  }
 }
 
 console.log("\n" + "=".repeat(50));
