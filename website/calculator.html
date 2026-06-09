@@ -616,6 +616,49 @@
           </table>
         </div>
       </div>
+
+      <!-- Synthetic Trace Generator -->
+      <div class="card">
+        <div class="card-title">Synthetic Trace Generator <span class="badge">Experimental</span></div>
+        <div class="form-group">
+          <div class="form-field">
+            <label>Sessions</label>
+            <input type="number" id="synth_sessions" value="10" min="1" max="10000">
+          </div>
+          <div class="form-field">
+            <label>Turns / Session</label>
+            <input type="number" id="synth_turns" value="4" min="1" max="100">
+          </div>
+        </div>
+        <div class="form-group">
+          <div class="form-field">
+            <label>Shared Prefix Blocks</label>
+            <input type="number" id="synth_prefix_blocks" value="8" min="0" max="10000">
+          </div>
+          <div class="form-field">
+            <label>New Blocks / Turn</label>
+            <input type="number" id="synth_new_blocks" value="4" min="1" max="10000">
+          </div>
+        </div>
+        <div class="form-group">
+          <div class="form-field">
+            <label>Prefix Diversity (0.0 - 1.0)</label>
+            <input type="number" id="synth_prefix_diversity" value="0.3" min="0" max="1" step="0.1">
+          </div>
+          <div class="form-field">
+            <label>Block Size (tokens)</label>
+            <input type="number" id="synth_block_size" value="16" min="1" max="4096">
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+          <button class="btn-primary" id="synth-generate-btn" style="font-size:.8rem; padding:8px 14px;">Generate &amp; Analyze</button>
+          <button class="btn-sm" id="synth-download-btn" style="display:none;">Download JSONL</button>
+          <button class="btn-sm" id="synth-apply-btn" style="display:none;">Apply to Calculator</button>
+        </div>
+        <div id="synth-results" style="margin-top:12px; display:none;">
+          <div class="metrics-grid" id="synth-metrics-grid"></div>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -905,6 +948,27 @@
     policySaturationCapacityTokens(efficiency) {
       if (efficiency <= 0) return Infinity;
       return this.shared_prefix_tokens + this.totalPrivateWorkingSetTokens() / efficiency;
+    }
+    perTurnReusablePrivateTokens() {
+      const result = [];
+      for (let step = 0; step < this.avg_turns_per_session; step++) {
+        result.push(Math.min(this.private_window_tokens, step * this.avg_new_tokens_per_turn));
+      }
+      return result;
+    }
+    perTurnContentHitRates() {
+      const rates = [];
+      for (let step = 0; step < this.avg_turns_per_session; step++) {
+        const privateReuse = Math.min(this.private_window_tokens, step * this.avg_new_tokens_per_turn);
+        const requestTokens = this.shared_prefix_tokens + this.avg_new_tokens_per_turn + privateReuse;
+        if (requestTokens <= 0) {
+          rates.push(0.0);
+        } else {
+          const hit = this.shared_prefix_tokens + privateReuse;
+          rates.push(Math.min(1.0, hit / requestTokens));
+        }
+      }
+      return rates;
     }
   }
 
@@ -1614,6 +1678,76 @@
     }).join("");
   }
 
+  function renderPerTurnChart(config) {
+    const heuristic = new MultiAgentHeuristic(config.heuristic_multi_agent);
+    const hitRates = heuristic.perTurnContentHitRates();
+    const privateTokens = heuristic.perTurnReusablePrivateTokens();
+    const labels = hitRates.map((_, i) => "Turn " + (i + 1));
+    const card = document.getElementById("per-turn-chart-card");
+    card.style.display = "";
+
+    const ctx = document.getElementById("perTurnChart").getContext("2d");
+    if (perTurnChart) perTurnChart.destroy();
+    perTurnChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Content Hit Rate (%)",
+            data: hitRates.map(r => r * 100),
+            backgroundColor: "rgba(88,166,255,0.5)",
+            borderColor: "#58a6ff",
+            borderWidth: 1,
+            yAxisID: "y",
+            order: 2
+          },
+          {
+            label: "Reusable Private Tokens",
+            data: privateTokens,
+            type: "line",
+            borderColor: "#3fb950",
+            backgroundColor: "rgba(63,185,80,0.1)",
+            tension: 0.3,
+            pointRadius: 4,
+            fill: false,
+            yAxisID: "y1",
+            order: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            position: "left",
+            min: 0,
+            max: 100,
+            title: { display: true, text: "Content Hit Rate (%)", color: "#8b949e" },
+            grid: { color: "rgba(48,54,61,0.5)" },
+            ticks: { color: "#8b949e" }
+          },
+          y1: {
+            position: "right",
+            min: 0,
+            title: { display: true, text: "Reusable Private Tokens", color: "#8b949e" },
+            grid: { drawOnChartArea: false },
+            ticks: { color: "#8b949e" }
+          },
+          x: {
+            title: { display: true, text: "Conversation Turn", color: "#8b949e" },
+            grid: { color: "rgba(48,54,61,0.5)" },
+            ticks: { color: "#8b949e" }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: "#c9d1d9" } }
+        }
+      }
+    });
+  }
+
   function renderComparison(resultB) {
     if (!scenarioA) return;
     const panel = document.getElementById("compare-panel");
@@ -1666,6 +1800,7 @@
       renderHitRateChart(result.rows, result.summary.contentHitRate, result.summary);
       renderTpsMachinesChart(config, result.summary);
       renderSensitivity(config);
+      renderPerTurnChart(config);
       if (scenarioA) renderComparison(result);
       validateInputs(config);
     } catch (e) {
@@ -2144,6 +2279,170 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════
+  // Synthetic Trace Generator
+  // ═══════════════════════════════════════════════════════════════════
+  let synthTraceRecords = null;
+
+  function synthBlockId(label, idx) {
+    const str = label + "-" + idx;
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + ch;
+      hash = hash & hash;
+    }
+    let hash2 = 0;
+    const str2 = str + "_salt";
+    for (let i = 0; i < str2.length; i++) {
+      const ch = str2.charCodeAt(i);
+      hash2 = ((hash2 << 5) - hash2) + ch;
+      hash2 = hash2 & hash2;
+    }
+    return (hash >>> 0).toString(16).padStart(8, "0") + (hash2 >>> 0).toString(16).padStart(8, "0");
+  }
+
+  function generateSyntheticTrace(sessions, turnsPerSession, sharedPrefixBlocks, newBlocksPerTurn, blockSize, prefixDiversity) {
+    const numGroups = Math.max(1, Math.floor(prefixDiversity * sessions));
+    const groupPrefixes = [];
+    for (let g = 0; g < numGroups; g++) {
+      const ids = [];
+      for (let i = 0; i < sharedPrefixBlocks; i++) {
+        ids.push(synthBlockId("prefix-" + g, i));
+      }
+      groupPrefixes.push(ids);
+    }
+    const sessionGroups = [];
+    for (let s = 0; s < sessions; s++) {
+      sessionGroups.push(s % numGroups);
+    }
+    const records = [];
+    const sessionPrivate = Array.from({length: sessions}, () => []);
+    let timestamp = 1000;
+    let reqIdx = 0;
+    for (let turn = 0; turn < turnsPerSession; turn++) {
+      for (let sid = 0; sid < sessions; sid++) {
+        const gid = sessionGroups[sid];
+        const prefix = groupPrefixes[gid];
+        const newBlocks = [];
+        for (let i = 0; i < newBlocksPerTurn; i++) {
+          newBlocks.push(synthBlockId("session-" + sid + "-turn-" + turn, i));
+        }
+        const hashIds = prefix.concat(sessionPrivate[sid], newBlocks);
+        sessionPrivate[sid] = sessionPrivate[sid].concat(newBlocks);
+        records.push({
+          request_id: "req-" + String(reqIdx).padStart(6, "0"),
+          chat_id: "session-" + sid,
+          parent_chat_id: turn > 0 ? "session-" + sid : null,
+          turn: turn + 1,
+          type: "text",
+          timestamp: timestamp,
+          input_length: hashIds.length * blockSize,
+          output_length: blockSize,
+          hash_ids: hashIds,
+        });
+        reqIdx++;
+        timestamp += 10 + Math.floor(Math.random() * 90);
+      }
+    }
+    return records;
+  }
+
+  function analyzeSyntheticTrace(records) {
+    const globalBlockSet = new Set();
+    let totalBlocks = 0;
+    let hitBlocks = 0;
+    for (const record of records) {
+      const hashIds = record.hash_ids;
+      let hits = 0;
+      for (const blockId of hashIds) {
+        if (globalBlockSet.has(blockId)) hits++;
+      }
+      hitBlocks += hits;
+      totalBlocks += hashIds.length;
+      for (const blockId of hashIds) {
+        globalBlockSet.add(blockId);
+      }
+    }
+    const uniqueBlocks = globalBlockSet.size;
+    const contentHitRate = totalBlocks > 0 ? hitBlocks / totalBlocks : 0;
+    const blockSessionCount = new Map();
+    for (const record of records) {
+      const sid = record.chat_id;
+      const seen = new Set();
+      for (const blockId of record.hash_ids) {
+        if (!seen.has(blockId)) {
+          seen.add(blockId);
+          if (!blockSessionCount.has(blockId)) blockSessionCount.set(blockId, new Set());
+          blockSessionCount.get(blockId).add(sid);
+        }
+      }
+    }
+    let sharedBlocks = 0;
+    for (const [, sessions] of blockSessionCount) {
+      if (sessions.size > 1) sharedBlocks++;
+    }
+    const prefixSharingRatio = uniqueBlocks > 0 ? sharedBlocks / uniqueBlocks : 0;
+    return { requestCount: records.length, uniqueBlocks, contentHitRate, prefixSharingRatio };
+  }
+
+  function renderSynthResults(analysis) {
+    const container = document.getElementById("synth-metrics-grid");
+    container.innerHTML = `
+      <div class="metric-box"><div class="value">${analysis.requestCount}</div><div class="label">Requests</div></div>
+      <div class="metric-box"><div class="value">${analysis.uniqueBlocks.toLocaleString()}</div><div class="label">Unique Blocks</div></div>
+      <div class="metric-box"><div class="value">${(analysis.contentHitRate * 100).toFixed(1)}%</div><div class="label">Content Hit Rate</div></div>
+      <div class="metric-box"><div class="value">${(analysis.prefixSharingRatio * 100).toFixed(1)}%</div><div class="label">Prefix Sharing Ratio</div></div>
+    `;
+    document.getElementById("synth-results").style.display = "block";
+    document.getElementById("synth-download-btn").style.display = "inline-flex";
+    document.getElementById("synth-apply-btn").style.display = "inline-flex";
+  }
+
+  function onSynthGenerate() {
+    const sessions = +document.getElementById("synth_sessions").value;
+    const turns = +document.getElementById("synth_turns").value;
+    const prefixBlocks = +document.getElementById("synth_prefix_blocks").value;
+    const newBlocks = +document.getElementById("synth_new_blocks").value;
+    const diversity = +document.getElementById("synth_prefix_diversity").value;
+    const blockSize = +document.getElementById("synth_block_size").value;
+    synthTraceRecords = generateSyntheticTrace(sessions, turns, prefixBlocks, newBlocks, blockSize, diversity);
+    const analysis = analyzeSyntheticTrace(synthTraceRecords);
+    renderSynthResults(analysis);
+  }
+
+  function onSynthDownload() {
+    if (!synthTraceRecords) return;
+    const lines = synthTraceRecords.map(r => JSON.stringify(r)).join("\n");
+    const blob = new Blob([lines + "\n"], { type: "application/jsonl" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "synthetic_trace.jsonl";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function onSynthApply() {
+    if (!synthTraceRecords) return;
+    const sessions = +document.getElementById("synth_sessions").value;
+    const turns = +document.getElementById("synth_turns").value;
+    const prefixBlocks = +document.getElementById("synth_prefix_blocks").value;
+    const newBlocks = +document.getElementById("synth_new_blocks").value;
+    const blockSize = +document.getElementById("synth_block_size").value;
+    const sharedPrefixTokens = prefixBlocks * blockSize;
+    const avgNewTokensPerTurn = newBlocks * blockSize;
+    const privateWindowTokens = turns * avgNewTokensPerTurn;
+    document.getElementById("concurrent_agents").value = sessions;
+    document.getElementById("shared_prefix_tokens").value = sharedPrefixTokens;
+    document.getElementById("avg_new_tokens_per_turn").value = avgNewTokensPerTurn;
+    document.getElementById("avg_turns_per_session").value = turns;
+    document.getElementById("private_window_tokens").value = privateWindowTokens;
+    scheduleRecalc();
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
   // GPU Hardware Dropdown (Deployment form)
   // ═══════════════════════════════════════════════════════════════════
   function populateGpuDropdown() {
@@ -2225,9 +2524,16 @@
       if (e.target === e.currentTarget) closeWizard();
     });
 
-    // Wire all inputs for recalculation
+    // Synthetic trace generator buttons
+    document.getElementById("synth-generate-btn").addEventListener("click", onSynthGenerate);
+    document.getElementById("synth-download-btn").addEventListener("click", onSynthDownload);
+    document.getElementById("synth-apply-btn").addEventListener("click", onSynthApply);
+
+    // Wire all inputs for recalculation (exclude synthetic trace inputs)
+    const synthIds = new Set(["synth_sessions", "synth_turns", "synth_prefix_blocks", "synth_new_blocks", "synth_prefix_diversity", "synth_block_size"]);
     document.querySelectorAll("input, select").forEach(el => {
       if (el.id === "preset-select" || el.id === "model-preset-select" || el.id === "model-search" || el.id === "gpu-hardware-select") return;
+      if (synthIds.has(el.id)) return;
       el.addEventListener("input", scheduleRecalc);
       el.addEventListener("change", scheduleRecalc);
     });
