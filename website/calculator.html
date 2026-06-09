@@ -488,6 +488,14 @@
           <div class="form-field" id="zipf_pop_field"><label>zipf_population_blocks</label><input type="number" id="zipf_population_blocks" title="Total number of cache blocks in Zipf population" /></div>
           <div class="form-field"><label>strict_prefix_efficiency</label><input type="number" step="0.05" id="strict_prefix_efficiency" title="Efficiency of strict prefix matching (1.0 = perfect)" /></div>
           <div class="form-field"><label>lru_like_efficiency</label><input type="number" step="0.05" id="lru_like_efficiency" title="Efficiency of LRU-like eviction policy (typically 0.5-0.8)" /></div>
+          <div class="form-field">
+            <label>Eviction Policy Model</label>
+            <select id="eviction_policy" title="Eviction policy model: changes default lru_like efficiency">
+              <option value="lru">LRU</option>
+              <option value="lfu">LFU</option>
+              <option value="prefix_aware">Prefix-Aware</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -718,6 +726,15 @@
     { id: "l40s",     name: "L40S (48GB)",     memory_gb: 48,  typical_cards_per_machine: 4, max_cards_per_machine: 8,  baseline_tps_per_card: 0.5 },
     { id: "l20",      name: "L20 (48GB)",      memory_gb: 48,  typical_cards_per_machine: 4, max_cards_per_machine: 8,  baseline_tps_per_card: 0.4 },
   ];
+
+  const POLICY_EFFICIENCY_DEFAULTS = {
+    lru: 0.55,
+    lfu: 0.62,
+    prefix_aware: 0.78,
+  };
+
+  // Track whether the user has manually edited lru_like_efficiency
+  let lruLikeManuallySet = false;
 
   const DATASET_REGISTRY = [
     { id: "bailian-traceA", name: "Qwen-Bailian Trace A", tier: "production-traces", description: "Production Qwen3-27B serving trace from Alibaba Bailian platform", source: "https://github.com/alibaba-edu/qwen-bailian-usagetraces-anon", trace_url: "https://media.githubusercontent.com/media/alibaba-edu/qwen-bailian-usagetraces-anon/main/qwen_traceA_blksz_16.jsonl", format: "native", tags: ["production", "MLA", "multi-turn"], request_count: null,
@@ -1124,6 +1141,7 @@
   function loadPreset(name) {
     const p = PRESETS[name];
     if (!p) return;
+    lruLikeManuallySet = false;
     const m = p.model_profile;
     document.getElementById("n_layers").value = m.n_layers;
     document.getElementById("kv_cache_layer_count").value = m.kv_cache_layer_count || "";
@@ -1185,6 +1203,7 @@
   function loadDatasetPreset(datasetId) {
     const ds = DATASET_REGISTRY.find(d => d.id === datasetId);
     if (!ds) return;
+    lruLikeManuallySet = false;
     const m = ds.model_profile;
     document.getElementById("n_layers").value = m.n_layers;
     document.getElementById("kv_cache_layer_count").value = m.kv_cache_layer_count || "";
@@ -2203,6 +2222,16 @@
       onGpuHardwareChange(e.target.value);
     });
     document.getElementById("curve_mode").addEventListener("change", () => { updateCurveModeVisibility(); scheduleRecalc(); });
+    document.getElementById("eviction_policy").addEventListener("change", (e) => {
+      if (!lruLikeManuallySet) {
+        const defaultEff = POLICY_EFFICIENCY_DEFAULTS[e.target.value];
+        if (defaultEff != null) {
+          document.getElementById("lru_like_efficiency").value = defaultEff;
+        }
+      }
+      scheduleRecalc();
+    });
+    document.getElementById("lru_like_efficiency").addEventListener("input", () => { lruLikeManuallySet = true; });
     document.getElementById("add-tier-btn").addEventListener("click", () => { addTierRow("", ""); scheduleRecalc(); });
     document.getElementById("theme-toggle").addEventListener("click", toggleTheme);
     document.getElementById("wizard-btn").addEventListener("click", openWizard);
@@ -2227,7 +2256,7 @@
 
     // Wire all inputs for recalculation
     document.querySelectorAll("input, select").forEach(el => {
-      if (el.id === "preset-select" || el.id === "model-preset-select" || el.id === "model-search" || el.id === "gpu-hardware-select") return;
+      if (el.id === "preset-select" || el.id === "model-preset-select" || el.id === "model-search" || el.id === "gpu-hardware-select" || el.id === "eviction_policy") return;
       el.addEventListener("input", scheduleRecalc);
       el.addEventListener("change", scheduleRecalc);
     });
