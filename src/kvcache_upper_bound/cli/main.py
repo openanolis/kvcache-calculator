@@ -38,6 +38,7 @@ from kvcache_upper_bound.reporting import (
     load_bucket_analysis_config,
     write_bucket_outputs,
 )
+from kvcache_upper_bound.synthetic import SyntheticTraceConfig, generate_synthetic_trace
 from kvcache_upper_bound.verification import (
     build_bucket_audit_report,
     write_bucket_audit_outputs,
@@ -185,6 +186,38 @@ def main() -> int:
         help="Allow replay-only synthetic hash_ids when benchmark records do not provide them",
     )
 
+    generate_trace_parser = subparsers.add_parser(
+        "generate-trace",
+        help="Generate a parametric synthetic trace for KVCache analysis",
+    )
+    generate_trace_parser.add_argument(
+        "--sessions", type=int, required=True, help="Number of sessions"
+    )
+    generate_trace_parser.add_argument(
+        "--turns", type=int, required=True, help="Turns per session"
+    )
+    generate_trace_parser.add_argument(
+        "--shared-prefix-blocks", type=int, required=True,
+        help="Number of shared prefix blocks",
+    )
+    generate_trace_parser.add_argument(
+        "--new-blocks-per-turn", type=int, required=True,
+        help="Average new blocks per turn",
+    )
+    generate_trace_parser.add_argument(
+        "--block-size", type=int, default=16, help="Tokens per block (default: 16)"
+    )
+    generate_trace_parser.add_argument(
+        "--prefix-diversity", type=float, default=0.3,
+        help="Prefix diversity 0.0-1.0 (default: 0.3)",
+    )
+    generate_trace_parser.add_argument(
+        "--seed", type=int, default=None, help="Random seed for reproducibility"
+    )
+    generate_trace_parser.add_argument(
+        "--output", required=True, help="Output JSONL file path"
+    )
+
     args = parser.parse_args()
     if args.command == "list-datasets":
         return _run_list_datasets()
@@ -200,6 +233,8 @@ def main() -> int:
         return _run_convert_conversation_dataset(args)
     if args.command == "convert-benchmark-results":
         return _run_convert_benchmark_results(args)
+    if args.command == "generate-trace":
+        return _run_generate_trace(args)
     raise ValueError(f"unsupported command: {args.command}")
 
 
@@ -482,6 +517,38 @@ def _run_convert_benchmark_results(args: argparse.Namespace) -> int:
         "stats": asdict(result.stats),
         "limitations": list(result.limitations),
         "allow_synthetic_hash_ids": args.allow_synthetic_hash_ids,
+    }
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _run_generate_trace(args: argparse.Namespace) -> int:
+    config = SyntheticTraceConfig(
+        num_sessions=args.sessions,
+        turns_per_session=args.turns,
+        shared_prefix_blocks=args.shared_prefix_blocks,
+        avg_new_blocks_per_turn=args.new_blocks_per_turn,
+        block_size=args.block_size,
+        prefix_diversity=args.prefix_diversity,
+        seed=args.seed,
+    )
+    records = generate_synthetic_trace(config)
+    output_path = Path(args.output)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        for record in records:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    payload = {
+        "mode": "generate_trace",
+        "output": str(output_path.resolve()),
+        "num_sessions": config.num_sessions,
+        "turns_per_session": config.turns_per_session,
+        "shared_prefix_blocks": config.shared_prefix_blocks,
+        "avg_new_blocks_per_turn": config.avg_new_blocks_per_turn,
+        "block_size": config.block_size,
+        "prefix_diversity": config.prefix_diversity,
+        "seed": config.seed,
+        "total_records": len(records),
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
