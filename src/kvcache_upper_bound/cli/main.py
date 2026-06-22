@@ -185,6 +185,29 @@ def main() -> int:
         help="Allow replay-only synthetic hash_ids when benchmark records do not provide them",
     )
 
+    rank_models_parser = subparsers.add_parser(
+        "rank-models",
+        help="Rank models by KV cache size requirements for given sequence lengths",
+    )
+    rank_models_parser.add_argument(
+        "--sequence-length",
+        type=int,
+        action="append",
+        required=True,
+        help="Sequence length in tokens (can specify multiple times)",
+    )
+    rank_models_parser.add_argument(
+        "--format",
+        choices=("markdown", "csv"),
+        default="markdown",
+        help="Output format (default: markdown)",
+    )
+    rank_models_parser.add_argument(
+        "--output",
+        default=None,
+        help="Output file path (default: stdout)",
+    )
+
     args = parser.parse_args()
     if args.command == "list-datasets":
         return _run_list_datasets()
@@ -200,6 +223,8 @@ def main() -> int:
         return _run_convert_conversation_dataset(args)
     if args.command == "convert-benchmark-results":
         return _run_convert_benchmark_results(args)
+    if args.command == "rank-models":
+        return _run_rank_models(args)
     raise ValueError(f"unsupported command: {args.command}")
 
 
@@ -485,6 +510,203 @@ def _run_convert_benchmark_results(args: argparse.Namespace) -> int:
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
+
+
+MODEL_REGISTRY = {
+    "qwen3-27b": {
+        "name": "Qwen3-27B",
+        "family": "Qwen",
+        "n_layers": 64,
+        "kv_cache_layer_count": 16,
+        "n_kv_heads": 4,
+        "head_dim": 256,
+        "dtype_bytes": 2,
+        "tp_size": 8,
+        "pp_size": 1,
+    },
+    "llama3.1-70b": {
+        "name": "Llama 3.1 70B",
+        "family": "Llama",
+        "n_layers": 80,
+        "kv_cache_layer_count": None,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "tp_size": 8,
+        "pp_size": 1,
+    },
+    "qwen2.5-72b": {
+        "name": "Qwen2.5-72B",
+        "family": "Qwen",
+        "n_layers": 80,
+        "kv_cache_layer_count": None,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "tp_size": 8,
+        "pp_size": 1,
+    },
+    "mistral-7b": {
+        "name": "Mistral 7B",
+        "family": "Mistral",
+        "n_layers": 32,
+        "kv_cache_layer_count": None,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "tp_size": 1,
+        "pp_size": 1,
+    },
+    "llama3.1-8b": {
+        "name": "Llama 3.1 8B",
+        "family": "Llama",
+        "n_layers": 32,
+        "kv_cache_layer_count": None,
+        "n_kv_heads": 8,
+        "head_dim": 128,
+        "dtype_bytes": 2,
+        "tp_size": 1,
+        "pp_size": 1,
+    },
+    "deepseek-v3-671b": {
+        "name": "DeepSeek-V3-671B",
+        "family": "DeepSeek",
+        "n_layers": 61,
+        "kv_cache_layer_count": None,
+        "n_kv_heads": 16,
+        "head_dim": 512,
+        "dtype_bytes": 2,
+        "tp_size": 8,
+        "pp_size": 1,
+    },
+}
+
+
+def _run_rank_models(args: argparse.Namespace) -> int:
+    sequence_lengths = args.sequence_length
+    output_format = args.format
+
+    rankings = []
+    for model_id, model in MODEL_REGISTRY.items():
+        layers = model["kv_cache_layer_count"] if model["kv_cache_layer_count"] is not None else model["n_layers"]
+        kv_per_token = 2 * layers * model["n_kv_heads"] * model["head_dim"] * model["dtype_bytes"]
+        shard_factor = model["tp_size"] * model["pp_size"]
+        kv_per_token_per_rank = kv_per_token // shard_factor
+
+        entry = {
+            "model_id": model_id,
+            "name": model["name"],
+            "family": model["family"],
+            "kv_bytes_per_token": kv_per_token,
+            "kv_bytes_per_token_per_rank": kv_per_token_per_rank,
+            "layers": layers,
+            "n_kv_heads": model["n_kv_heads"],
+            "head_dim": model["head_dim"],
+            "tp_size": model["tp_size"],
+            "pp_size": model["pp_size"],
+        }
+
+        for seq_len in sequence_lengths:
+            total_bytes = kv_per_token * seq_len
+            total_bytes_per_rank = kv_per_token_per_rank * seq_len
+            entry[f"total_kv_gb_{seq_len}"] = total_bytes / (1024**3)
+            entry[f"total_kv_gb_{seq_len}_per_rank"] = total_bytes_per_rank / (1024**3)
+
+        rankings.append(entry)
+
+    rankings.sort(key=lambda x: x.get(f"total_kv_gb_{sequence_lengths[0]}", 0), reverse=True)
+
+    if output_format == "csv":
+        output = _format_rankings_csv(rankings, sequence_lengths)
+    else:
+        output = _format_rankings_markdown(rankings, sequence_lengths)
+
+    if args.output:
+        Path(args.output).write_text(output, encoding="utf-8")
+    else:
+        print(output)
+
+    return 0
+
+
+def _format_bytes(size_bytes: int) -> str:
+    """Format bytes as human-readable string."""
+    if size_bytes < 1024:
+        return f"{size_bytes} B"
+    elif size_bytes < 1024**2:
+        return f"{size_bytes / 1024:.1f} KB"
+    elif size_bytes < 1024**3:
+        return f"{size_bytes / (1024**2):.1f} MB"
+    else:
+        return f"{size_bytes / (1024**3):.2f} GB"
+
+
+def _format_rankings_markdown(rankings: list[dict], sequence_lengths: list[int]) -> str:
+    """Format rankings as markdown table."""
+    lines = []
+    lines.append("# Model KV Cache Ranking")
+    lines.append("")
+
+    for seq_len in sequence_lengths:
+        lines.append(f"## Sequence Length: {seq_len:,} tokens")
+        lines.append("")
+
+        header = "| Model | Family | KV/Token | KV/Token/Rank | Total KV | Total KV/Rank | Layers | KV Heads | Head Dim | TP | PP |"
+        separator = "|-------|--------|----------|---------------|----------|---------------|--------|----------|----------|----|----|"
+        lines.append(header)
+        lines.append(separator)
+
+        for rank, entry in enumerate(rankings, 1):
+            total_gb = entry.get(f"total_kv_gb_{seq_len}", 0)
+            total_gb_rank = entry.get(f"total_kv_gb_{seq_len}_per_rank", 0)
+            kv_token = _format_bytes(entry["kv_bytes_per_token"])
+            kv_token_rank = _format_bytes(entry["kv_bytes_per_token_per_rank"])
+
+            lines.append(
+                f"| {entry['name']} | {entry['family']} | {kv_token} | {kv_token_rank} | "
+                f"{total_gb:.2f} GB | {total_gb_rank:.2f} GB | {entry['layers']} | "
+                f"{entry['n_kv_heads']} | {entry['head_dim']} | {entry['tp_size']} | {entry['pp_size']} |"
+            )
+
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _format_rankings_csv(rankings: list[dict], sequence_lengths: list[int]) -> str:
+    """Format rankings as CSV."""
+    lines = []
+
+    base_headers = ["model_id", "name", "family", "kv_bytes_per_token", "kv_bytes_per_token_per_rank",
+                    "layers", "n_kv_heads", "head_dim", "tp_size", "pp_size"]
+    seq_headers = []
+    for seq_len in sequence_lengths:
+        seq_headers.append(f"total_kv_gb_{seq_len}")
+        seq_headers.append(f"total_kv_gb_{seq_len}_per_rank")
+
+    lines.append(",".join(base_headers + seq_headers))
+
+    for entry in rankings:
+        base_values = [
+            entry["model_id"],
+            entry["name"],
+            entry["family"],
+            str(entry["kv_bytes_per_token"]),
+            str(entry["kv_bytes_per_token_per_rank"]),
+            str(entry["layers"]),
+            str(entry["n_kv_heads"]),
+            str(entry["head_dim"]),
+            str(entry["tp_size"]),
+            str(entry["pp_size"]),
+        ]
+        seq_values = []
+        for seq_len in sequence_lengths:
+            seq_values.append(f"{entry.get(f'total_kv_gb_{seq_len}', 0):.6f}")
+            seq_values.append(f"{entry.get(f'total_kv_gb_{seq_len}_per_rank', 0):.6f}")
+
+        lines.append(",".join(base_values + seq_values))
+
+    return "\n".join(lines)
 
 
 def _build_analysis_metadata_payload(
