@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KVCache Model Ranking</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --surface2: #21262d;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-muted: #8b949e;
+      --accent: #58a6ff;
+      --radius: 8px;
+    }
+
+    html { font-size: 15px; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      padding: 32px;
+    }
+
+    header {
+      max-width: 1400px;
+      margin: 0 auto 32px;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+
+    .controls {
+      max-width: 1400px;
+      margin: 0 auto 24px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .controls label {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .preset-buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .preset-btn {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: all 0.15s;
+    }
+
+    .preset-btn:hover {
+      background: var(--surface2);
+      border-color: var(--accent);
+    }
+
+    .preset-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .table-container {
+      max-width: 1400px;
+      margin: 0 auto;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead {
+      background: var(--surface2);
+      border-bottom: 2px solid var(--border);
+    }
+
+    th {
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 0.85rem;
+      color: var(--text);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+    }
+
+    th:hover {
+      background: rgba(88, 166, 255, 0.1);
+    }
+
+    th .sort-icon {
+      margin-left: 4px;
+      opacity: 0.4;
+    }
+
+    th.sorted .sort-icon {
+      opacity: 1;
+      color: var(--accent);
+    }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.1s;
+    }
+
+    tbody tr:hover {
+      background: var(--surface2);
+    }
+
+    tbody tr:last-child {
+      border-bottom: none;
+    }
+
+    td {
+      padding: 12px 16px;
+      font-size: 0.9rem;
+    }
+
+    .model-name {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .model-family {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .num-cell {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .highlight {
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    footer {
+      max-width: 1400px;
+      margin: 32px auto 0;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+    }
+
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>KVCache Model Ranking</h1>
+    <p class="subtitle">Compare KV cache size requirements across popular LLM models</p>
+  </header>
+
+  <div class="controls">
+    <label>Sequence Length:</label>
+    <div class="preset-buttons" id="preset-buttons"></div>
+  </div>
+
+  <div class="table-container">
+    <table id="ranking-table">
+      <thead>
+        <tr>
+          <th data-column="name">Model <span class="sort-icon">↕</span></th>
+          <th data-column="layers" data-type="number">KV Layers <span class="sort-icon">↕</span></th>
+          <th data-column="n_kv_heads" data-type="number">KV Heads <span class="sort-icon">↕</span></th>
+          <th data-column="head_dim" data-type="number">Head Dim <span class="sort-icon">↕</span></th>
+          <th data-column="tp_size" data-type="number">TP <span class="sort-icon">↕</span></th>
+          <th data-column="pp_size" data-type="number">PP <span class="sort-icon">↕</span></th>
+          <th data-column="parameters" data-type="number">Parameters <span class="sort-icon">↕</span></th>
+          <th data-column="weight_gb" data-type="number">Weight (GB) <span class="sort-icon">↕</span></th>
+          <th data-column="kv_per_token" data-type="number">KV/Token <span class="sort-icon">↕</span></th>
+          <th data-column="kv_per_token_rank" data-type="number">KV/Token/Rank <span class="sort-icon">↕</span></th>
+          <th data-column="total_kv" data-type="number" class="highlight">Total KV <span class="sort-icon">↕</span></th>
+          <th data-column="total_kv_rank" data-type="number" class="highlight">Total KV/Rank <span class="sort-icon">↕</span></th>
+        </tr>
+      </thead>
+      <tbody id="ranking-tbody"></tbody>
+    </table>
+  </div>
+
+  <footer>
+    <p>KVCache Upper Bound Oracle — <a href="index.html">Dashboard</a> | <a href="calculator.html">Calculator</a></p>
+  </footer>
+
+  <script>
+    const MODELS = {
+      "qwen3-27b": {
+        name: "Qwen3-27B",
+        family: "Qwen",
+        n_layers: 64,
+        kv_cache_layer_count: 16,
+        n_kv_heads: 4,
+        head_dim: 256,
+        dtype_bytes: 2,
+        parameter_count: 27781419504,
+        weight_dtype_bytes: 2,
+        tp_size: 8,
+        pp_size: 1,
+      },
+      "llama3.1-70b": {
+        name: "Llama 3.1 70B",
+        family: "Llama",
+        n_layers: 80,
+        kv_cache_layer_count: null,
+        n_kv_heads: 8,
+        head_dim: 128,
+        dtype_bytes: 2,
+        parameter_count: 70600000000,
+        weight_dtype_bytes: 2,
+        tp_size: 8,
+        pp_size: 1,
+      },
+      "qwen2.5-72b": {
+        name: "Qwen2.5-72B",
+        family: "Qwen",
+        n_layers: 80,
+        kv_cache_layer_count: null,
+        n_kv_heads: 8,
+        head_dim: 128,
+        dtype_bytes: 2,
+        parameter_count: 72700000000,
+        weight_dtype_bytes: 2,
+        tp_size: 8,
+        pp_size: 1,
+      },
+      "mistral-7b": {
+        name: "Mistral 7B",
+        family: "Mistral",
+        n_layers: 32,
+        kv_cache_layer_count: null,
+        n_kv_heads: 8,
+        head_dim: 128,
+        dtype_bytes: 2,
+        parameter_count: 7200000000,
+        weight_dtype_bytes: 2,
+        tp_size: 1,
+        pp_size: 1,
+      },
+      "llama3.1-8b": {
+        name: "Llama 3.1 8B",
+        family: "Llama",
+        n_layers: 32,
+        kv_cache_layer_count: null,
+        n_kv_heads: 8,
+        head_dim: 128,
+        dtype_bytes: 2,
+        parameter_count: 8000000000,
+        weight_dtype_bytes: 2,
+        tp_size: 1,
+        pp_size: 1,
+      },
+      "deepseek-v3-671b": {
+        name: "DeepSeek-V3-671B",
+        family: "DeepSeek",
+        n_layers: 61,
+        kv_cache_layer_count: null,
+        n_kv_heads: 16,
+        head_dim: 512,
+        dtype_bytes: 2,
+        parameter_count: 671000000000,
+        weight_dtype_bytes: 2,
+        tp_size: 8,
+        pp_size: 1,
+      },
+    };
+
+    const SEQUENCE_LENGTHS = [1024, 4096, 8192, 16384, 32768, 131072];
+    const BYTES_PER_GB = 1024 * 1024 * 1024;
+
+    let currentSequenceLength = 8192;
+    let sortColumn = 'total_kv';
+    let sortDirection = 'desc';
+
+    function kvBytesPerToken(model) {
+      const layers = model.kv_cache_layer_count || model.n_layers;
+      return 2 * layers * model.n_kv_heads * model.head_dim * model.dtype_bytes;
+    }
+
+    function kvBytesPerTokenPerRank(model) {
+      const shard = model.tp_size * model.pp_size;
+      return kvBytesPerToken(model) / shard;
+    }
+
+    function formatBytes(bytes) {
+      if (bytes < 1024) return bytes.toFixed(0) + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+      return (bytes / BYTES_PER_GB).toFixed(2) + ' GB';
+    }
+
+    function formatParameters(count) {
+      if (count >= 1e9) return (count / 1e9).toFixed(1) + 'B';
+      if (count >= 1e6) return (count / 1e6).toFixed(1) + 'M';
+      return count.toLocaleString();
+    }
+
+    function computeRanking() {
+      return Object.entries(MODELS).map(([id, model]) => {
+        const layers = model.kv_cache_layer_count || model.n_layers;
+        const kvPerToken = kvBytesPerToken(model);
+        const kvPerTokenRank = kvBytesPerTokenPerRank(model);
+        const totalKv = kvPerToken * currentSequenceLength;
+        const totalKvRank = kvPerTokenRank * currentSequenceLength;
+        const weightBytes = model.parameter_count * model.weight_dtype_bytes;
+        const weightGb = weightBytes / BYTES_PER_GB;
+
+        return {
+          id,
+          name: model.name,
+          family: model.family,
+          layers,
+          n_kv_heads: model.n_kv_heads,
+          head_dim: model.head_dim,
+          tp_size: model.tp_size,
+          pp_size: model.pp_size,
+          parameters: model.parameter_count,
+          weight_gb: weightGb,
+          kv_per_token: kvPerToken,
+          kv_per_token_rank: kvPerTokenRank,
+          total_kv: totalKv,
+          total_kv_rank: totalKvRank,
+        };
+      });
+    }
+
+    function sortRanking(ranking) {
+      return ranking.sort((a, b) => {
+        let aVal = a[sortColumn];
+        let bVal = b[sortColumn];
+
+        if (typeof aVal === 'string') {
+          return sortDirection === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal);
+        }
+
+        return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+      });
+    }
+
+    function renderTable() {
+      const ranking = sortRanking(computeRanking());
+      const tbody = document.getElementById('ranking-tbody');
+      tbody.innerHTML = '';
+
+      ranking.forEach(model => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>
+            <div class="model-name">${model.name}</div>
+            <div class="model-family">${model.family}</div>
+          </td>
+          <td class="num-cell">${model.layers}</td>
+          <td class="num-cell">${model.n_kv_heads}</td>
+          <td class="num-cell">${model.head_dim}</td>
+          <td class="num-cell">${model.tp_size}</td>
+          <td class="num-cell">${model.pp_size}</td>
+          <td class="num-cell">${formatParameters(model.parameters)}</td>
+          <td class="num-cell">${model.weight_gb.toFixed(1)}</td>
+          <td class="num-cell">${formatBytes(model.kv_per_token)}</td>
+          <td class="num-cell">${formatBytes(model.kv_per_token_rank)}</td>
+          <td class="num-cell highlight">${formatBytes(model.total_kv)}</td>
+          <td class="num-cell highlight">${formatBytes(model.total_kv_rank)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      // Update sort indicators
+      document.querySelectorAll('th').forEach(th => {
+        th.classList.remove('sorted');
+        const icon = th.querySelector('.sort-icon');
+        if (icon) icon.textContent = '↕';
+      });
+
+      const activeTh = document.querySelector(`th[data-column="${sortColumn}"]`);
+      if (activeTh) {
+        activeTh.classList.add('sorted');
+        const icon = activeTh.querySelector('.sort-icon');
+        if (icon) icon.textContent = sortDirection === 'asc' ? '↑' : '↓';
+      }
+    }
+
+    function renderPresetButtons() {
+      const container = document.getElementById('preset-buttons');
+      SEQUENCE_LENGTHS.forEach(len => {
+        const btn = document.createElement('button');
+        btn.className = 'preset-btn' + (len === currentSequenceLength ? ' active' : '');
+        btn.textContent = len >= 1024 ? (len / 1024) + 'K' : len;
+        btn.onclick = () => {
+          currentSequenceLength = len;
+          renderPresetButtons();
+          renderTable();
+        };
+        container.appendChild(btn);
+      });
+    }
+
+    function setupSorting() {
+      document.querySelectorAll('th[data-column]').forEach(th => {
+        th.addEventListener('click', () => {
+          const column = th.dataset.column;
+          if (sortColumn === column) {
+            sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+          } else {
+            sortColumn = column;
+            sortDirection = 'desc';
+          }
+          renderTable();
+        });
+      });
+    }
+
+    // Initialize
+    renderPresetButtons();
+    setupSorting();
+    renderTable();
+  </script>
+</body>
+</html>
