@@ -404,6 +404,18 @@
         </div>
       </div>
 
+      <!-- Model KVCache Ranking -->
+      <div class="card">
+        <div class="card-title">Model KVCache Ranking</div>
+        <div class="card-body">
+          <div class="form-field">
+            <label>Sequence Length (tokens)</label>
+            <input type="number" id="ranking-sequence-length" value="8192" min="1" step="1024" />
+          </div>
+          <div id="ranking-table-container" style="overflow-x:auto;"></div>
+        </div>
+      </div>
+
       <!-- Deployment Preset -->
       <div class="card">
         <div class="card-title">Configuration Preset</div>
@@ -595,6 +607,15 @@
         <div id="sensitivity-container"></div>
       </div>
 
+      <!-- Per-Turn Analysis Chart -->
+      <div class="card" id="per-turn-chart-card" style="display:none">
+        <div class="card-title">Per-Turn Analysis</div>
+        <p style="color:var(--text-muted);font-size:.85rem">How cache hit rate evolves across conversation turns</p>
+        <div class="chart-container">
+          <canvas id="perTurnChart" height="250"></canvas>
+        </div>
+      </div>
+
       <!-- Results Table -->
       <div class="card">
         <div class="card-title">Tier Analysis</div>
@@ -630,14 +651,14 @@
     { id: "llama3.1-70b", family: "Llama", name: "Llama 3.1 70B", params: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70600000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
     { id: "llama3.1-8b", family: "Llama", name: "Llama 3.1 8B", params: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 8000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
     { id: "llama3.3-70b", family: "Llama", name: "Llama 3.3 70B", params: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70600000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
-    { id: "deepseek-v2-236b", family: "DeepSeek", name: "DeepSeek-V2 236B", params: { n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 236000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE (compressed KV: effective n_kv_heads=16, head_dim=512)" },
-    { id: "deepseek-v3-671b", family: "DeepSeek", name: "DeepSeek-V3 671B", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 671000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE (compressed KV: effective n_kv_heads=16, head_dim=512)" },
+    { id: "deepseek-v2-236b", family: "DeepSeek", name: "DeepSeek-V2 236B", params: { n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 236000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE (compressed KV latent: kv_lora_rank=512)" },
+    { id: "deepseek-v3-671b", family: "DeepSeek", name: "DeepSeek-V3 671B", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 671000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE (compressed KV latent: kv_lora_rank=512)" },
     { id: "mixtral-8x22b", family: "Mistral", name: "Mixtral 8x22B", params: { n_layers: 56, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 141000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MoE, GQA" },
     { id: "mistral-7b", family: "Mistral", name: "Mistral 7B", params: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 7200000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
     { id: "glm4-9b", family: "GLM", name: "GLM-4 9B", params: { n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 2, head_dim: 128, dtype_bytes: 2, parameter_count: 9400000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MQA" },
     { id: "yi1.5-34b", family: "Yi", name: "Yi-1.5 34B", params: { n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 34400000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "GQA" },
-    { id: "deepseek-v3.1-685b", family: "DeepSeek", name: "DeepSeek-V3.1 685B (V3-0324)", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 685000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE 256E/8A (compressed KV: kv_lora_rank=512)" },
-    { id: "kimi-k2-1t", family: "Kimi", name: "Kimi K2 1T", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 1000000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE 384E/8A (DeepSeek-V3 architecture)" },
+    { id: "deepseek-v3.1-685b", family: "DeepSeek", name: "DeepSeek-V3.1 685B (V3-0324)", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 685000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE 256E/8A (compressed KV latent: kv_lora_rank=512)" },
+    { id: "kimi-k2-1t", family: "Kimi", name: "Kimi K2 1T", params: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 1000000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "MLA + MoE 384E/8A (DeepSeek-V3 architecture, compressed KV latent: kv_lora_rank=512)" },
     { id: "gemma3-27b", family: "Gemma", name: "Gemma 3 27B", params: { n_layers: 62, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 128, dtype_bytes: 2, parameter_count: 27000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "Hybrid sliding window (1024) + global attention (every 6th layer)" },
     { id: "gemma3-12b", family: "Gemma", name: "Gemma 3 12B", params: { n_layers: 48, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 256, dtype_bytes: 2, parameter_count: 12000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "Hybrid sliding window (1024) + global attention (every 6th layer)" },
     { id: "gemma3-4b", family: "Gemma", name: "Gemma 3 4B", params: { n_layers: 34, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 4000000000, weight_dtype_bytes: 2, block_size: 16 }, notes: "Hybrid sliding window (1024) + global attention (every 6th layer)" },
@@ -649,47 +670,96 @@
   ];
 
   // ═══════════════════════════════════════════════════════════════════
+  // Model Registry (single source of truth for model specs)
+  // ═══════════════════════════════════════════════════════════════════
+  const MODELS = {
+    "qwen3-27b": {
+      name: "Qwen3-27B",
+      family: "Qwen",
+      model_profile: { n_layers: 64, kv_cache_layer_count: 16, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27781419504, weight_dtype_bytes: 2, block_size: 16 },
+      description: "Hybrid attention model with MLA (Multi-Latent Attention)"
+    },
+    "llama3.1-70b": {
+      name: "Llama 3.1 70B",
+      family: "Llama",
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70600000000, weight_dtype_bytes: 2, block_size: 16 },
+      description: "Meta's 70B parameter dense transformer"
+    },
+    "qwen2.5-72b": {
+      name: "Qwen2.5-72B",
+      family: "Qwen",
+      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 72700000000, weight_dtype_bytes: 2, block_size: 16 },
+      description: "Alibaba's 72B parameter dense model"
+    },
+    "mistral-7b": {
+      name: "Mistral 7B",
+      family: "Mistral",
+      model_profile: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 7200000000, weight_dtype_bytes: 2, block_size: 16 },
+      description: "Mistral AI's efficient 7B model"
+    },
+    "llama3.1-8b": {
+      name: "Llama 3.1 8B",
+      family: "Llama",
+      model_profile: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 8000000000, weight_dtype_bytes: 2, block_size: 16 },
+      description: "Meta's 8B parameter efficient model"
+    },
+    "deepseek-v3-671b": {
+      name: "DeepSeek-V3-671B",
+      family: "DeepSeek",
+      model_profile: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 671000000000, weight_dtype_bytes: 2, block_size: 16 },
+      description: "DeepSeek's 671B MoE model with MLA"
+    }
+  };
+
+  // ═══════════════════════════════════════════════════════════════════
   // Deployment Preset Configurations
   // ═══════════════════════════════════════════════════════════════════
   const PRESETS = {
     "qwen3-27b-8xh20": {
-      model_profile: { n_layers: 64, kv_cache_layer_count: 16, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27781419504, weight_dtype_bytes: 2, tp_size: 8, pp_size: 1, block_size: 16 },
+      model_id: "qwen3-27b",
+      model_profile: { ...MODELS["qwen3-27b"].model_profile, tp_size: 8, pp_size: 1 },
       prefill_savings_alpha: 0.8,
       heuristic_multi_agent: { concurrent_agents: 2048, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 8, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
       deployment: { label: "1x8-h20", accelerator_count: 8, cards_per_machine: 8, machine_spec: "h20", gpu_memory_gb_per_card: 96, total_tps: 8.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.0, planning_target_total_tps: 8.0, extra_capacity_tiers: [{ label: "HBM+1T per Machine", kv_gb_per_machine: 1024 }, { label: "HBM+10T per Machine", kv_gb_per_machine: 10240 }] }
     },
     "qwen3-27b-1xh20": {
-      model_profile: { n_layers: 64, kv_cache_layer_count: 16, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27781419504, weight_dtype_bytes: 2, tp_size: 1, pp_size: 1, block_size: 16 },
+      model_id: "qwen3-27b",
+      model_profile: { ...MODELS["qwen3-27b"].model_profile, tp_size: 1, pp_size: 1 },
       prefill_savings_alpha: 0.8,
       heuristic_multi_agent: { concurrent_agents: 2048, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 8, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
       deployment: { label: "1x1-h20", accelerator_count: 1, cards_per_machine: 1, machine_spec: "h20", gpu_memory_gb_per_card: 96, total_tps: 1.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.0, planning_target_total_tps: 8.0, extra_capacity_tiers: [{ label: "HBM+1T per Machine", kv_gb_per_machine: 1024 }, { label: "HBM+10T per Machine", kv_gb_per_machine: 10240 }] }
     },
     "llama3.1-70b-8xa100": {
-      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 70600000000, weight_dtype_bytes: 2, tp_size: 8, pp_size: 1, block_size: 16 },
+      model_id: "llama3.1-70b",
+      model_profile: { ...MODELS["llama3.1-70b"].model_profile, tp_size: 8, pp_size: 1 },
       prefill_savings_alpha: 0.8,
       heuristic_multi_agent: { concurrent_agents: 2048, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 8, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
       deployment: { label: "1x8-a100", accelerator_count: 8, cards_per_machine: 8, machine_spec: "a100-80", gpu_memory_gb_per_card: 80, total_tps: 6.4, total_tps_unit: "cluster_total", baseline_per_card_tps: 0.8, planning_target_total_tps: 12.8, extra_capacity_tiers: [{ label: "HBM+1T per Machine", kv_gb_per_machine: 1024 }] }
     },
     "qwen2.5-72b-8xh100": {
-      model_profile: { n_layers: 80, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 72700000000, weight_dtype_bytes: 2, tp_size: 8, pp_size: 1, block_size: 16 },
+      model_id: "qwen2.5-72b",
+      model_profile: { ...MODELS["qwen2.5-72b"].model_profile, tp_size: 8, pp_size: 1 },
       prefill_savings_alpha: 0.8,
       heuristic_multi_agent: { concurrent_agents: 2048, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 8, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
       deployment: { label: "1x8-h100", accelerator_count: 8, cards_per_machine: 8, machine_spec: "h100", gpu_memory_gb_per_card: 80, total_tps: 12.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 1.5, planning_target_total_tps: 24.0, extra_capacity_tiers: [{ label: "HBM+1T per Machine", kv_gb_per_machine: 1024 }] }
     },
     "mistral-7b-1xl40s": {
-      model_profile: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 7200000000, weight_dtype_bytes: 2, tp_size: 1, pp_size: 1, block_size: 16 },
+      model_id: "mistral-7b",
+      model_profile: { ...MODELS["mistral-7b"].model_profile, tp_size: 1, pp_size: 1 },
       prefill_savings_alpha: 0.8,
       heuristic_multi_agent: { concurrent_agents: 1024, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 2048, avg_turns_per_session: 4, private_window_tokens: 16384, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
       deployment: { label: "1x1-l40s", accelerator_count: 1, cards_per_machine: 1, machine_spec: "l40s", gpu_memory_gb_per_card: 48, total_tps: 0.5, total_tps_unit: "cluster_total", baseline_per_card_tps: 0.5, planning_target_total_tps: 2.0, extra_capacity_tiers: [{ label: "HBM+512G", kv_gb_per_machine: 512 }] }
     },
     "llama3.1-8b-1xa100": {
-      model_profile: { n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 8, head_dim: 128, dtype_bytes: 2, parameter_count: 8000000000, weight_dtype_bytes: 2, tp_size: 1, pp_size: 1, block_size: 16 },
+      model_id: "llama3.1-8b",
+      model_profile: { ...MODELS["llama3.1-8b"].model_profile, tp_size: 1, pp_size: 1 },
       prefill_savings_alpha: 0.8,
       heuristic_multi_agent: { concurrent_agents: 2048, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 8, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
       deployment: { label: "1x1-a100", accelerator_count: 1, cards_per_machine: 1, machine_spec: "a100-80", gpu_memory_gb_per_card: 80, total_tps: 0.8, total_tps_unit: "cluster_total", baseline_per_card_tps: 0.8, planning_target_total_tps: 6.4, extra_capacity_tiers: [{ label: "HBM+1T per Machine", kv_gb_per_machine: 1024 }] }
     },
     "deepseek-v3-671b-8xh200": {
-      model_profile: { n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 671000000000, weight_dtype_bytes: 2, tp_size: 8, pp_size: 1, block_size: 16 },
+      model_id: "deepseek-v3-671b",
+      model_profile: { ...MODELS["deepseek-v3-671b"].model_profile, tp_size: 8, pp_size: 1 },
       prefill_savings_alpha: 0.8,
       heuristic_multi_agent: { concurrent_agents: 2048, shared_prefix_tokens: 4096, avg_new_tokens_per_turn: 4096, avg_turns_per_session: 8, private_window_tokens: 65536, curve_mode: "zipf_harmonic", zipf_s: 1.3, zipf_population_blocks: 4096, policy_efficiency: { strict_prefix_upper_bound: 1.0, lru_like: 0.6 } },
       deployment: { label: "1x8-h200", accelerator_count: 8, cards_per_machine: 8, machine_spec: "h200", gpu_memory_gb_per_card: 141, total_tps: 16.0, total_tps_unit: "cluster_total", baseline_per_card_tps: 2.0, planning_target_total_tps: 32.0, extra_capacity_tiers: [{ label: "HBM+2T per Machine", kv_gb_per_machine: 2048 }] }
@@ -906,6 +976,27 @@
       if (efficiency <= 0) return Infinity;
       return this.shared_prefix_tokens + this.totalPrivateWorkingSetTokens() / efficiency;
     }
+    perTurnReusablePrivateTokens() {
+      const result = [];
+      for (let step = 0; step < this.avg_turns_per_session; step++) {
+        result.push(Math.min(this.private_window_tokens, step * this.avg_new_tokens_per_turn));
+      }
+      return result;
+    }
+    perTurnContentHitRates() {
+      const rates = [];
+      for (let step = 0; step < this.avg_turns_per_session; step++) {
+        const privateReuse = Math.min(this.private_window_tokens, step * this.avg_new_tokens_per_turn);
+        const requestTokens = this.shared_prefix_tokens + this.avg_new_tokens_per_turn + privateReuse;
+        if (requestTokens <= 0) {
+          rates.push(0.0);
+        } else {
+          const hit = this.shared_prefix_tokens + privateReuse;
+          rates.push(Math.min(1.0, hit / requestTokens));
+        }
+      }
+      return rates;
+    }
   }
 
   function hitRateForCapacityTokens(capacityTokens, heuristic, efficiency) {
@@ -1064,6 +1155,7 @@
   // ═══════════════════════════════════════════════════════════════════
   let hitRateChart = null;
   let tpsMachinesChart = null;
+  let perTurnChart = null;
   let debounceTimer = null;
   let scenarioA = null;
   let modelPresetValues = null;
@@ -1121,7 +1213,111 @@
     };
   }
 
-  function loadPreset(name) {
+  // ═══════════════════════════════════════════════════════════════════
+  // Model Ranking Functions
+  // ═══════════════════════════════════════════════════════════════════
+  function formatBytes(bytes, decimals = 2) {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  }
+
+  function calculateModelRanking(sequenceLength) {
+    const rankings = [];
+    for (const [modelId, modelData] of Object.entries(MODELS)) {
+      const model = modelData.model_profile;
+      const kvPerToken = kvBytesPerToken(model);
+      const kvPerTokenPerRank = kvBytesPerTokenPerRank(model);
+      const totalKvBytes = kvPerToken * sequenceLength;
+      const totalKvBytesPerRank = kvPerTokenPerRank * sequenceLength;
+      const totalKvGb = totalKvBytes / BYTES_PER_GB;
+      const totalKvGbPerRank = totalKvBytesPerRank / BYTES_PER_GB;
+
+      rankings.push({
+        modelId,
+        name: modelData.name,
+        family: modelData.family,
+        description: modelData.description,
+        kv_bytes_per_token: kvPerToken,
+        kv_bytes_per_token_per_rank: kvPerTokenPerRank,
+        total_kv_bytes: totalKvBytes,
+        total_kv_bytes_per_rank: totalKvBytesPerRank,
+        total_kv_gb: totalKvGb,
+        total_kv_gb_per_rank: totalKvGbPerRank,
+        layers: model.kv_cache_layer_count != null ? model.kv_cache_layer_count : model.n_layers,
+        n_kv_heads: model.n_kv_heads,
+        head_dim: model.head_dim
+      });
+    }
+    rankings.sort((a, b) => b.total_kv_gb - a.total_kv_gb);
+    return rankings;
+  }
+
+  let rankingSortState = { column: 'total_kv_gb', ascending: false };
+
+  function renderRankingTable(rankingData, sequenceLength, selectedModelId = null) {
+    const sortCol = rankingSortState.column;
+    const ascending = rankingSortState.ascending;
+    const sorted = [...rankingData].sort((a, b) => {
+      let va = a[sortCol], vb = b[sortCol];
+      if (typeof va === 'string') {
+        return ascending ? va.localeCompare(vb) : vb.localeCompare(va);
+      }
+      return ascending ? va - vb : vb - va;
+    });
+
+    const sortIcon = (col) => {
+      if (sortCol !== col) return '<span style="opacity:0.3">⇅</span>';
+      return ascending ? '↑' : '↓';
+    };
+
+    const seqLabel = sequenceLength >= 1024 ? `${(sequenceLength / 1024).toFixed(sequenceLength % 1024 === 0 ? 0 : 1)}K` : sequenceLength;
+
+    let html = `
+      <table class="ranking-table" style="width:100%; border-collapse:collapse; font-size:0.85rem; margin-top:12px;">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border);">
+            <th style="padding:8px 6px; text-align:left; cursor:pointer;" data-sort="name">Model ${sortIcon('name')}</th>
+            <th style="padding:8px 6px; text-align:right; cursor:pointer;" data-sort="kv_bytes_per_token">KV/Token ${sortIcon('kv_bytes_per_token')}</th>
+            <th style="padding:8px 6px; text-align:right; cursor:pointer;" data-sort="kv_bytes_per_token_per_rank">KV/Token/Rank ${sortIcon('kv_bytes_per_token_per_rank')}</th>
+            <th style="padding:8px 6px; text-align:right; cursor:pointer;" data-sort="total_kv_gb">Total (${seqLabel} tokens) ${sortIcon('total_kv_gb')}</th>
+            <th style="padding:8px 6px; text-align:right; cursor:pointer;" data-sort="layers">KV Layers ${sortIcon('layers')}</th>
+            <th style="padding:8px 6px; text-align:right; cursor:pointer;" data-sort="n_kv_heads">KV Heads ${sortIcon('n_kv_heads')}</th>
+            <th style="padding:8px 6px; text-align:right; cursor:pointer;" data-sort="head_dim">Head Dim ${sortIcon('head_dim')}</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    sorted.forEach((item, idx) => {
+      const isSelected = item.modelId === selectedModelId;
+      const rowStyle = isSelected
+        ? 'background:rgba(74,108,247,0.1); font-weight:600;'
+        : (idx % 2 === 0 ? '' : 'background:rgba(0,0,0,0.02);');
+      html += `
+          <tr style="${rowStyle} border-bottom:1px solid var(--border);">
+            <td style="padding:8px 6px;">
+              <div style="font-weight:600;">${item.name}</div>
+              <div style="font-size:0.75rem; color:var(--text-muted);">${item.family}</div>
+            </td>
+            <td style="padding:8px 6px; text-align:right;">${formatBytes(item.kv_bytes_per_token)}</td>
+            <td style="padding:8px 6px; text-align:right;">${formatBytes(item.kv_bytes_per_token_per_rank)}</td>
+            <td style="padding:8px 6px; text-align:right;">${item.total_kv_gb.toFixed(2)} GB</td>
+            <td style="padding:8px 6px; text-align:right;">${item.layers}</td>
+            <td style="padding:8px 6px; text-align:right;">${item.n_kv_heads}</td>
+            <td style="padding:8px 6px; text-align:right;">${item.head_dim}</td>
+          </tr>`;
+    });
+
+    html += `
+        </tbody>
+      </table>`;
+    return html;
+  }
+
+
     const p = PRESETS[name];
     if (!p) return;
     const m = p.model_profile;
@@ -1180,6 +1376,7 @@
     updateCurveModeVisibility();
     checkModelModified();
     recalculate();
+    if (typeof updateRankingTable === 'function') updateRankingTable();
   }
 
   function loadDatasetPreset(datasetId) {
@@ -1239,6 +1436,7 @@
     updateCurveModeVisibility();
     checkModelModified();
     recalculate();
+    if (typeof updateRankingTable === 'function') updateRankingTable();
   }
 
   function findModelForPreset(modelProfile) {
@@ -1272,6 +1470,7 @@
     modelPresetValues = { ...p, tp_size: +document.getElementById("tp_size").value || 1, pp_size: +document.getElementById("pp_size").value || 1 };
     checkModelModified();
     scheduleRecalc();
+    if (typeof updateRankingTable === 'function') updateRankingTable();
   }
 
   function checkModelModified() {
@@ -1614,6 +1813,76 @@
     }).join("");
   }
 
+  function renderPerTurnChart(config) {
+    const heuristic = new MultiAgentHeuristic(config.heuristic_multi_agent);
+    const hitRates = heuristic.perTurnContentHitRates();
+    const privateTokens = heuristic.perTurnReusablePrivateTokens();
+    const labels = hitRates.map((_, i) => "Turn " + (i + 1));
+    const card = document.getElementById("per-turn-chart-card");
+    card.style.display = "";
+
+    const ctx = document.getElementById("perTurnChart").getContext("2d");
+    if (perTurnChart) perTurnChart.destroy();
+    perTurnChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Content Hit Rate (%)",
+            data: hitRates.map(r => r * 100),
+            backgroundColor: "rgba(88,166,255,0.5)",
+            borderColor: "#58a6ff",
+            borderWidth: 1,
+            yAxisID: "y",
+            order: 2
+          },
+          {
+            label: "Reusable Private Tokens",
+            data: privateTokens,
+            type: "line",
+            borderColor: "#3fb950",
+            backgroundColor: "rgba(63,185,80,0.1)",
+            tension: 0.3,
+            pointRadius: 4,
+            fill: false,
+            yAxisID: "y1",
+            order: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            position: "left",
+            min: 0,
+            max: 100,
+            title: { display: true, text: "Content Hit Rate (%)", color: "#8b949e" },
+            grid: { color: "rgba(48,54,61,0.5)" },
+            ticks: { color: "#8b949e" }
+          },
+          y1: {
+            position: "right",
+            min: 0,
+            title: { display: true, text: "Reusable Private Tokens", color: "#8b949e" },
+            grid: { drawOnChartArea: false },
+            ticks: { color: "#8b949e" }
+          },
+          x: {
+            title: { display: true, text: "Conversation Turn", color: "#8b949e" },
+            grid: { color: "rgba(48,54,61,0.5)" },
+            ticks: { color: "#8b949e" }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: "#c9d1d9" } }
+        }
+      }
+    });
+  }
+
   function renderComparison(resultB) {
     if (!scenarioA) return;
     const panel = document.getElementById("compare-panel");
@@ -1666,6 +1935,7 @@
       renderHitRateChart(result.rows, result.summary.contentHitRate, result.summary);
       renderTpsMachinesChart(config, result.summary);
       renderSensitivity(config);
+      renderPerTurnChart(config);
       if (scenarioA) renderComparison(result);
       validateInputs(config);
     } catch (e) {
@@ -2227,10 +2497,49 @@
 
     // Wire all inputs for recalculation
     document.querySelectorAll("input, select").forEach(el => {
-      if (el.id === "preset-select" || el.id === "model-preset-select" || el.id === "model-search" || el.id === "gpu-hardware-select") return;
+      if (el.id === "preset-select" || el.id === "model-preset-select" || el.id === "model-search" || el.id === "gpu-hardware-select" || el.id === "ranking-sequence-length") return;
       el.addEventListener("input", scheduleRecalc);
       el.addEventListener("change", scheduleRecalc);
     });
+
+    // Model Ranking UI
+    function updateRankingTable() {
+      const seqLength = parseInt(document.getElementById("ranking-sequence-length").value) || 8192;
+      const rankings = calculateModelRanking(seqLength);
+
+      // Determine selected model from current preset
+      const presetSelect = document.getElementById("preset-select");
+      let selectedModelId = null;
+      if (presetSelect && presetSelect.value !== "custom" && !presetSelect.value.startsWith("dataset:")) {
+        const preset = PRESETS[presetSelect.value];
+        if (preset && preset.model_id) {
+          selectedModelId = preset.model_id;
+        }
+      }
+
+      const container = document.getElementById("ranking-table-container");
+      container.innerHTML = renderRankingTable(rankings, seqLength, selectedModelId);
+
+      // Wire up sort handlers
+      container.querySelectorAll("th[data-sort]").forEach(th => {
+        th.addEventListener("click", () => {
+          const col = th.dataset.sort;
+          if (rankingSortState.column === col) {
+            rankingSortState.ascending = !rankingSortState.ascending;
+          } else {
+            rankingSortState.column = col;
+            rankingSortState.ascending = col === 'name' || col === 'family';
+          }
+          updateRankingTable();
+        });
+      });
+    }
+
+    document.getElementById("ranking-sequence-length").addEventListener("input", updateRankingTable);
+    document.getElementById("ranking-sequence-length").addEventListener("change", updateRankingTable);
+
+    // Initial ranking calculation
+    updateRankingTable();
   });
   </script>
 </body>

@@ -3,9 +3,9 @@
     "name": "qwen3-27b-8xh20",
     "summary": {
       "content_hit_rate": 0.8181818181818182,
-      "average_request_tokens": 22528.0,
-      "total_working_set_tokens": 29364224.0,
-      "avg_reusable_private_tokens_per_agent": 14336.0,
+      "average_request_tokens": 22528,
+      "total_working_set_tokens": 29364224,
+      "avg_reusable_private_tokens_per_agent": 14336,
       "hbm_kv_gb_per_card": 89.53163421526551,
       "strict_prefix_saturation_capacity_gb": 1792.25,
       "lru_like_saturation_capacity_gb": 2986.916666666667,
@@ -70,15 +70,35 @@
         "lru_min_cards": 8,
         "lru_min_machines": 1
       }
+    ],
+    "per_turn_private_tokens": [
+      0,
+      4096,
+      8192,
+      12288,
+      16384,
+      20480,
+      24576,
+      28672
+    ],
+    "per_turn_hit_rates": [
+      0.5,
+      0.6666666666666666,
+      0.75,
+      0.8,
+      0.8333333333333334,
+      0.8571428571428571,
+      0.875,
+      0.8888888888888888
     ]
   },
   {
     "name": "qwen3-27b-1xh20",
     "summary": {
       "content_hit_rate": 0.8181818181818182,
-      "average_request_tokens": 22528.0,
-      "total_working_set_tokens": 29364224.0,
-      "avg_reusable_private_tokens_per_agent": 14336.0,
+      "average_request_tokens": 22528,
+      "total_working_set_tokens": 29364224,
+      "avg_reusable_private_tokens_per_agent": 14336,
       "hbm_kv_gb_per_card": 44.2530737221241,
       "strict_prefix_saturation_capacity_gb": 1792.25,
       "lru_like_saturation_capacity_gb": 2986.916666666667,
@@ -143,15 +163,35 @@
         "lru_min_cards": 3,
         "lru_min_machines": 3
       }
+    ],
+    "per_turn_private_tokens": [
+      0,
+      4096,
+      8192,
+      12288,
+      16384,
+      20480,
+      24576,
+      28672
+    ],
+    "per_turn_hit_rates": [
+      0.5,
+      0.6666666666666666,
+      0.75,
+      0.8,
+      0.8333333333333334,
+      0.8571428571428571,
+      0.875,
+      0.8888888888888888
     ]
   },
   {
     "name": "edge-linear-small",
     "summary": {
       "content_hit_rate": 0.7777777777777778,
-      "average_request_tokens": 4608.0,
-      "total_working_set_tokens": 788480.0,
-      "avg_reusable_private_tokens_per_agent": 1536.0,
+      "average_request_tokens": 4608,
+      "total_working_set_tokens": 788480,
+      "avg_reusable_private_tokens_per_agent": 1536,
       "hbm_kv_gb_per_card": 66.9614839553833,
       "strict_prefix_saturation_capacity_gb": 96.25,
       "lru_like_saturation_capacity_gb": 137.39285714285714,
@@ -197,15 +237,27 @@
         "lru_min_cards": 4,
         "lru_min_machines": 4
       }
+    ],
+    "per_turn_private_tokens": [
+      0,
+      1024,
+      2048,
+      3072
+    ],
+    "per_turn_hit_rates": [
+      0.6666666666666666,
+      0.75,
+      0.8,
+      0.8333333333333334
     ]
   },
   {
     "name": "edge-saturated",
     "summary": {
       "content_hit_rate": 0.8333333333333334,
-      "average_request_tokens": 12288.0,
-      "total_working_set_tokens": 139264.0,
-      "avg_reusable_private_tokens_per_agent": 2048.0,
+      "average_request_tokens": 12288,
+      "total_working_set_tokens": 139264,
+      "avg_reusable_private_tokens_per_agent": 2048,
       "hbm_kv_gb_per_card": 89.53163421526551,
       "strict_prefix_saturation_capacity_gb": 8.5,
       "lru_like_saturation_capacity_gb": 10.5,
@@ -251,6 +303,16 @@
         "lru_min_cards": 16,
         "lru_min_machines": 2
       }
+    ],
+    "per_turn_private_tokens": [
+      0,
+      2048,
+      4096
+    ],
+    "per_turn_hit_rates": [
+      0.8,
+      0.8333333333333334,
+      0.8571428571428571
     ]
   }
 ]
