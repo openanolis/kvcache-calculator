@@ -85,6 +85,39 @@
       color: #fff;
     }
 
+    .input-group {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .input-field {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .input-field input {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      font-size: 0.9rem;
+      width: 80px;
+      transition: all 0.15s;
+    }
+
+    .input-field input:hover {
+      border-color: var(--accent);
+    }
+
+    .input-field input:focus {
+      outline: none;
+      border-color: var(--accent);
+      background: var(--surface2);
+    }
+
     .table-container {
       max-width: 1400px;
       margin: 0 auto;
@@ -196,6 +229,20 @@
     <div class="preset-buttons" id="preset-buttons"></div>
   </div>
 
+  <div class="controls">
+    <label>Parallelism:</label>
+    <div class="input-group">
+      <div class="input-field">
+        <label for="tp-input">TP</label>
+        <input type="number" id="tp-input" value="1" min="1" max="16" />
+      </div>
+      <div class="input-field">
+        <label for="pp-input">PP</label>
+        <input type="number" id="pp-input" value="1" min="1" max="16" />
+      </div>
+    </div>
+  </div>
+
   <div class="table-container">
     <table id="ranking-table">
       <thead>
@@ -234,8 +281,6 @@
         dtype_bytes: 2,
         parameter_count: 27781419504,
         weight_dtype_bytes: 2,
-        tp_size: 8,
-        pp_size: 1,
       },
       "llama3.1-70b": {
         name: "Llama 3.1 70B",
@@ -247,8 +292,6 @@
         dtype_bytes: 2,
         parameter_count: 70600000000,
         weight_dtype_bytes: 2,
-        tp_size: 8,
-        pp_size: 1,
       },
       "qwen2.5-72b": {
         name: "Qwen2.5-72B",
@@ -260,8 +303,6 @@
         dtype_bytes: 2,
         parameter_count: 72700000000,
         weight_dtype_bytes: 2,
-        tp_size: 8,
-        pp_size: 1,
       },
       "mistral-7b": {
         name: "Mistral 7B",
@@ -273,8 +314,6 @@
         dtype_bytes: 2,
         parameter_count: 7200000000,
         weight_dtype_bytes: 2,
-        tp_size: 1,
-        pp_size: 1,
       },
       "llama3.1-8b": {
         name: "Llama 3.1 8B",
@@ -286,8 +325,6 @@
         dtype_bytes: 2,
         parameter_count: 8000000000,
         weight_dtype_bytes: 2,
-        tp_size: 1,
-        pp_size: 1,
       },
       "deepseek-v3-671b": {
         name: "DeepSeek-V3-671B",
@@ -299,8 +336,6 @@
         dtype_bytes: 2,
         parameter_count: 671000000000,
         weight_dtype_bytes: 2,
-        tp_size: 8,
-        pp_size: 1,
       },
     };
 
@@ -308,6 +343,8 @@
     const BYTES_PER_GB = 1024 * 1024 * 1024;
 
     let currentSequenceLength = 8192;
+    let currentTpSize = 1;
+    let currentPpSize = 1;
     let sortColumn = 'total_kv';
     let sortDirection = 'desc';
 
@@ -317,7 +354,7 @@
     }
 
     function kvBytesPerTokenPerRank(model) {
-      const shard = model.tp_size * model.pp_size;
+      const shard = currentTpSize * currentPpSize;
       return kvBytesPerToken(model) / shard;
     }
 
@@ -351,8 +388,8 @@
           layers,
           n_kv_heads: model.n_kv_heads,
           head_dim: model.head_dim,
-          tp_size: model.tp_size,
-          pp_size: model.pp_size,
+          tp_size: currentTpSize,
+          pp_size: currentPpSize,
           parameters: model.parameter_count,
           weight_gb: weightGb,
           kv_per_token: kvPerToken,
@@ -454,6 +491,23 @@
     renderPresetButtons();
     setupSorting();
     renderTable();
+
+    // TP/PP input handlers
+    document.getElementById('tp-input').addEventListener('input', (e) => {
+      const value = parseInt(e.target.value);
+      if (value >= 1 && value <= 16) {
+        currentTpSize = value;
+        renderTable();
+      }
+    });
+
+    document.getElementById('pp-input').addEventListener('input', (e) => {
+      const value = parseInt(e.target.value);
+      if (value >= 1 && value <= 16) {
+        currentPpSize = value;
+        renderTable();
+      }
+    });
   </script>
 </body>
 </html>
