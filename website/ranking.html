@@ -300,8 +300,8 @@
       "deepseek-v3.2": { name: "DeepSeek V3.2", family: "DeepSeek", n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 685000000000, weight_dtype_bytes: 2, notes: "MLA, kv_lora_rank=512" },
       "deepseek-v3": { name: "DeepSeek V3", family: "DeepSeek", n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 671000000000, weight_dtype_bytes: 2, notes: "MLA, kv_lora_rank=512" },
       "deepseek-r1": { name: "DeepSeek R1", family: "DeepSeek", n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 671000000000, weight_dtype_bytes: 2, notes: "MLA, kv_lora_rank=512" },
-      "deepseek-v2-236b": { name: "DeepSeek-V2 236B", family: "DeepSeek", n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 236000000000, weight_dtype_bytes: 2, notes: "MLA + MoE (effective n_kv_heads=16, head_dim=512)" },
-      "deepseek-v3.1-685b": { name: "DeepSeek-V3.1 685B", family: "DeepSeek", n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 685000000000, weight_dtype_bytes: 2, notes: "MLA + MoE 256E/8A (kv_lora_rank=512)" },
+      "deepseek-v2-236b": { name: "DeepSeek-V2 236B", family: "DeepSeek", n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 236000000000, weight_dtype_bytes: 2, notes: "MLA + MoE (compressed KV latent: kv_lora_rank=512)" },
+      "deepseek-v3.1-685b": { name: "DeepSeek-V3.1 685B", family: "DeepSeek", n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 685000000000, weight_dtype_bytes: 2, notes: "MLA + MoE 256E/8A (compressed KV latent: kv_lora_rank=512)" },
 
       // === GLM ===
       "glm-5": { name: "GLM-5", family: "GLM", n_layers: 78, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 756000000000, weight_dtype_bytes: 2, notes: "MLA, kv_lora_rank=512" },
@@ -313,21 +313,21 @@
       // === Kimi ===
       "kimi-k2.5": { name: "Kimi K2.5", family: "Kimi", n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 1000000000000, weight_dtype_bytes: 2, notes: "MLA, kv_lora_rank=512" },
       "kimi-k2.6": { name: "Kimi K2.6", family: "Kimi", n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 1000000000000, weight_dtype_bytes: 2, notes: "MLA, kv_lora_rank=512" },
-      "kimi-k2-1t": { name: "Kimi K2 1T", family: "Kimi", n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 16, head_dim: 512, dtype_bytes: 2, parameter_count: 1000000000000, weight_dtype_bytes: 2, notes: "MLA + MoE 384E/8A (DeepSeek-V3 arch)" },
+      "kimi-k2-1t": { name: "Kimi K2 1T", family: "Kimi", n_layers: 61, kv_cache_layer_count: null, n_kv_heads: 1, head_dim: 512, dtype_bytes: 2, parameter_count: 1000000000000, weight_dtype_bytes: 2, notes: "MLA + MoE 384E/8A (DeepSeek-V3 arch, compressed KV latent: kv_lora_rank=512)" },
 
       // === Qwen3.6 (Hybrid linear+full) ===
-      "qwen3.6-27b": { name: "Qwen3.6-27B", family: "Qwen3.6", n_layers: 64, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27000000000, weight_dtype_bytes: 2, notes: "Hybrid: 16 full + 48 linear attn layers" },
-      "qwen3.6-35b-a3b": { name: "Qwen3.6-35B-A3B", family: "Qwen3.6", n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 35000000000, weight_dtype_bytes: 2, notes: "Hybrid: 10 full + 30 linear attn layers" },
+      "qwen3.6-27b": { name: "Qwen3.6-27B", family: "Qwen3.6", n_layers: 64, kv_cache_layer_count: 16, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27000000000, weight_dtype_bytes: 2, notes: "Hybrid: 16 full + 48 linear attn layers" },
+      "qwen3.6-35b-a3b": { name: "Qwen3.6-35B-A3B", family: "Qwen3.6", n_layers: 40, kv_cache_layer_count: 10, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 35000000000, weight_dtype_bytes: 2, notes: "Hybrid: 10 full + 30 linear attn layers" },
 
       // === Qwen3.5 (Hybrid linear+full) ===
-      "qwen3.5-397b-a17b": { name: "Qwen3.5-397B-A17B", family: "Qwen3.5", n_layers: 60, kv_cache_layer_count: null, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 397000000000, weight_dtype_bytes: 2, notes: "Hybrid: 15 full + 45 linear attn layers" },
-      "qwen3.5-122b-a10b": { name: "Qwen3.5-122B-A10B", family: "Qwen3.5", n_layers: 48, kv_cache_layer_count: null, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 122000000000, weight_dtype_bytes: 2, notes: "Hybrid: 12 full + 36 linear attn layers" },
-      "qwen3.5-35b-a3b": { name: "Qwen3.5-35B-A3B", family: "Qwen3.5", n_layers: 40, kv_cache_layer_count: null, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 35000000000, weight_dtype_bytes: 2, notes: "Hybrid: 10 full + 30 linear attn layers" },
-      "qwen3.5-27b": { name: "Qwen3.5-27B", family: "Qwen3.5", n_layers: 64, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27000000000, weight_dtype_bytes: 2, notes: "Hybrid: 16 full + 48 linear attn layers" },
-      "qwen3.5-9b": { name: "Qwen3.5-9B", family: "Qwen3.5", n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 9000000000, weight_dtype_bytes: 2, notes: "Hybrid: 8 full + 24 linear attn layers" },
-      "qwen3.5-4b": { name: "Qwen3.5-4B", family: "Qwen3.5", n_layers: 32, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 4000000000, weight_dtype_bytes: 2, notes: "Hybrid: 8 full + 24 linear attn layers" },
-      "qwen3.5-2b": { name: "Qwen3.5-2B", family: "Qwen3.5", n_layers: 24, kv_cache_layer_count: null, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 2000000000, weight_dtype_bytes: 2, notes: "Hybrid: 6 full + 18 linear attn layers" },
-      "qwen3.5-0.8b": { name: "Qwen3.5-0.8B", family: "Qwen3.5", n_layers: 24, kv_cache_layer_count: null, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 800000000, weight_dtype_bytes: 2, notes: "Hybrid: 6 full + 18 linear attn layers" },
+      "qwen3.5-397b-a17b": { name: "Qwen3.5-397B-A17B", family: "Qwen3.5", n_layers: 60, kv_cache_layer_count: 15, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 397000000000, weight_dtype_bytes: 2, notes: "Hybrid: 15 full + 45 linear attn layers" },
+      "qwen3.5-122b-a10b": { name: "Qwen3.5-122B-A10B", family: "Qwen3.5", n_layers: 48, kv_cache_layer_count: 12, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 122000000000, weight_dtype_bytes: 2, notes: "Hybrid: 12 full + 36 linear attn layers" },
+      "qwen3.5-35b-a3b": { name: "Qwen3.5-35B-A3B", family: "Qwen3.5", n_layers: 40, kv_cache_layer_count: 10, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 35000000000, weight_dtype_bytes: 2, notes: "Hybrid: 10 full + 30 linear attn layers" },
+      "qwen3.5-27b": { name: "Qwen3.5-27B", family: "Qwen3.5", n_layers: 64, kv_cache_layer_count: 16, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 27000000000, weight_dtype_bytes: 2, notes: "Hybrid: 16 full + 48 linear attn layers" },
+      "qwen3.5-9b": { name: "Qwen3.5-9B", family: "Qwen3.5", n_layers: 32, kv_cache_layer_count: 8, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 9000000000, weight_dtype_bytes: 2, notes: "Hybrid: 8 full + 24 linear attn layers" },
+      "qwen3.5-4b": { name: "Qwen3.5-4B", family: "Qwen3.5", n_layers: 32, kv_cache_layer_count: 8, n_kv_heads: 4, head_dim: 256, dtype_bytes: 2, parameter_count: 4000000000, weight_dtype_bytes: 2, notes: "Hybrid: 8 full + 24 linear attn layers" },
+      "qwen3.5-2b": { name: "Qwen3.5-2B", family: "Qwen3.5", n_layers: 24, kv_cache_layer_count: 6, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 2000000000, weight_dtype_bytes: 2, notes: "Hybrid: 6 full + 18 linear attn layers" },
+      "qwen3.5-0.8b": { name: "Qwen3.5-0.8B", family: "Qwen3.5", n_layers: 24, kv_cache_layer_count: 6, n_kv_heads: 2, head_dim: 256, dtype_bytes: 2, parameter_count: 800000000, weight_dtype_bytes: 2, notes: "Hybrid: 6 full + 18 linear attn layers" },
 
       // === Qwen3 (GQA) ===
       "qwen3-235b-a22b": { name: "Qwen3-235B-A22B", family: "Qwen3", n_layers: 94, kv_cache_layer_count: null, n_kv_heads: 4, head_dim: 128, dtype_bytes: 2, parameter_count: 235000000000, weight_dtype_bytes: 2, notes: "GQA + MoE 128E/8A" },

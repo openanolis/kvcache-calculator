@@ -573,7 +573,7 @@ MODEL_REGISTRY = {
         "family": "DeepSeek",
         "n_layers": 61,
         "kv_cache_layer_count": None,
-        "n_kv_heads": 16,
+        "n_kv_heads": 1,
         "head_dim": 512,
         "dtype_bytes": 2,
         "tp_size": 8,
