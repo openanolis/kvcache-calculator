@@ -595,6 +595,15 @@
         <div id="sensitivity-container"></div>
       </div>
 
+      <!-- Per-Turn Analysis Chart -->
+      <div class="card" id="per-turn-chart-card" style="display:none">
+        <div class="card-title">Per-Turn Analysis</div>
+        <p style="color:var(--text-muted);font-size:.85rem">How cache hit rate evolves across conversation turns</p>
+        <div class="chart-container">
+          <canvas id="perTurnChart" height="250"></canvas>
+        </div>
+      </div>
+
       <!-- Results Table -->
       <div class="card">
         <div class="card-title">Tier Analysis</div>
@@ -906,6 +915,27 @@
       if (efficiency <= 0) return Infinity;
       return this.shared_prefix_tokens + this.totalPrivateWorkingSetTokens() / efficiency;
     }
+    perTurnReusablePrivateTokens() {
+      const result = [];
+      for (let step = 0; step < this.avg_turns_per_session; step++) {
+        result.push(Math.min(this.private_window_tokens, step * this.avg_new_tokens_per_turn));
+      }
+      return result;
+    }
+    perTurnContentHitRates() {
+      const rates = [];
+      for (let step = 0; step < this.avg_turns_per_session; step++) {
+        const privateReuse = Math.min(this.private_window_tokens, step * this.avg_new_tokens_per_turn);
+        const requestTokens = this.shared_prefix_tokens + this.avg_new_tokens_per_turn + privateReuse;
+        if (requestTokens <= 0) {
+          rates.push(0.0);
+        } else {
+          const hit = this.shared_prefix_tokens + privateReuse;
+          rates.push(Math.min(1.0, hit / requestTokens));
+        }
+      }
+      return rates;
+    }
   }
 
   function hitRateForCapacityTokens(capacityTokens, heuristic, efficiency) {
@@ -1064,6 +1094,7 @@
   // ═══════════════════════════════════════════════════════════════════
   let hitRateChart = null;
   let tpsMachinesChart = null;
+  let perTurnChart = null;
   let debounceTimer = null;
   let scenarioA = null;
   let modelPresetValues = null;
@@ -1614,6 +1645,76 @@
     }).join("");
   }
 
+  function renderPerTurnChart(config) {
+    const heuristic = new MultiAgentHeuristic(config.heuristic_multi_agent);
+    const hitRates = heuristic.perTurnContentHitRates();
+    const privateTokens = heuristic.perTurnReusablePrivateTokens();
+    const labels = hitRates.map((_, i) => "Turn " + (i + 1));
+    const card = document.getElementById("per-turn-chart-card");
+    card.style.display = "";
+
+    const ctx = document.getElementById("perTurnChart").getContext("2d");
+    if (perTurnChart) perTurnChart.destroy();
+    perTurnChart = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Content Hit Rate (%)",
+            data: hitRates.map(r => r * 100),
+            backgroundColor: "rgba(88,166,255,0.5)",
+            borderColor: "#58a6ff",
+            borderWidth: 1,
+            yAxisID: "y",
+            order: 2
+          },
+          {
+            label: "Reusable Private Tokens",
+            data: privateTokens,
+            type: "line",
+            borderColor: "#3fb950",
+            backgroundColor: "rgba(63,185,80,0.1)",
+            tension: 0.3,
+            pointRadius: 4,
+            fill: false,
+            yAxisID: "y1",
+            order: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            position: "left",
+            min: 0,
+            max: 100,
+            title: { display: true, text: "Content Hit Rate (%)", color: "#8b949e" },
+            grid: { color: "rgba(48,54,61,0.5)" },
+            ticks: { color: "#8b949e" }
+          },
+          y1: {
+            position: "right",
+            min: 0,
+            title: { display: true, text: "Reusable Private Tokens", color: "#8b949e" },
+            grid: { drawOnChartArea: false },
+            ticks: { color: "#8b949e" }
+          },
+          x: {
+            title: { display: true, text: "Conversation Turn", color: "#8b949e" },
+            grid: { color: "rgba(48,54,61,0.5)" },
+            ticks: { color: "#8b949e" }
+          }
+        },
+        plugins: {
+          legend: { labels: { color: "#c9d1d9" } }
+        }
+      }
+    });
+  }
+
   function renderComparison(resultB) {
     if (!scenarioA) return;
     const panel = document.getElementById("compare-panel");
@@ -1666,6 +1767,7 @@
       renderHitRateChart(result.rows, result.summary.contentHitRate, result.summary);
       renderTpsMachinesChart(config, result.summary);
       renderSensitivity(config);
+      renderPerTurnChart(config);
       if (scenarioA) renderComparison(result);
       validateInputs(config);
     } catch (e) {
