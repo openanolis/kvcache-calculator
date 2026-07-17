@@ -32,6 +32,13 @@ from kvcache_upper_bound.ingest import (
     convert_conversation_dataset,
     load_request_records,
 )
+from kvcache_upper_bound.ingest.normalizer import build_effective_requests
+from kvcache_upper_bound.oracle import (
+    analyze_capacity_upper_bound,
+    analyze_lfu_baseline,
+    analyze_lru_baseline,
+    analyze_prefix_aware,
+)
 from kvcache_upper_bound.reporting import (
     analyze_bucket_deployments,
     build_bucket_input_summaries,
@@ -185,6 +192,20 @@ def main() -> int:
         help="Allow replay-only synthetic hash_ids when benchmark records do not provide them",
     )
 
+    compare_parser = subparsers.add_parser(
+        "compare-policies",
+        help="Run all eviction policies (Belady, LRU, LFU, Prefix-Aware) and output comparison",
+    )
+    compare_parser.add_argument("--trace", required=True, help="Local JSONL path or http(s) URL")
+    compare_parser.add_argument("--config", required=True, help="Bucket analysis JSON config")
+    compare_parser.add_argument("--output-dir", required=True, help="Directory for comparison JSON output")
+    compare_parser.add_argument(
+        "--max-records",
+        type=int,
+        default=None,
+        help="Optional cap for quick iteration",
+    )
+
     args = parser.parse_args()
     if args.command == "list-datasets":
         return _run_list_datasets()
@@ -200,6 +221,8 @@ def main() -> int:
         return _run_convert_conversation_dataset(args)
     if args.command == "convert-benchmark-results":
         return _run_convert_benchmark_results(args)
+    if args.command == "compare-policies":
+        return _run_compare_policies(args)
     raise ValueError(f"unsupported command: {args.command}")
 
 
@@ -484,6 +507,106 @@ def _run_convert_benchmark_results(args: argparse.Namespace) -> int:
         "allow_synthetic_hash_ids": args.allow_synthetic_hash_ids,
     }
     print(json.dumps(payload, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _run_compare_policies(args: argparse.Namespace) -> int:
+    config = load_bucket_analysis_config(args.config)
+    trace_result = load_request_records(args.trace, max_records=args.max_records)
+    records = trace_result.records
+
+    # Convert RequestRecords to EffectiveRequests (same pattern as analyze_bucket_deployments)
+    # Use the first bucket deployment's window_tokens, or fall back to max input_length
+    deployment = config.bucket_deployments[0]
+    window_tokens = deployment.resolved_window_tokens(records)
+    normalized = build_effective_requests(
+        records,
+        window_tokens=window_tokens,
+        scope=config.scope,
+        block_size=config.block_size,
+    )
+
+    # Compute HBM budget from first deployment
+    hbm_kv_gb_per_card = deployment.resolved_hbm_kv_gb_per_card(config.model_profile)
+    hbm_kv_total_gb = deployment.accelerator_count * hbm_kv_gb_per_card
+    budget_bytes = int(hbm_kv_total_gb * (1024**3))
+
+    # Run all 4 policies
+    belady_result = analyze_capacity_upper_bound(
+        normalized.requests,
+        model_profile=config.model_profile,
+        budget_bytes=budget_bytes,
+        block_size=config.block_size,
+        include_output_kvcache=config.include_output_kvcache,
+    )
+    lru_result = analyze_lru_baseline(
+        normalized.requests,
+        model_profile=config.model_profile,
+        budget_bytes=budget_bytes,
+        block_size=config.block_size,
+        include_output_kvcache=config.include_output_kvcache,
+    )
+    lfu_result = analyze_lfu_baseline(
+        normalized.requests,
+        model_profile=config.model_profile,
+        budget_bytes=budget_bytes,
+        block_size=config.block_size,
+        include_output_kvcache=config.include_output_kvcache,
+    )
+    prefix_aware_result = analyze_prefix_aware(
+        normalized.requests,
+        model_profile=config.model_profile,
+        budget_bytes=budget_bytes,
+        block_size=config.block_size,
+        include_output_kvcache=config.include_output_kvcache,
+    )
+
+    comparison = {
+        "trace": args.trace,
+        "config": str(Path(args.config).resolve()),
+        "budget_bytes": budget_bytes,
+        "budget_gb": hbm_kv_total_gb,
+        "total_requests": len(normalized.requests),
+        "policies": {
+            "belady": {
+                "total_blocks": belady_result.summary.total_blocks,
+                "hit_blocks": belady_result.summary.hit_blocks,
+                "block_hit_rate": belady_result.summary.block_hit_rate,
+                "strict_prefix_block_hit_rate": belady_result.summary.strict_prefix_block_hit_rate,
+                "token_hit_rate_est": belady_result.summary.token_hit_rate_est,
+            },
+            "lru": {
+                "total_blocks": lru_result.summary.total_blocks,
+                "hit_blocks": lru_result.summary.hit_blocks,
+                "block_hit_rate": lru_result.summary.block_hit_rate,
+                "strict_prefix_block_hit_rate": lru_result.summary.strict_prefix_block_hit_rate,
+                "token_hit_rate_est": lru_result.summary.token_hit_rate_est,
+            },
+            "lfu": {
+                "total_blocks": lfu_result.summary.total_blocks,
+                "hit_blocks": lfu_result.summary.hit_blocks,
+                "block_hit_rate": lfu_result.summary.block_hit_rate,
+                "strict_prefix_block_hit_rate": lfu_result.summary.strict_prefix_block_hit_rate,
+                "token_hit_rate_est": lfu_result.summary.token_hit_rate_est,
+            },
+            "prefix_aware": {
+                "total_blocks": prefix_aware_result.summary.total_blocks,
+                "hit_blocks": prefix_aware_result.summary.hit_blocks,
+                "block_hit_rate": prefix_aware_result.summary.block_hit_rate,
+                "strict_prefix_block_hit_rate": prefix_aware_result.summary.strict_prefix_block_hit_rate,
+                "token_hit_rate_est": prefix_aware_result.summary.token_hit_rate_est,
+            },
+        },
+    }
+
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "policy_comparison.json"
+    output_path.write_text(
+        json.dumps(comparison, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    print(json.dumps(comparison, ensure_ascii=False, indent=2))
     return 0
 
 

@@ -12,7 +12,9 @@ from .content import (
     ContentSummary,
     analyze_content_upper_bound,
 )
+from .lfu import LFUSimulationResult, analyze_lfu_baseline
 from .lru import LRUSimulationResult, analyze_lru_baseline
+from .prefix_aware import PrefixAwareSimulationResult, analyze_prefix_aware
 from .prefix_trie import PrefixTrie, PrefixTrieNode
 from .strict_prefix import (
     StrictPrefixAnalysisResult,
@@ -28,7 +30,9 @@ __all__ = [
     "ContentAnalysisResult",
     "ContentRequestMetric",
     "ContentSummary",
+    "LFUSimulationResult",
     "LRUSimulationResult",
+    "PrefixAwareSimulationResult",
     "PrefixTrie",
     "PrefixTrieNode",
     "StrictPrefixAnalysisResult",
@@ -36,6 +40,8 @@ __all__ = [
     "StrictPrefixSummary",
     "analyze_capacity_upper_bound",
     "analyze_content_upper_bound",
+    "analyze_lfu_baseline",
     "analyze_lru_baseline",
+    "analyze_prefix_aware",
     "analyze_strict_prefix_capacity_upper_bound",
 ]
