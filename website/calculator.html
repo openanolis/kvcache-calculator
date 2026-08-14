@@ -361,6 +361,119 @@
     .sensitivity-bar .bar-container { flex: 1; height: 16px; background: var(--surface2); border-radius: 3px; position: relative; overflow: hidden; }
     .sensitivity-bar .bar-fill { height: 100%; border-radius: 3px; }
     .sensitivity-bar .bar-value { width: 50px; font-size: .72rem; color: var(--text-muted); }
+
+    /* Trace Analyzer */
+    .trace-upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 32px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+      position: relative;
+    }
+    .trace-upload-zone:hover, .trace-upload-zone.drag-over {
+      border-color: var(--accent);
+      background: rgba(88,166,255,.06);
+    }
+    .trace-upload-zone .upload-icon { font-size: 2rem; color: var(--text-muted); margin-bottom: 8px; }
+    .trace-upload-zone .upload-text { font-size: .85rem; color: var(--text-muted); }
+    .trace-upload-zone .upload-text strong { color: var(--accent); }
+    .trace-upload-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .trace-progress {
+      margin-top: 12px; display: none;
+    }
+    .trace-progress .progress-bar {
+      width: 100%; height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden;
+    }
+    .trace-progress .progress-fill {
+      height: 100%; background: var(--accent); border-radius: 3px; transition: width .15s;
+    }
+    .trace-progress .progress-text { font-size: .72rem; color: var(--text-muted); margin-top: 4px; }
+    .trace-results { display: none; margin-top: 16px; }
+    .trace-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .trace-stat-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 10px;
+      text-align: center;
+    }
+    .trace-stat-box .value { font-size: 1rem; font-weight: 700; color: var(--accent2); }
+    .trace-stat-box .label { font-size: .68rem; color: var(--text-muted); margin-top: 2px; }
+    .trace-section-title {
+      font-size: .82rem; font-weight: 600; color: var(--accent); margin: 14px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border);
+    }
+    .prefix-distribution {
+      display: flex;
+      gap: 4px;
+      align-items: flex-end;
+      height: 80px;
+      margin: 8px 0;
+    }
+    .prefix-bar {
+      flex: 1;
+      background: var(--accent);
+      border-radius: 2px 2px 0 0;
+      min-width: 8px;
+      position: relative;
+      opacity: 0.8;
+    }
+    .prefix-bar:hover { opacity: 1; }
+    .prefix-bar:hover::after {
+      content: attr(data-tip);
+      position: absolute; bottom: 105%; left: 50%; transform: translateX(-50%);
+      background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+      padding: 4px 8px; font-size: .68rem; color: var(--text); white-space: nowrap;
+      box-shadow: var(--shadow); z-index: 5;
+    }
+    .prefix-bar-labels {
+      display: flex; gap: 4px; font-size: .62rem; color: var(--text-muted);
+    }
+    .prefix-bar-labels span { flex: 1; text-align: center; }
+    .trace-suggested-params {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 14px;
+      margin-top: 10px;
+    }
+    .trace-suggested-params table { width: 100%; font-size: .78rem; }
+    .trace-suggested-params td { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+    .trace-suggested-params td:first-child { color: var(--text-muted); text-align: left; }
+    .trace-suggested-params td:last-child { font-weight: 600; color: var(--accent2); text-align: right; }
+    .btn-apply-trace {
+      background: var(--accent2);
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      padding: 8px 18px;
+      cursor: pointer;
+      font-size: .82rem;
+      font-weight: 600;
+      margin-top: 12px;
+      width: 100%;
+    }
+    .btn-apply-trace:hover { opacity: 0.9; }
+    .btn-clear-trace {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      padding: 6px 14px;
+      cursor: pointer;
+      font-size: .78rem;
+      margin-top: 8px;
+      width: 100%;
+    }
+    .btn-clear-trace:hover { border-color: var(--danger); color: var(--danger); }
   </style>
 </head>
 <body>
@@ -614,6 +727,30 @@
             <thead><tr id="tps-header"></tr></thead>
             <tbody id="tps-body"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Trace Analyzer -->
+      <div class="card" id="trace-analyzer-card">
+        <div class="card-title">Trace Analyzer <span class="badge">Upload</span></div>
+        <div class="trace-upload-zone" id="trace-upload-zone">
+          <input type="file" id="trace-file-input" accept=".jsonl,.json,.txt" />
+          <div class="upload-icon">&#128194;</div>
+          <div class="upload-text">Drop a <strong>.jsonl</strong> trace file here or click to browse</div>
+        </div>
+        <div class="trace-progress" id="trace-progress">
+          <div class="progress-bar"><div class="progress-fill" id="trace-progress-fill" style="width:0%"></div></div>
+          <div class="progress-text" id="trace-progress-text">Parsing...</div>
+        </div>
+        <div class="trace-results" id="trace-results">
+          <div class="trace-section-title">Trace Statistics</div>
+          <div class="trace-stats-grid" id="trace-stats-grid"></div>
+          <div class="trace-section-title">Prefix Sharing Analysis</div>
+          <div id="trace-prefix-analysis"></div>
+          <div class="trace-section-title">Suggested Heuristic Parameters</div>
+          <div class="trace-suggested-params" id="trace-suggested-params"></div>
+          <button class="btn-apply-trace" id="btn-apply-trace">Apply to Calculator</button>
+          <button class="btn-clear-trace" id="btn-clear-trace">Clear Trace</button>
         </div>
       </div>
     </div>
@@ -2172,6 +2309,7 @@
   // Initialization
   // ═══════════════════════════════════════════════════════════════════
   document.addEventListener("DOMContentLoaded", () => {
+    initTraceAnalyzer();
     initTheme();
     populateModelDropdown();
     populateGpuDropdown();
@@ -2232,6 +2370,369 @@
       el.addEventListener("change", scheduleRecalc);
     });
   });
+
+  // ===============================================================
+  // Trace Analyzer
+  // ===============================================================
+  let lastTraceAnalysis = null;
+  let lastTraceSuggested = null;
+
+  function handleTraceUpload(file) {
+    const progress = document.getElementById('trace-progress');
+    const progressFill = document.getElementById('trace-progress-fill');
+    const progressText = document.getElementById('trace-progress-text');
+    const results = document.getElementById('trace-results');
+    const uploadZone = document.getElementById('trace-upload-zone');
+
+    progress.style.display = 'block';
+    results.style.display = 'none';
+    progressFill.style.width = '0%';
+    progressText.textContent = 'Reading file...';
+
+    const reader = new FileReader();
+    reader.onprogress = (e) => {
+      if (e.lengthComputable) {
+        const pct = (e.loaded / e.total * 50).toFixed(0);
+        progressFill.style.width = pct + '%';
+        progressText.textContent = 'Reading: ' + (e.loaded / 1e6).toFixed(1) + ' MB / ' + (e.total / 1e6).toFixed(1) + ' MB';
+      }
+    };
+    reader.onload = (e) => {
+      progressFill.style.width = '50%';
+      progressText.textContent = 'Parsing JSONL...';
+      setTimeout(() => {
+        try {
+          const text = e.target.result;
+          const requests = parseJsonl(text, (pct) => {
+            progressFill.style.width = (50 + pct * 40).toFixed(0) + '%';
+            progressText.textContent = 'Parsing: ' + (pct * 100).toFixed(0) + '%';
+          });
+          if (requests.length === 0) {
+            progressText.textContent = 'Error: no valid requests found in file';
+            return;
+          }
+          progressFill.style.width = '90%';
+          progressText.textContent = 'Analyzing prefix sharing...';
+          setTimeout(() => {
+            const blockSize = +document.getElementById('block_size').value || 16;
+            const analysis = analyzeTrace(requests, blockSize);
+            progressFill.style.width = '100%';
+            progressText.textContent = 'Done — ' + requests.length.toLocaleString() + ' requests analyzed';
+            lastTraceAnalysis = analysis;
+            const suggested = suggestHeuristicParams(analysis, blockSize);
+            lastTraceSuggested = suggested;
+            renderTraceResults(analysis, suggested, blockSize);
+            results.style.display = 'block';
+            uploadZone.style.display = 'none';
+          }, 10);
+        } catch (err) {
+          progressText.textContent = 'Error: ' + err.message;
+          console.error('Trace parse error:', err);
+        }
+      }, 10);
+    };
+    reader.onerror = () => {
+      progressText.textContent = 'Error reading file';
+    };
+    reader.readAsText(file);
+  }
+
+  function parseJsonl(text, onProgress) {
+    const lines = text.split('\n');
+    const requests = [];
+    const total = lines.length;
+    for (let i = 0; i < total; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      try {
+        const obj = JSON.parse(line);
+        if (obj.hash_ids && Array.isArray(obj.hash_ids)) {
+          requests.push({
+            hash_ids: obj.hash_ids,
+            timestamp: obj.timestamp || 0
+          });
+        }
+      } catch (e) { /* skip malformed lines */ }
+      if (onProgress && i % 10000 === 0) {
+        onProgress(i / total);
+      }
+    }
+    if (onProgress) onProgress(1);
+    return requests;
+  }
+
+  function buildPrefixTrie(requests) {
+    const root = { children: new Map(), count: 0 };
+    for (const req of requests) {
+      let node = root;
+      for (const blockId of req.hash_ids) {
+        if (!node.children.has(blockId)) {
+          node.children.set(blockId, { children: new Map(), count: 0 });
+        }
+        node = node.children.get(blockId);
+        node.count++;
+      }
+    }
+    return root;
+  }
+
+  function analyzeTrace(requests, blockSize) {
+    const n = requests.length;
+    if (n === 0) return null;
+
+    // Basic stats
+    const lengths = requests.map(r => r.hash_ids.length);
+    lengths.sort((a, b) => a - b);
+    const timestamps = requests.map(r => r.timestamp).filter(t => t > 0);
+    timestamps.sort((a, b) => a - b);
+
+    const minLen = lengths[0];
+    const maxLen = lengths[lengths.length - 1];
+    const avgLen = lengths.reduce((s, v) => s + v, 0) / n;
+    const medianLen = lengths[Math.floor(n / 2)];
+    const p95Len = lengths[Math.floor(n * 0.95)];
+
+    const timeSpan = timestamps.length >= 2 ? timestamps[timestamps.length - 1] - timestamps[0] : 0;
+    const requestRate = timeSpan > 0 ? n / timeSpan : 0;
+
+    // Unique blocks
+    const allBlocks = new Set();
+    for (const req of requests) {
+      for (const bid of req.hash_ids) allBlocks.add(bid);
+    }
+
+    // Prefix trie analysis
+    const trie = buildPrefixTrie(requests);
+
+    // Compute prefix sharing: for each request, count how many of its blocks
+    // are shared with at least one other request (trie node count >= 2)
+    let totalBlocks = 0;
+    let reusableBlocks = 0;
+    const sharedPrefixLengths = [];
+
+    for (const req of requests) {
+      let node = trie;
+      let sharedLen = 0;
+      for (let i = 0; i < req.hash_ids.length; i++) {
+        node = node.children.get(req.hash_ids[i]);
+        if (node.count >= 2) {
+          sharedLen = i + 1;
+          reusableBlocks++;
+        }
+        totalBlocks++;
+      }
+      sharedPrefixLengths.push(sharedLen);
+    }
+
+    const contentUpperBoundHitRate = totalBlocks > 0 ? reusableBlocks / totalBlocks : 0;
+
+    // Shared prefix length distribution
+    sharedPrefixLengths.sort((a, b) => a - b);
+    const medianSharedPrefix = sharedPrefixLengths[Math.floor(n / 2)];
+    const avgSharedPrefix = sharedPrefixLengths.reduce((s, v) => s + v, 0) / n;
+
+    // Prefix sharing distribution: what % of requests share prefixes
+    const requestsWithSharedPrefix = sharedPrefixLengths.filter(l => l > 0).length;
+    const prefixSharingPct = n > 0 ? requestsWithSharedPrefix / n : 0;
+
+    // Distribution of shared prefix lengths (for histogram)
+    const maxPrefixLen = Math.max(...sharedPrefixLengths, 1);
+    const bucketCount = Math.min(20, maxPrefixLen + 1);
+    const bucketSize = Math.max(1, Math.ceil((maxPrefixLen + 1) / bucketCount));
+    const prefixBuckets = new Array(bucketCount).fill(0);
+    for (const len of sharedPrefixLengths) {
+      const idx = Math.min(bucketCount - 1, Math.floor(len / bucketSize));
+      prefixBuckets[idx]++;
+    }
+
+    // Estimate unique tokens per request (non-shared portion)
+    const uniqueLengths = requests.map((req, i) => req.hash_ids.length - sharedPrefixLengths[i]);
+    uniqueLengths.sort((a, b) => a - b);
+    const medianUnique = uniqueLengths[Math.floor(n / 2)];
+
+    // Session estimation via timestamp clustering
+    let estimatedTurnsPerSession = 4; // default
+    if (timestamps.length > 1) {
+      const gaps = [];
+      for (let i = 1; i < timestamps.length; i++) {
+        gaps.push(timestamps[i] - timestamps[i - 1]);
+      }
+      gaps.sort((a, b) => a - b);
+      const medianGap = gaps[Math.floor(gaps.length / 2)];
+      // A "session break" is a gap > 5x the median gap
+      const sessionBreakThreshold = Math.max(medianGap * 5, 30);
+      let sessionCount = 1;
+      for (const g of gaps) {
+        if (g > sessionBreakThreshold) sessionCount++;
+      }
+      estimatedTurnsPerSession = Math.max(1, Math.round(n / sessionCount));
+    }
+
+    return {
+      requestCount: n,
+      timeSpan,
+      requestRate,
+      minBlocks: minLen,
+      maxBlocks: maxLen,
+      avgBlocks: avgLen,
+      medianBlocks: medianLen,
+      p95Blocks: p95Len,
+      uniqueBlockCount: allBlocks.size,
+      contentUpperBoundHitRate,
+      prefixSharingPct,
+      medianSharedPrefix,
+      avgSharedPrefix,
+      medianUnique,
+      estimatedTurnsPerSession,
+      prefixBuckets,
+      bucketSize,
+      blockSize
+    };
+  }
+
+  function suggestHeuristicParams(analysis, blockSize) {
+    if (!analysis) return null;
+    // concurrent_agents: estimate from request rate and avg session length
+    const avgSessionLen = analysis.estimatedTurnsPerSession * (analysis.avgBlocks * blockSize / 512);
+    const concurrentAgents = analysis.requestRate > 0
+      ? Math.max(8, Math.round(analysis.requestRate * avgSessionLen))
+      : Math.max(8, Math.round(analysis.requestCount / 10));
+
+    // shared_prefix_tokens: median shared prefix length * block_size
+    const sharedPrefixTokens = Math.round(analysis.medianSharedPrefix * blockSize);
+
+    // avg_new_tokens_per_turn: median unique blocks * block_size
+    const avgNewTokensPerTurn = Math.max(blockSize, Math.round(analysis.medianUnique * blockSize));
+
+    // avg_turns_per_session
+    const avgTurnsPerSession = Math.max(1, analysis.estimatedTurnsPerSession);
+
+    // private_window_tokens: p95 request length * block_size
+    const privateWindowTokens = Math.round(analysis.p95Blocks * blockSize);
+
+    return {
+      concurrent_agents: concurrentAgents,
+      shared_prefix_tokens: sharedPrefixTokens,
+      avg_new_tokens_per_turn: avgNewTokensPerTurn,
+      avg_turns_per_session: avgTurnsPerSession,
+      private_window_tokens: privateWindowTokens
+    };
+  }
+
+  function renderTraceResults(analysis, suggested, blockSize) {
+    // Stats grid
+    const statsGrid = document.getElementById('trace-stats-grid');
+    const fmtTime = (s) => {
+      if (s < 60) return s.toFixed(1) + 's';
+      if (s < 3600) return (s / 60).toFixed(1) + 'min';
+      return (s / 3600).toFixed(1) + 'hr';
+    };
+    const stats = [
+      { value: analysis.requestCount.toLocaleString(), label: 'Requests' },
+      { value: analysis.timeSpan > 0 ? fmtTime(analysis.timeSpan) : 'N/A', label: 'Time Span' },
+      { value: analysis.requestRate > 0 ? analysis.requestRate.toFixed(1) + '/s' : 'N/A', label: 'Request Rate' },
+      { value: analysis.uniqueBlockCount.toLocaleString(), label: 'Unique Blocks' },
+      { value: formatTokens(analysis.avgBlocks * blockSize), label: 'Avg Tokens/Req' },
+      { value: formatTokens(analysis.medianBlocks * blockSize), label: 'Median Tokens/Req' },
+      { value: formatTokens(analysis.minBlocks * blockSize) + ' / ' + formatTokens(analysis.maxBlocks * blockSize), label: 'Min / Max Tokens' },
+      { value: (analysis.contentUpperBoundHitRate * 100).toFixed(1) + '%', label: 'Content Hit Rate (UB)' },
+    ];
+    statsGrid.innerHTML = stats.map(s =>
+      '<div class="trace-stat-box"><div class="value">' + s.value + '</div><div class="label">' + s.label + '</div></div>'
+    ).join('');
+
+    // Prefix analysis
+    const prefixDiv = document.getElementById('trace-prefix-analysis');
+    const sharingPct = (analysis.prefixSharingPct * 100).toFixed(1);
+    const maxBucket = Math.max(...analysis.prefixBuckets, 1);
+
+    let barsHtml = '<div class="prefix-distribution">';
+    const labels = [];
+    for (let i = 0; i < analysis.prefixBuckets.length; i++) {
+      const h = (analysis.prefixBuckets[i] / maxBucket * 100).toFixed(0);
+      const lo = i * analysis.bucketSize;
+      const hi = lo + analysis.bucketSize - 1;
+      const tip = lo + '-' + hi + ' blocks: ' + analysis.prefixBuckets[i] + ' requests';
+      barsHtml += '<div class="prefix-bar" style="height:' + h + '%" data-tip="' + tip + '"></div>';
+      labels.push(lo.toString());
+    }
+    barsHtml += '</div>';
+    barsHtml += '<div class="prefix-bar-labels">';
+    for (const l of labels) barsHtml += '<span>' + l + '</span>';
+    barsHtml += '</div>';
+
+    prefixDiv.innerHTML =
+      '<div style="font-size:.78rem;color:var(--text-muted);margin-bottom:8px;">' +
+      '<strong style="color:var(--text)">' + sharingPct + '%</strong> of requests share prefix blocks with other requests. ' +
+      'Median shared prefix: <strong style="color:var(--text)">' + analysis.medianSharedPrefix + ' blocks</strong> (' +
+      formatTokens(analysis.medianSharedPrefix * blockSize) + ' tokens). ' +
+      'Avg shared prefix: <strong style="color:var(--text)">' + analysis.avgSharedPrefix.toFixed(1) + ' blocks</strong>.' +
+      '</div>' +
+      '<div style="font-size:.72rem;color:var(--text-muted);margin-bottom:4px;">Shared Prefix Length Distribution (blocks)</div>' +
+      barsHtml;
+
+    // Suggested params
+    if (suggested) {
+      const paramsDiv = document.getElementById('trace-suggested-params');
+      paramsDiv.innerHTML = '<table>' +
+        '<tr><td>concurrent_agents</td><td>' + suggested.concurrent_agents.toLocaleString() + '</td></tr>' +
+        '<tr><td>shared_prefix_tokens</td><td>' + formatTokens(suggested.shared_prefix_tokens) + '</td></tr>' +
+        '<tr><td>avg_new_tokens_per_turn</td><td>' + formatTokens(suggested.avg_new_tokens_per_turn) + '</td></tr>' +
+        '<tr><td>avg_turns_per_session</td><td>' + suggested.avg_turns_per_session + '</td></tr>' +
+        '<tr><td>private_window_tokens</td><td>' + formatTokens(suggested.private_window_tokens) + '</td></tr>' +
+        '</table>';
+    }
+  }
+
+  function applyTraceParams(params) {
+    if (!params) return;
+    document.getElementById('concurrent_agents').value = params.concurrent_agents;
+    document.getElementById('shared_prefix_tokens').value = params.shared_prefix_tokens;
+    document.getElementById('avg_new_tokens_per_turn').value = params.avg_new_tokens_per_turn;
+    document.getElementById('avg_turns_per_session').value = params.avg_turns_per_session;
+    document.getElementById('private_window_tokens').value = params.private_window_tokens;
+    document.getElementById('preset-select').value = 'custom';
+    recalculate();
+    showToast('Trace parameters applied to calculator');
+  }
+
+  function clearTrace() {
+    document.getElementById('trace-results').style.display = 'none';
+    document.getElementById('trace-progress').style.display = 'none';
+    document.getElementById('trace-upload-zone').style.display = '';
+    document.getElementById('trace-file-input').value = '';
+    lastTraceAnalysis = null;
+    lastTraceSuggested = null;
+  }
+
+  function initTraceAnalyzer() {
+    const uploadZone = document.getElementById('trace-upload-zone');
+    const fileInput = document.getElementById('trace-file-input');
+
+    uploadZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadZone.classList.add('drag-over');
+    });
+    uploadZone.addEventListener('dragleave', () => {
+      uploadZone.classList.remove('drag-over');
+    });
+    uploadZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) handleTraceUpload(file);
+    });
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) handleTraceUpload(file);
+    });
+
+    document.getElementById('btn-apply-trace').addEventListener('click', () => {
+      applyTraceParams(lastTraceSuggested);
+    });
+    document.getElementById('btn-clear-trace').addEventListener('click', clearTrace);
+  }
+
   </script>
 </body>
 </html>
